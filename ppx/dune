@@ -1,0 +1,6 @@
+(library
+  (kind ppx_rewriter)
+  (name ppx_scaml)
+  (public_name ppx_scaml)
+  (flags -w -9)
+  (libraries compiler-libs.common ocaml-migrate-parsetree ppxx typpx spotlib))

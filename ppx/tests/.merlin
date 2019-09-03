@@ -1,0 +1,5 @@
+EXCLUDE_QUERY_DIR
+B ../../../../_build/default/typpx/examples/ppx_curried_constr/tests/.test.eobjs/byte
+S .
+FLG -ppx '/Users/jun/.share/projects/_build/default/.ppx/8e7a156282ecb6b5a5dd7ca7465ea705/ppx.exe --as-ppx'
+FLG -w -32

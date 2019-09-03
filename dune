@@ -1,0 +1,4 @@
+(executables
+  (public_names scamlc)
+  (names scamlc)
+  (libraries compiler-libs))

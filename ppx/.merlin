@@ -1,0 +1,32 @@
+EXCLUDE_QUERY_DIR
+B /Users/jun/.opam/4.07.1/lib/ocaml
+B /Users/jun/.opam/4.07.1/lib/ocaml-migrate-parsetree
+B /Users/jun/.opam/4.07.1/lib/ocaml/compiler-libs
+B /Users/jun/.opam/4.07.1/lib/ppx_derivers
+B /Users/jun/.opam/4.07.1/lib/ppx_tools_versioned
+B /Users/jun/.opam/4.07.1/lib/re
+B /Users/jun/.opam/4.07.1/lib/re/pcre
+B /Users/jun/.opam/4.07.1/lib/result
+B /Users/jun/.opam/4.07.1/lib/seq
+B ../../../_build/default/dailambda/scaml/ppx/.ppx_scaml.objs/byte
+B ../../../_build/default/ppx_test/lib/.ppx_test.objs/byte
+B ../../../_build/default/ppx_test/runtime/.ppx_test_runtime.objs/byte
+B ../../../_build/default/ppxx/src/.ppxx.objs/byte
+B ../../../_build/default/spotlib/lib/.spotlib.objs/byte
+B ../../../_build/default/typpx/src/.typpx.objs/byte
+S /Users/jun/.opam/4.07.1/lib/ocaml
+S /Users/jun/.opam/4.07.1/lib/ocaml-migrate-parsetree
+S /Users/jun/.opam/4.07.1/lib/ocaml/compiler-libs
+S /Users/jun/.opam/4.07.1/lib/ppx_derivers
+S /Users/jun/.opam/4.07.1/lib/ppx_tools_versioned
+S /Users/jun/.opam/4.07.1/lib/re
+S /Users/jun/.opam/4.07.1/lib/re/pcre
+S /Users/jun/.opam/4.07.1/lib/result
+S /Users/jun/.opam/4.07.1/lib/seq
+S .
+S ../../../ppx_test/lib
+S ../../../ppx_test/runtime
+S ../../../ppxx/src
+S ../../../spotlib/lib
+S ../../../typpx/src
+FLG -open Ppx_scaml -w -9
