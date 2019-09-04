@@ -107,11 +107,14 @@ end
   
 module Opcode = struct
   type constant = 
-    | TRUE | FALSE
+    | True | False
+    | Unit
 
   type t = 
     | DUP
-    | DIP
+    | DIP of t list
+    | DROP
+    | SWAP
     | STRING of string
     | PAIR
     | ASSERT
@@ -122,14 +125,15 @@ module Opcode = struct
     | PUSH of MicType.t * constant
     | NIL of MicType.t
     | CONS
-    | COMMENT of string
+    (* | COMMENT of string *)
     
   let pp_constant ppf =
     let open Format in
     let p = pp_print_string ppf in
     function
-    | TRUE -> p "TRUE"
-    | FALSE -> p "FALSE"
+    | True -> p "True"
+    | False -> p "False"
+    | Unit -> p "Unit"
 
   let rec pp ppf =
     let open Format in
@@ -137,7 +141,8 @@ module Opcode = struct
     let f fmt = fprintf ppf fmt in
     function
     | DUP -> p "DUP"
-    | DIP -> p "DIP"
+    | DIP code -> f "DIP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
+    | SWAP -> p "SWAP"
     | STRING s -> f "%S" s
     | PAIR -> p "PAIR"
     | PUSH (ty, const) -> f "PUSH (%a) (%a)" MicType.pp ty pp_constant const
@@ -149,14 +154,14 @@ module Opcode = struct
     | LAMBDA (ty1, ty2, code) -> f "@[<2>LAMBDA (%a) (%a)@ @[<2>{ %a }@]@]" MicType.pp ty1 MicType.pp ty2 (Format.list " ;@ " pp) code
     | CONS -> p "CONS"
     | NIL ty -> f "NIL (%a)" MicType.pp ty
-    | COMMENT s -> f "/* %s */" s
+    | DROP -> p "DROP"
 end
 
 module Michelson = struct
   type t = { parameter : MicType.t ; storage : MicType.t ; code : Opcode.t list }
            
   let pp ppf { parameter ; storage ; code } =
-    Format.fprintf ppf "@[<2>{ parameter %a ;@ storage %a ;@ code @[<2>{ %a }@] }@]"
+    Format.fprintf ppf "@[<2>{ parameter (%a) ;@ storage (%a) ;@ code @[<2>{ %a }@] }@]"
       MicType.pp parameter 
       MicType.pp storage
       (Format.list ";@ " Opcode.pp ) code
@@ -187,11 +192,16 @@ let find_env id env =
   aux 0 env
 
 
+type type_expr_error =
+  | Type_variable of Types.type_expr
+  | Unsupported_type of Types.type_expr
+
 let rec type_expr env ty = 
   let open MicType in
   let open Result.Infix in
-  match (Ctype.expand_head env ty).desc with
-  | Tvar _ -> Error "type variable"
+  let ty = Ctype.expand_head env ty in
+  match ty.desc with
+  | Tvar _ -> Error (Type_variable ty)
   | Tarrow (Nolabel, f, t, _) -> 
       type_expr env f >>= fun f ->
       type_expr env t >>= fun t -> Ok (TyLambda (f, t))
@@ -206,9 +216,8 @@ let rec type_expr env ty =
       type_expr env t2 >>= fun t2 -> Ok (TyOr (t1, t2))
   | Tconstr (p, [], _) when (match Path.is_scaml p with Some ("operation", _) -> true | _ -> false) ->
       Ok TyOperation
-  | _ -> 
-      Format.eprintf "unsupported type %a@." Printtyp.type_expr ty;
-      assert false
+  | Tconstr (p, [], _) when p = Predef.path_unit -> Ok TyUnit
+  | _ -> Error (Unsupported_type ty)
 
 (*
 
@@ -224,11 +233,19 @@ let rec type_expr env ty =
   | Tpoly of type_expr * type_expr list
   | Tpackage of Path.t * Longident.t list * type_expr list
 *)
+
+let type_expr ~loc env ty = 
+  match type_expr env ty with
+  | Ok x -> x
+  | Error (Type_variable ty') -> 
+      errorf ~loc "This expression has type %a, which has too generic type %a"
+        Printtyp.type_expr ty
+        Printtyp.type_expr ty'
+  | Error (Unsupported_type ty') ->
+      errorf ~loc "This expression has type %a, which has unsupported type %a"
+        Printtyp.type_expr ty
+        Printtyp.type_expr ty'
   
-let from_Ok ~loc = function
-  | Ok v -> v
-  | Error s -> errorf ~loc "%s" s
-      
 let pattern { pat_desc; pat_loc=loc } = match pat_desc with
   | Tpat_var (id, {loc; }) -> [id]
   | Tpat_any -> not_support ~loc "any pattern"
@@ -254,10 +271,10 @@ let rec construct ~loc env tenv exp_type {Types.cstr_name; cstr_res} args =
 
   (* bool *)
   | Tconstr (p, [], _) when p = Predef.path_bool ->
-      let ty = from_Ok ~loc @@ type_expr tenv exp_type in
+      let ty = type_expr ~loc tenv exp_type in
       begin match cstr_name with
-        | "true" -> [PUSH (ty, TRUE)]
-        | "false" -> [PUSH (ty, FALSE)]
+        | "true" -> [PUSH (ty, True)]
+        | "false" -> [PUSH (ty, False)]
         | s -> internal_error ~loc "strange bool constructor %s" s
       end
 
@@ -265,7 +282,7 @@ let rec construct ~loc env tenv exp_type {Types.cstr_name; cstr_res} args =
   | Tconstr (p, [ty], _) when p = Predef.path_list ->
       begin match cstr_name with
         | "[]" -> 
-            let ty = from_Ok ~loc @@ type_expr tenv ty in
+            let ty = type_expr ~loc tenv ty in
             [NIL ty]
         | "::" ->
             begin match args with
@@ -290,13 +307,15 @@ let rec construct ~loc env tenv exp_type {Types.cstr_name; cstr_res} args =
       let arg = match args with [arg] -> arg | _ -> internal_error ~loc "strange sum arguments" in
       begin match cstr_name with
         | "Left" -> 
-            let ty2 = from_Ok ~loc (type_expr tenv ty2) in
+            let ty2 = type_expr ~loc tenv ty2 in
             let o = expression env arg in o @ [LEFT ty2]
         | "Right" ->
-            let ty1 = from_Ok ~loc (type_expr tenv ty1) in
+            let ty1 = type_expr ~loc tenv ty1 in
             let o = expression env arg in o @ [RIGHT ty1]
         | s -> internal_error ~loc "strange sum constructor %s" s
       end
+      
+  | Tconstr (p, _, _) when p = Predef.path_unit -> [PUSH (MicType.TyUnit, Unit)]
       
   | Tconstr (p, _, _) -> failwith (Path.xname p)
   | _ -> prerr_endline cstr_name; assert false
@@ -307,11 +326,29 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra; exp_at
   (* if exp_extra <> [] then not_support ~loc "expression extra"; *)
   match exp_desc with
   | Texp_ident (Path.Pident id, {loc}, _vd) ->
+      (* y1, x, y3, ... => x, y1, x, y3
+         DIP { DUP }; SWAP => x, y1, x, y3
+
+         y1, y2, x, y4, ... => x, y1, y2, x, y3
+         DIP { DIP { DUP };  SWAP }; SWAP
+
+         y1, y2, .., yn, x, yn+2, ... => x, y1, y2, .., yn, x, x, yn+2, ..
+         DIP { ... } ; SWAP
+               DIP { ... } ; SWAP
+                    DIP DUP
+      *)
       begin match find_env id env with
         | None -> internal_error ~loc "variable not found: %s in [ %s ]" 
                     (Ident.unique_name id)
                     (String.concat "; " (List.map (fun id -> Ident.unique_name id) env))
-        | Some n -> List.init n (fun _ -> DIP) @ [DUP]
+        | Some n -> 
+            let rec f = function
+              | 0 -> [ DUP ]
+              | n -> 
+                  assert (n > 0);
+                  [ DIP (f (n-1)); SWAP ]
+            in
+            f n
       end
   | Texp_ident (p, {loc}, _vd) ->
       not_support ~loc "complex path %s" (Path.xname p)
@@ -365,10 +402,10 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra; exp_at
       (* Format.eprintf "DEBUG: texp_function %s@." (Ident.name param); (* param is "param" if the pattern is not a simple variable *) *)
       begin match c_guard with Some e -> not_support ~loc:e.exp_loc "guard" | None -> () end;
       let vs = pattern c_lhs in
-      let ty1 = from_Ok ~loc:c_lhs.pat_loc (type_expr c_lhs.pat_env c_lhs.pat_type) in
-      let ty2 = from_Ok ~loc:c_rhs.exp_loc (type_expr c_rhs.exp_env c_rhs.exp_type) in
+      let ty1 = type_expr ~loc:c_lhs.pat_loc c_lhs.pat_env c_lhs.pat_type in
+      let ty2 = type_expr ~loc:c_rhs.exp_loc c_rhs.exp_env c_rhs.exp_type in
       let code = expression (vs@env) c_rhs (* XXX order of vs ? rev? *) in
-      [LAMBDA (ty1, ty2, code)]
+      [LAMBDA (ty1, ty2, code @ [ DIP [ DROP ] ] )]
 
   | _ -> not_support ~loc "this type of expression"
 
@@ -469,7 +506,7 @@ let value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=loc } =
   match pattern vb_pat with
   | [v] ->
       let os = expression env vb_expr in
-      v :: env, COMMENT (Ident.name v) :: os
+      v :: env, (* COMMENT (Ident.name v) :: *) os
   | _ -> assert false
 
 let unify ~loc env ty ty' =
@@ -510,17 +547,27 @@ let entry_point env ({ vb_pat; vb_expr; vb_attributes=_; vb_loc=loc } as vb) =
                                               Ctype.newty (Ttuple [ty_operations; ty_storage ]), Cok)), Cok)) in
   unify ~loc tenv vb_pat.pat_type ty_fun;
   let env, os = value_binding env vb in
-  let os = 
+  let os =
+    (* parameters exist at the end of the stack *)
     let rec f = function
-      | (COMMENT _  as c) :: os -> c :: f os
-      | [ LAMBDA (_, _, [ LAMBDA (_, _, code) ]) ] -> code
+      (*      | (COMMENT _  as c) :: os -> c :: f os *)
+      | [ LAMBDA (_, _, [ LAMBDA (_, _, code); DIP [ DROP ] ]) ] ->
+(*
+          Format.eprintf "Got %a@." (Format.list " ;@ " Opcode.pp) os;
+*)
+          let rec f = function
+            | [ DIP [ DROP ]] -> []
+            | [] -> assert false
+            | x::xs -> x :: f xs
+          in
+          f code
       | _ -> assert false
     in
     f os
   in
-  let ty_parameter = from_Ok ~loc @@ type_expr tenv ty_parameter in
-  let ty_storage = from_Ok ~loc @@ type_expr tenv ty_storage in
-  (ty_parameter, ty_storage, env, os)
+  let ty_parameter = type_expr ~loc tenv ty_parameter in
+  let ty_storage = type_expr ~loc tenv ty_storage in
+  (ty_parameter, ty_storage, os)
 
 let type_ _loc _env _rf decls =
   List.iter (fun decl ->
@@ -546,7 +593,7 @@ let structure_item ~is_entry_point env { str_desc; str_loc=loc; str_env } =
   | Tstr_type _ when is_entry_point -> must_be_entry_point ()
   | Tstr_type (rf, decls) -> 
       type_ loc env rf decls; 
-      env, [], None
+      env, []
   | Tstr_typext _ -> not_support ~loc "type extension"
   | Tstr_exception _ -> not_support ~loc "exception declaration"
   | Tstr_module _ | Tstr_recmodule _ -> not_support ~loc "module declaration"
@@ -559,54 +606,54 @@ let structure_item ~is_entry_point env { str_desc; str_loc=loc; str_env } =
 
   | Tstr_value (Nonrecursive, vbs) -> 
       let vbs = List.mark_last vbs in
-      let env, rev_res, param_storage = 
-        List.fold_left (fun (env, rev_res, param_storage) (vb, is_last) -> 
+      let env, rev_res = 
+        List.fold_left (fun (env, rev_res) (vb, is_last) -> 
             if is_entry_point && is_last then begin
-              assert (param_storage = None);
-              let ty_param, ty_storage, env, res = entry_point env vb in
-              env, res::rev_res, Some (ty_param, ty_storage)
+              env (* it has an addtional element at the top*), (`EntryPoint (entry_point env vb)) ::rev_res
             end else 
               let env, res = value_binding env vb in
-              env, res::rev_res, param_storage) (env, [], None) vbs 
+              env, (`Value res)::rev_res) (env, []) vbs 
       in
-      assert (not is_entry_point || param_storage <> None);
-      env, List.flatten @@ List.rev rev_res, param_storage
+      env, List.rev rev_res
         
   | Tstr_open _ when is_entry_point -> must_be_entry_point ()
-  | Tstr_open _open_description -> env, [], None
+  | Tstr_open _open_description -> env, []
 
   | Tstr_attribute _ when is_entry_point -> must_be_entry_point ()
   | Tstr_attribute _ -> 
       (* simply ignores it for now *)
-      env, [], None
+      env, []
 
 let structure ~with_entry_point env { str_items= sitems } =
   let sitems = List.mark_last sitems in
-  let env, rev_res, param_storage = 
-    List.fold_left (fun (env, rev_res, param_storage) (sitem, is_last) -> 
-        let env, res, param_storage = 
+  let env, rev_res = 
+    List.fold_left (fun (env, rev_res) (sitem, is_last) -> 
+        let env, res =
           structure_item ~is_entry_point:(is_last && with_entry_point) env sitem 
         in
-        env, res :: rev_res, param_storage) (env, [], None) sitems 
+        env, res :: rev_res) (env, []) sitems 
   in
-  env, List.rev rev_res, param_storage
+  env, List.flatten @@ List.rev rev_res
   
 let implementation sourcefile outputprefix modulename (str, _coercion) =
   Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename;
-  let _env, oss, param_storage = structure ~with_entry_point:true [] str in
-  
-  let code = 
-    if oss = [] then errorf ~loc:(Location.in_file sourcefile) "SCaml needs an entry point";
-    List.concat oss
+  let env, xs = structure ~with_entry_point:true [] str in
+  let vals, entry = 
+    List.partition_map (function
+        | `Value x -> `Left x
+        | `EntryPoint y -> `Right y) xs
   in
-
-  let parameter, storage = match param_storage with
-    | None -> assert false
-    | Some (parameter, storage) -> parameter, storage
-  in
-
-  let m = { Michelson.parameter;
-            storage;
-            code } in
-  Format.eprintf "%a@." Michelson.pp m
-  
+  match entry with
+  | [] -> errorf ~loc:(Location.in_file sourcefile) "SCaml needs an entry point";
+  | _::_::_ -> internal_error ~loc:(Location.in_file sourcefile) "Multiple entry points?"
+  | [(parameter, storage, entry)] ->
+      let code = [ DIP (List.concat vals) ] @ [ DUP ; CDR ; DIP [ CAR ] ] @ entry @ 
+                 [ DIP (List.init (List.length env + 2) (fun _ -> DROP) ) ] in
+      let m = { Michelson.parameter;
+                storage;
+                code } in
+      Format.eprintf "%a@." Michelson.pp m;
+      let oc = open_out (outputprefix ^ ".tz") in
+      let ppf = Format.of_out_channel oc in
+      Format.fprintf ppf "%a@." Michelson.pp m;
+      close_out oc
