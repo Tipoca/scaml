@@ -365,7 +365,7 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra; exp_at
 
   | Texp_assert e ->
       let o = expression env e in
-      o @ [ ASSERT ]
+      o @ [ ASSERT ; PUSH (MicType.TyUnit, Unit)]
 
   (* Nolabel *)
 
