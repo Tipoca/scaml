@@ -2,6 +2,15 @@ open Spotlib.Spot
 open Asttypes
 open Typedtree
 
+module List = struct
+  include List
+
+  let rec mark_last = function
+    | [] -> []
+    | [x] -> [x,true]
+    | x::xs -> (x,false)::mark_last xs
+end
+
 module Longident = struct
   include Longident
 
@@ -509,14 +518,9 @@ let entry_point env ({ vb_pat; vb_expr; vb_attributes=_; vb_loc=loc } as vb) =
     in
     f os
   in
+  let ty_parameter = from_Ok ~loc @@ type_expr tenv ty_parameter in
+  let ty_storage = from_Ok ~loc @@ type_expr tenv ty_storage in
   (ty_parameter, ty_storage, env, os)
-
-let value_binding_or_entrypoint env ({ vb_pat } as vb) = 
-  match pattern vb_pat with
-  | [id] when Ident.name id = "main" ->
-      let _ty_parameter, _ty_storage, env, o = entry_point env vb in
-      env, o
-  | _ -> value_binding env vb
 
 let type_ _loc _env _rf decls =
   List.iter (fun decl ->
@@ -527,14 +531,22 @@ let type_ _loc _env _rf decls =
       | Ttype_variant _, _ -> not_support ~loc "varinat type declaration"
       | Ttype_record _, _ -> not_support ~loc "record type declaration"
       | Ttype_open, _ ->  not_support ~loc "open type declaration") decls
-  
-let structure_item env { str_desc; str_loc=loc; str_env } =
+
+(* The condition of the entry point is a bit too strict.
+   Currently: the last sitem must be an entry point.
+   Better: the last value binding must be an entry point.,
+*)
+let structure_item ~is_entry_point env { str_desc; str_loc=loc; str_env } =
+  let must_be_entry_point () =
+    errorf ~loc "SCaml needs an entry point at the end of module"
+  in
   match str_desc with
   | Tstr_eval _ -> not_support ~loc "toplevel evaluation"
   | Tstr_primitive _ -> not_support ~loc "primitive declaration"
+  | Tstr_type _ when is_entry_point -> must_be_entry_point ()
   | Tstr_type (rf, decls) -> 
       type_ loc env rf decls; 
-      env, []
+      env, [], None
   | Tstr_typext _ -> not_support ~loc "type extension"
   | Tstr_exception _ -> not_support ~loc "exception declaration"
   | Tstr_module _ | Tstr_recmodule _ -> not_support ~loc "module declaration"
@@ -546,31 +558,55 @@ let structure_item env { str_desc; str_loc=loc; str_env } =
   | Tstr_value (Recursive, _vbs) -> not_support ~loc "recursive definitions"
 
   | Tstr_value (Nonrecursive, vbs) -> 
-      let env, rev_res (* ignoring *) = 
-        List.fold_left (fun (env, rev_res) vb -> 
-            let env, res = value_binding_or_entrypoint env vb in
-            env, res::rev_res) (env, []) vbs 
+      let vbs = List.mark_last vbs in
+      let env, rev_res, param_storage = 
+        List.fold_left (fun (env, rev_res, param_storage) (vb, is_last) -> 
+            if is_entry_point && is_last then begin
+              assert (param_storage = None);
+              let ty_param, ty_storage, env, res = entry_point env vb in
+              env, res::rev_res, Some (ty_param, ty_storage)
+            end else 
+              let env, res = value_binding env vb in
+              env, res::rev_res, param_storage) (env, [], None) vbs 
       in
-      env, List.flatten @@ List.rev rev_res
+      assert (not is_entry_point || param_storage <> None);
+      env, List.flatten @@ List.rev rev_res, param_storage
         
-  | Tstr_open _open_description -> env, []
+  | Tstr_open _ when is_entry_point -> must_be_entry_point ()
+  | Tstr_open _open_description -> env, [], None
+
+  | Tstr_attribute _ when is_entry_point -> must_be_entry_point ()
   | Tstr_attribute _ -> 
       (* simply ignores it for now *)
-      env, []
+      env, [], None
 
-let structure env { str_items= sitems } =
-  let env, rev_res = 
-    List.fold_left (fun (env, rev_res) sitem -> 
-        let env, res = structure_item env sitem in
-        env, res :: rev_res) (env, []) sitems 
+let structure ~with_entry_point env { str_items= sitems } =
+  let sitems = List.mark_last sitems in
+  let env, rev_res, param_storage = 
+    List.fold_left (fun (env, rev_res, param_storage) (sitem, is_last) -> 
+        let env, res, param_storage = 
+          structure_item ~is_entry_point:(is_last && with_entry_point) env sitem 
+        in
+        env, res :: rev_res, param_storage) (env, [], None) sitems 
   in
-  env, List.flatten @@ List.rev rev_res
+  env, List.rev rev_res, param_storage
   
 let implementation sourcefile outputprefix modulename (str, _coercion) =
   Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename;
-  let _env, code = structure [] str in
-  let m = { Michelson.parameter = MicType.TyUnit ; 
-            storage = MicType.TyUnit ; 
-            code = code } in
+  let _env, oss, param_storage = structure ~with_entry_point:true [] str in
+  
+  let code = 
+    if oss = [] then errorf ~loc:(Location.in_file sourcefile) "SCaml needs an entry point";
+    List.concat oss
+  in
+
+  let parameter, storage = match param_storage with
+    | None -> assert false
+    | Some (parameter, storage) -> parameter, storage
+  in
+
+  let m = { Michelson.parameter;
+            storage;
+            code } in
   Format.eprintf "%a@." Michelson.pp m
   
