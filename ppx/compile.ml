@@ -135,6 +135,7 @@ let rec compile env t =
   | Assert t ->
       let os = compile env t in
       os @ [ ASSERT; PUSH (TyUnit, Unit) ]
+  | AssertFalse -> [ FAIL ]
   | IfThenElse (t1, t2, t3) ->
       let oif = compile env t1 in
       let othen = compile env t2 in
@@ -157,6 +158,11 @@ let rec compile env t =
       let os1 = compile ((p1.id,p1.typ)::env) t1 in
       let os2 = compile ((p2.id,p2.typ)::env) t2 in
       os @ [IF_LEFT (os1 @ [DIP [DROP]], os2 @ [DIP [DROP]])]
+  | Switch_cons (t, t1, p2, t2) ->
+      let os = compile env t in
+      let os1 = compile env t1 in
+      let os2 = compile ((p2.id,p2.typ)::env) t2 in
+      os @ [IF_CONS (os2 @ [DIP [DROP]], os1)]
   | Fun (_ty1, _ty2, p, body, fvars) ->
       begin match t.typ with
         | TyLambda (ty1, ty2, cli) ->
@@ -325,6 +331,7 @@ let compile_structure t =
   ; COMMENT ("entry point", os )
   ; COMMENT ("final clean up",
              [ DIP (List.init (List.length env) (fun _ -> DROP)) ]) ]
+  |> clean_fail
     
 let implementation sourcefile outputprefix modulename (str, _coercion) =
   Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename;

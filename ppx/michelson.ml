@@ -155,10 +155,68 @@ module Opcode = struct
     | SUB
     | AND
     | EXEC
-    | IF_SOME of t list * t list
-    | FAIL
-    | COMMENT of string * t list
+    | IF_SOME of t list * t list (* or IF_NONE *)
     | IF_LEFT of t list * t list
+    | IF_CONS of t list * t list
+    | FAIL (* FAILWITH ? *)
+    | COMMENT of string * t list
+
+(*
+    | UNIT
+    | SIZE
+    | EMPTY_SET of Type.t
+    | EMPTY_MAP of Type.t * Type.t
+    | MAP of t list
+    | ITER of t list
+    | MEM
+    | GET
+    | UPDATE
+    | LOOP of t list
+    | LOOP_LEFT of t list
+    | CAST
+    | RENAME
+    | CONCAT
+    | SLICE
+    | PACK
+    | UNPACK
+    | MUL
+    | EDIV
+    | ABS
+    | NEG
+    | LSL
+    | LSR
+    | OR
+    | AND
+    | XOR
+    | NOT
+    | COMPARE
+    | EQ
+    | NEQ
+    | LT
+    | GT
+    | LE
+    | GE
+    | SELF
+    | CONTRACT of Type.t
+    | TRANSFER_TOKENS
+    | SET_DELEGATE
+    | CREATE_ACCOUNT
+    | CREATE_CONTRACT of t list
+    | IMPLICIT_ACCOUNT
+    | NOW
+    | AMOUNT
+    | BALANCE
+    | CHECK_SIGNATURE
+    | BLAKE2B
+    | SHA256
+    | SHA512
+    | HASH_KEY
+    | STEPS_TO_QUOTA
+    | SOURCE
+    | SENDER
+    | ADDRESS
+*)
+                              
     
   let pp_constant ppf =
     let open Format in
@@ -217,6 +275,42 @@ module Opcode = struct
         f "IF_LEFT @[<0>{ @[%a@] }@ { @[%a@] }@]" 
           (Format.list " ;@ " pp) t1
           (Format.list " ;@ " pp) t2
+    | IF_CONS (t1, t2) ->
+        f "IF_CONS @[<0>{ @[%a@] }@ { @[%a@] }@]" 
+          (Format.list " ;@ " pp) t1
+          (Format.list " ;@ " pp) t2
+          
+  let rec clean_fail = function
+    | [] -> []
+    | FAIL::_ -> [FAIL]
+    | x::xs -> aux x :: clean_fail xs
+  and aux = function
+    | DIP ts -> DIP (clean_fail ts)
+    | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_fail ts)
+    | IF (t1, t2) -> IF (clean_fail t1, clean_fail t2)
+    | IF_SOME (t1, t2) -> IF_SOME (clean_fail t1, clean_fail t2)
+    | IF_LEFT (t1, t2) -> IF_LEFT (clean_fail t1, clean_fail t2)
+    | IF_CONS (t1, t2) -> IF_CONS (clean_fail t1, clean_fail t2)
+    | COMMENT (s, t) -> COMMENT (s, clean_fail t)
+    | (DUP
+      | DROP
+      | SWAP
+      | PAIR
+      | ASSERT
+      | CAR | CDR
+      | LEFT _ | RIGHT _
+      | PUSH _
+      | NIL _
+      | CONS
+      | NONE _
+      | SOME
+      | COMPARE
+      | EQ | LT | LE | GT | GE
+      | ADD
+      | SUB
+      | AND
+      | EXEC
+      | FAIL as t) -> t
 end
 
 module Module = struct

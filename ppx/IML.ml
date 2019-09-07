@@ -25,12 +25,14 @@ and desc =
   | Var of Ident.t * M.Type.t
   | Tuple of t * t
   | Assert of t
+  | AssertFalse
   | Fun of M.Type.t * M.Type.t * pat * t * (Ident.t * M.Type.t) list (* freevars *)
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * M.Opcode.t list * t list
   | Let of pat * t * t
   | Switch_or of t * pat * t * pat * t
+  | Switch_cons of t * t * pat * t
 
 let rec pp ppf = 
   let p = Format.pp_print_string ppf in
@@ -45,6 +47,7 @@ let rec pp ppf =
   | Var (id, _) -> f "%s" (Ident.name id)
   | Tuple (t1, t2) -> f "(%a, %a)" pp t1 pp t2
   | Assert t -> f "assert (%a)" pp t
+  | AssertFalse -> p "assert false"
   | Fun (_ty1, _ty2, pat, body, _fvars) ->
       f "@[<2>(fun %s ->@ %a@ : %a)@]"
         (Ident.name pat.id) pp body M.Type.pp t.typ
@@ -65,6 +68,11 @@ let rec pp ppf =
         pp t
         (Ident.name p1.id) pp t1 
         (Ident.name p2.id) pp t2
+  | Switch_cons (t, t1, p2, t2) ->
+      f "@[<2>(match %a with@ | [] -> %a@ | Right %s -> %a)@]"
+        pp t
+        pp t1 
+        (Ident.name p2.id) pp t2
 
 module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
 
@@ -79,8 +87,8 @@ let rec freevars t =
          -> union (freevars t1) (freevars t2)
   | Left (_,t) 
   | Right (_,t)
-  | Assert t
-          -> freevars t
+  | Assert t -> freevars t
+  | AssertFalse -> empty
   | Var (id,ty) -> singleton (id,ty)
   | IfThenElse (t1,t2,t3) -> union (freevars t1) (union (freevars t2) (freevars t3))
   | App (t,ts) ->
@@ -95,6 +103,11 @@ let rec freevars t =
       union (freevars t)
         (union 
            (remove (p1.id, p1.typ) (freevars t1))
+           (remove (p2.id, p2.typ) (freevars t2)))
+  | Switch_cons (t, t1, p2, t2) ->
+      union (freevars t)
+        (union 
+           (freevars t1)
            (remove (p2.id, p2.typ) (freevars t2)))
 
 type type_expr_error =
@@ -273,9 +286,13 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
   | Texp_construct ({loc}, c, args) -> 
       construct ~loc env exp_env exp_type c args
   | Texp_assert e ->
-      make @@ Assert (expression env e)
-
-  (* Nolabel *)
+      begin match e.exp_desc with
+      | Texp_construct (_, {cstr_name="false"}, []) ->
+          (* assert false has type 'a *)
+          make AssertFalse
+      | _ -> 
+          make @@ Assert (expression env e)
+      end
 
   | Texp_apply (_, []) -> assert false
   | Texp_apply (f, args) -> 
@@ -388,6 +405,12 @@ and compile_match ~loc:loc0 env e cases =
                  lv, expression ((lv.id, lv.typ)::env) le,
                  rv, expression ((rv.id, rv.typ)::env) re)
   | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
+  | TyList _ty1, [("::",[l],le); ("[]",[],re)] ->
+      let get_var p = match pattern p with [v] -> v | _ -> assert false in
+      let lv = get_var l in
+      Switch_cons (expression env e,
+                   expression env re,
+                   lv, expression ((lv.id, lv.typ)::env) le)
   | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum"
 
 let value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
