@@ -29,4 +29,4 @@ S ../../../ppx_test/runtime
 S ../../../ppxx/src
 S ../../../spotlib/lib
 S ../../../typpx/src
-FLG -open Ppx_scaml -w -9
+FLG -open Ppx_scaml -w A-4-9-40-41-42-44

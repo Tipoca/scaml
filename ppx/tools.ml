@@ -54,3 +54,8 @@ module Path = struct
     | Pdot (Pident id, s, _) -> s = n
     | _ -> false
 end
+
+let errorf = Location.raise_errorf
+let unsupported ~loc fmt = Printf.ksprintf (fun s -> errorf ~loc "SCaml does not support %s" s) fmt
+let internal_error ~loc fmt = Printf.ksprintf (fun s -> errorf ~loc "SCaml internal error: %s" s) fmt
+
