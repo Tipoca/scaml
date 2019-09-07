@@ -128,6 +128,7 @@ module Opcode = struct
     | Unit
     | Int of int
     | Nat of int
+    | Mutez of int
     | String of string
 
   type t = 
@@ -149,20 +150,19 @@ module Opcode = struct
     | COMPARE
     | EQ | LT | LE | GT | GE | NEQ
     | IF of t list * t list
-    | ADD
-    | SUB
-    | AND
+    | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR 
+    | AND | OR | XOR | NOT
     | EXEC
-    | IF_SOME of t list * t list (* or IF_NONE *)
+    | IF_NONE of t list * t list
     | IF_LEFT of t list * t list
     | IF_CONS of t list * t list
     | FAIL (* FAILWITH ? *)
     | COMMENT of string * t list
     | UNIT
+    | EMPTY_SET of Type.t
+    | SIZE
 
 (*
-    | SIZE
-    | EMPTY_SET of Type.t
     | EMPTY_MAP of Type.t * Type.t
     | MAP of t list
     | ITER of t list
@@ -178,16 +178,9 @@ module Opcode = struct
     | PACK
     | UNPACK
 
-    | MUL
-    | EDIV
-    | ABS
-    | NEG
     | LSL
     | LSR
-    | OR
-    | AND
-    | XOR
-    | NOT
+
     | SELF
     | CONTRACT of Type.t
     | TRANSFER_TOKENS
@@ -220,6 +213,7 @@ module Opcode = struct
     | Unit     -> p "Unit"
     | Int n    -> f "%d" n
     | Nat n    -> f "%d" n
+    | Mutez n  -> f "%d" n
     | String s -> f "%S" s
 
   let rec pp ppf =
@@ -254,12 +248,22 @@ module Opcode = struct
                     (Format.list " ;@ " pp) t
                     (Format.list " ;@ " pp) e
 
-    | IF_SOME (t,e) -> f "IF_SOME @[<0>{ @[%a@] }@ { @[%a@] }@]" 
+    | IF_NONE (t,e) -> f "IF_NONE @[<0>{ @[%a@] }@ { @[%a@] }@]" 
                          (Format.list " ;@ " pp) t
                          (Format.list " ;@ " pp) e
-    | ADD -> p "ADD"
-    | SUB -> p "SUB"
-    | AND -> p "AND"
+    | ADD  -> p "ADD"
+    | SUB  -> p "SUB"
+    | MUL  -> p "MUL"
+    | EDIV -> p "EDIV"
+    | ABS  -> p "ABS"
+    | NEG  -> p "NEG"
+    | LSL  -> p "LSL"
+    | LSR  -> p "LSR"
+    | AND  -> p "AND"
+    | OR   -> p "OR"
+    | XOR  -> p "XOR"
+    | NOT  -> p "NOT"
+
     | EXEC -> p "EXEC"
     | FAIL -> p "FAIL"
     | COMMENT (s, ts) ->
@@ -273,6 +277,8 @@ module Opcode = struct
           (Format.list " ;@ " pp) t1
           (Format.list " ;@ " pp) t2
     | UNIT -> p "UNIT"
+    | EMPTY_SET ty -> f "EMPTY_SET (%a)" Type.pp ty
+    | SIZE -> p "SIZE"
           
   let rec clean_fail = function
     | [] -> []
@@ -282,7 +288,7 @@ module Opcode = struct
     | DIP ts -> DIP (clean_fail ts)
     | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_fail ts)
     | IF (t1, t2) -> IF (clean_fail t1, clean_fail t2)
-    | IF_SOME (t1, t2) -> IF_SOME (clean_fail t1, clean_fail t2)
+    | IF_NONE (t1, t2) -> IF_NONE (clean_fail t1, clean_fail t2)
     | IF_LEFT (t1, t2) -> IF_LEFT (clean_fail t1, clean_fail t2)
     | IF_CONS (t1, t2) -> IF_CONS (clean_fail t1, clean_fail t2)
     | COMMENT (s, t) -> COMMENT (s, clean_fail t)
@@ -300,12 +306,14 @@ module Opcode = struct
       | SOME
       | COMPARE
       | EQ | LT | LE | GT | GE | NEQ
-      | ADD
-      | SUB
-      | AND
+      | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR
+      | AND | OR | XOR | NOT 
       | EXEC
       | FAIL 
-      | UNIT as t) -> t
+      | UNIT 
+      | EMPTY_SET _ 
+      | SIZE
+      as t) -> t
 end
 
 module Module = struct

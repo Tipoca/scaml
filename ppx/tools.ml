@@ -1,6 +1,4 @@
 open Spotlib.Spot
-open Asttypes
-open Typedtree
 
 module List = struct
   include List
@@ -46,12 +44,17 @@ module Path = struct
     | Pdot (Pident id, s, n) when Ident.is_stdlib id -> Some (s, n)
     | _ -> None
       
-  let is_scaml = function
-    | Pdot (Pident id, s, n) when Ident.is_scaml id -> Some (s, n)
+  let rec is_scaml = function
+    | Pdot (Pident id, s, _) when Ident.is_scaml id -> Some s
+    | Pdot (p, s, _) -> 
+        begin match is_scaml p with
+          | None -> None
+          | Some m -> Some (m ^ "." ^ s)
+        end
     | _ -> None
 
   let is_scaml_dot n = function
-    | Pdot (Pident id, s, _) -> s = n
+    | Pdot (Pident id, s, _) when Ident.is_scaml id -> s = n
     | _ -> false
 end
 
