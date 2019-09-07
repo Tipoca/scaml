@@ -126,6 +126,10 @@ let rec compile env t =
       let os2 = compile env t2 in
       let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
       os2 @ os1 @ [ CONS ]
+  | IML_None ty -> [ NONE (closure_type ty) ]
+  | IML_Some t1 -> 
+      let os1 = compile env t1 in
+      os1 @ [ SOME ]
   | Left (ty, t) ->
       let os = compile env t in
       os @ [ LEFT (closure_type ty) ]
@@ -149,28 +153,37 @@ let rec compile env t =
       let othen = compile env t2 in
       let oelse = compile env t3 in
       oif @ [IF (othen, oelse)]
-  | Prim (_, ops, ts) ->
+  | Prim (_n, conv, ts) ->
       (* Prim (ops, [t1; t2])
          t2 ; t1; ops
       *)
-      (snd @@ List.fold_right (fun t (env, os) ->
-          let os' = compile env t in
-          let env' = (Ident.dummy, TyUnit (* dummy *)) :: env in
-          env', os @ os') ts (env, [])) @ ops
+      let _, pre = 
+        List.fold_right (fun t (env, os) ->
+            let os' = compile env t in
+            let env' = (Ident.dummy, TyUnit (* dummy *)) :: env in
+            env', os @ os') ts (env, [])
+      in
+      conv t.IML.typ pre
   | Let (pat, t1, t2) ->
       let os1 = compile env t1 in
       let os2 = compile ((pat.id, pat.typ)::env) t2 in
-      COMMENT (Ident.name pat.id, os1) :: os2
+      COMMENT (Ident.name pat.id, os1) :: os2 
+      @ [COMMENT ("clean " ^ Ident.name pat.id, [DIP [DROP]])]
   | Switch_or (t, p1, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile ((p1.id,p1.typ)::env) t1 in
       let os2 = compile ((p2.id,p2.typ)::env) t2 in
       os @ [IF_LEFT (os1 @ [DIP [DROP]], os2 @ [DIP [DROP]])]
-  | Switch_cons (t, t1, p2, t2) ->
+  | Switch_cons (t, p1, p2, t1, t2) ->
+      let os = compile env t in
+      let os1 = compile ((p1.id,p1.typ)::(p2.id,p2.typ)::env) t1 in
+      let os2 = compile env t2 in
+      os @ [IF_CONS (os1 @ [DIP [DROP; DROP]], os2)]
+  | Switch_none (t, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile env t1 in
       let os2 = compile ((p2.id,p2.typ)::env) t2 in
-      os @ [IF_CONS (os2 @ [DIP [DROP]], os1)]
+      os @ [IF_NONE (os1, os2 @ [DIP [DROP]])]
   | Fun (_ty1, _ty2, p, body, fvars) ->
       begin match t.typ with
         | TyLambda (ty1, ty2, cli) ->
@@ -209,12 +222,12 @@ let rec compile env t =
                     let rec f ops env = function
                       | [] -> assert false
                       | [(x,ty)] -> 
-                          ops @ [ IF_SOME ([], [ FAIL ]) ],
+                          ops @ [ IF_NONE ([ FAIL ], []) ],
                           if List.mem_assoc x xtys then (x,ty)::env else env
                       | (x,ty)::xtys ->
                           let ops = 
                             ops @
-                            [ DUP ; DIP [ CAR; IF_SOME ([], [ FAIL (* to avoid the stack type differences *)]) ] ; CDR ]
+                            [ DUP ; DIP [ CAR; IF_NONE ([ FAIL (* to avoid the stack type differences *)], [])] ; CDR ]
                           in
                           let env = 
                             if List.mem_assoc x xtys then (x,ty)::env else env
@@ -344,7 +357,13 @@ let compile_structure t =
 let implementation sourcefile outputprefix modulename (str, _coercion) =
   Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename;
   let parameter, storage = IML.fix_entrypoint_type sourcefile str in
-  let t = IML.structure [] str in
+  let t = 
+    try IML.structure [] str with 
+    | e -> 
+        Printexc.print_backtrace stderr;
+        Format.eprintf "IML.structure: %s@." (Printexc.to_string e);
+        raise e
+  in
 
   let oc = open_out (outputprefix ^ ".scaml") in
   let ppf = Format.of_out_channel oc in

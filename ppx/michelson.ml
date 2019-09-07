@@ -124,11 +124,21 @@ end
 
 module Opcode = struct
   type constant = 
-    | True | False
     | Unit
+    | Bool of bool
     | Int of int
     | Nat of int
+    (* | Mutez of int *)
     | String of string
+    | Bytes of string
+    | Option of constant option
+    | List of constant list
+    | Set of constant list
+    | Map of (constant * constant) list
+    | Big_map of (constant * constant) list
+    | Pair of constant * constant
+    | Left of constant
+    | Right of constant
 
   type t = 
     | DUP
@@ -149,26 +159,25 @@ module Opcode = struct
     | COMPARE
     | EQ | LT | LE | GT | GE | NEQ
     | IF of t list * t list
-    | ADD
-    | SUB
-    | AND
+    | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR 
+    | AND | OR | XOR | NOT
     | EXEC
-    | IF_SOME of t list * t list (* or IF_NONE *)
+    | IF_NONE of t list * t list
     | IF_LEFT of t list * t list
     | IF_CONS of t list * t list
     | FAIL (* FAILWITH ? *)
     | COMMENT of string * t list
     | UNIT
+    | EMPTY_SET of Type.t
+    | SIZE
+    | MEM
+    | UPDATE
 
 (*
-    | SIZE
-    | EMPTY_SET of Type.t
     | EMPTY_MAP of Type.t * Type.t
     | MAP of t list
     | ITER of t list
-    | MEM
     | GET
-    | UPDATE
     | LOOP of t list
     | LOOP_LEFT of t list
     | CAST
@@ -178,16 +187,9 @@ module Opcode = struct
     | PACK
     | UNPACK
 
-    | MUL
-    | EDIV
-    | ABS
-    | NEG
     | LSL
     | LSR
-    | OR
-    | AND
-    | XOR
-    | NOT
+
     | SELF
     | CONTRACT of Type.t
     | TRANSFER_TOKENS
@@ -210,17 +212,28 @@ module Opcode = struct
 *)
                               
     
-  let pp_constant ppf =
+  let rec pp_constant ppf =
     let open Format in
     let p = pp_print_string ppf in
     let f fmt = fprintf ppf fmt in
     function
-    | True     -> p "True"
-    | False    -> p "False"
+    | Bool true  -> p "True"
+    | Bool false -> p "False"
     | Unit     -> p "Unit"
     | Int n    -> f "%d" n
     | Nat n    -> f "%d" n
+    (*    | Mutez n  -> f "%d" n *)
     | String s -> f "%S" s
+    | Bytes s ->  f "%S" s (* XXX unknown *)
+    | Option None -> p "None"
+    | Option (Some t) -> f "Some (%a)" pp_constant t
+    | Pair (t1, t2) -> f "(Pair (%a) (%a))" pp_constant t1 pp_constant t2
+    | Left t -> f "(Left (%a))" pp_constant t
+    | Right t -> f "(Right (%a))" pp_constant t
+    | List ts -> f "{ %a }" (list " ; " pp_constant) ts
+    | Set ts -> f "{ %a }" (list " ; " pp_constant) (List.sort compare ts)
+    | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt (%a) (%a)" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt (%a) (%a)" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
 
   let rec pp ppf =
     let open Format in
@@ -254,12 +267,22 @@ module Opcode = struct
                     (Format.list " ;@ " pp) t
                     (Format.list " ;@ " pp) e
 
-    | IF_SOME (t,e) -> f "IF_SOME @[<0>{ @[%a@] }@ { @[%a@] }@]" 
+    | IF_NONE (t,e) -> f "IF_NONE @[<0>{ @[%a@] }@ { @[%a@] }@]" 
                          (Format.list " ;@ " pp) t
                          (Format.list " ;@ " pp) e
-    | ADD -> p "ADD"
-    | SUB -> p "SUB"
-    | AND -> p "AND"
+    | ADD  -> p "ADD"
+    | SUB  -> p "SUB"
+    | MUL  -> p "MUL"
+    | EDIV -> p "EDIV"
+    | ABS  -> p "ABS"
+    | NEG  -> p "NEG"
+    | LSL  -> p "LSL"
+    | LSR  -> p "LSR"
+    | AND  -> p "AND"
+    | OR   -> p "OR"
+    | XOR  -> p "XOR"
+    | NOT  -> p "NOT"
+
     | EXEC -> p "EXEC"
     | FAIL -> p "FAIL"
     | COMMENT (s, ts) ->
@@ -273,6 +296,10 @@ module Opcode = struct
           (Format.list " ;@ " pp) t1
           (Format.list " ;@ " pp) t2
     | UNIT -> p "UNIT"
+    | EMPTY_SET ty -> f "EMPTY_SET (%a)" Type.pp ty
+    | SIZE -> p "SIZE"
+    | MEM -> p "MEM"
+    | UPDATE -> p "UPDATE"
           
   let rec clean_fail = function
     | [] -> []
@@ -282,7 +309,7 @@ module Opcode = struct
     | DIP ts -> DIP (clean_fail ts)
     | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_fail ts)
     | IF (t1, t2) -> IF (clean_fail t1, clean_fail t2)
-    | IF_SOME (t1, t2) -> IF_SOME (clean_fail t1, clean_fail t2)
+    | IF_NONE (t1, t2) -> IF_NONE (clean_fail t1, clean_fail t2)
     | IF_LEFT (t1, t2) -> IF_LEFT (clean_fail t1, clean_fail t2)
     | IF_CONS (t1, t2) -> IF_CONS (clean_fail t1, clean_fail t2)
     | COMMENT (s, t) -> COMMENT (s, clean_fail t)
@@ -300,12 +327,16 @@ module Opcode = struct
       | SOME
       | COMPARE
       | EQ | LT | LE | GT | GE | NEQ
-      | ADD
-      | SUB
-      | AND
+      | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR
+      | AND | OR | XOR | NOT 
       | EXEC
       | FAIL 
-      | UNIT as t) -> t
+      | UNIT 
+      | EMPTY_SET _ 
+      | SIZE
+      | MEM
+      | UPDATE
+      as t) -> t
 end
 
 module Module = struct

@@ -11,4 +11,4 @@ let f c =
      let g (d,e) = e + d in
      fun e -> g (d,e)
 *)
-let main (x : unit) y = [], assert (g (Int 3) = Int 6)
+let main (x : unit) y = [], assert (f (Int 3) (Int 2) = Int 6)

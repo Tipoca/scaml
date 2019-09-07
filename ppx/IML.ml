@@ -7,6 +7,7 @@ open Tools
 module M = Michelson
 open M.Type
 open M.Opcode
+module O = M.Opcode
 
 type pat = 
   { loc : Location.t
@@ -19,6 +20,8 @@ and desc =
   | Const of M.Opcode.constant
   | Nil of M.Type.t
   | Cons of t * t
+  | IML_None of M.Type.t
+  | IML_Some of t
   | Left of M.Type.t * t
   | Right of M.Type.t * t
   | Unit
@@ -29,10 +32,12 @@ and desc =
   | Fun of M.Type.t * M.Type.t * pat * t * (Ident.t * M.Type.t) list (* freevars *)
   | IfThenElse of t * t * t
   | App of t * t list
-  | Prim of string * M.Opcode.t list * t list
+  | Prim of string * (M.Type.t -> M.Opcode.t list -> M.Opcode.t list) * t list
   | Let of pat * t * t
   | Switch_or of t * pat * t * pat * t
-  | Switch_cons of t * t * pat * t
+  | Switch_cons of t * pat * pat * t * t
+  | Switch_none of t * t * pat * t
+
 
 let rec pp ppf = 
   let p = Format.pp_print_string ppf in
@@ -41,6 +46,8 @@ let rec pp ppf =
   | Const c -> M.Opcode.pp_constant ppf c
   | Nil ty -> f "([] : %a)" M.Type.pp ty
   | Cons (t1, t2) -> f "(%a :: %a)" pp t1 pp t2
+  | IML_None ty -> f "(None : %a)" M.Type.pp ty
+  | IML_Some t -> f "(Some %a)" pp t
   | Left (ty, t) -> f "Left (%a) (%a)" M.Type.pp ty pp t
   | Right (ty, t) -> f "Right (%a) (%a)" M.Type.pp ty pp t
   | Unit -> p "()"
@@ -68,8 +75,15 @@ let rec pp ppf =
         pp t
         (Ident.name p1.id) pp t1 
         (Ident.name p2.id) pp t2
-  | Switch_cons (t, t1, p2, t2) ->
-      f "@[<2>(match %a with@ | [] -> %a@ | Right %s -> %a)@]"
+  | Switch_cons (t, p1, p2, t1, t2) ->
+      f "@[<2>(match %a with@ | %s::%s -> %a@ | [] -> %a)@]"
+        pp t
+        (Ident.name p1.id) 
+        (Ident.name p2.id) 
+        pp t1 
+        pp t2
+  | Switch_none (t, t1, p2, t2) ->
+      f "@[<2>(match %a with@ | None -> %a@ | Some %s -> %a)@]"
         pp t
         pp t1 
         (Ident.name p2.id) pp t2
@@ -81,12 +95,14 @@ let rec freevars t =
   match t.desc with
   | Const _
   | Nil _ 
+  | IML_None _
   | Unit -> empty
   | Cons (t1,t2) 
   | Tuple (t1,t2)
          -> union (freevars t1) (freevars t2)
   | Left (_,t) 
   | Right (_,t)
+  | IML_Some t
   | Assert t -> freevars t
   | AssertFalse -> empty
   | Var (id,ty) -> singleton (id,ty)
@@ -104,11 +120,34 @@ let rec freevars t =
         (union 
            (remove (p1.id, p1.typ) (freevars t1))
            (remove (p2.id, p2.typ) (freevars t2)))
-  | Switch_cons (t, t1, p2, t2) ->
+  | Switch_cons (t, p1, p2, t1, t2) ->
+      union (freevars t)
+        (union 
+           (remove (p2.id, p2.typ) ((remove (p1.id, p1.typ) (freevars t1))))
+           (freevars t2))
+  | Switch_none (t, t1, p2, t2) ->
       union (freevars t)
         (union 
            (freevars t1)
            (remove (p2.id, p2.typ) (freevars t2)))
+
+let rec get_constant t = 
+  let open Result.Infix in
+  match t.desc with
+  | Unit -> Ok O.Unit
+  | Const c -> Ok c
+  | IML_None _ -> Ok (O.Option None)
+  | IML_Some t -> get_constant t >>= fun c -> Ok (O.Option (Some c))
+  | Left (_, t) -> get_constant t >>= fun t -> Ok (O.Left t)
+  | Right (_, t) -> get_constant t >>= fun t -> Ok (O.Right t)
+  | Tuple (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (Pair (t1, t2))
+  | Nil _ -> Ok (O.List [])
+  | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
+      begin match t2 with
+        | O.List t2 -> Ok (O.List (t1::t2))
+        | _ -> assert false
+      end
+  | _ -> Error t.loc
 
 type type_expr_error =
   | Type_variable of Types.type_expr
@@ -127,18 +166,29 @@ let rec type_expr tenv ty =
       type_expr tenv t2 >>= fun t2 -> Ok (TyPair (t1, t2))
   | Tconstr (p, [], _) when p = Predef.path_bool -> Ok TyBool
   | Tconstr (p, [t], _) when p = Predef.path_list -> 
-      type_expr tenv t >>= fun t ->Ok (TyList t)
-  | Tconstr (p, [t1; t2], _) when (match Path.is_scaml p with Some ("sum", _) -> true | _ -> false) ->
+      type_expr tenv t >>= fun t -> Ok (TyList t)
+  | Tconstr (p, [t], _) when p = Predef.path_option -> 
+      type_expr tenv t >>= fun t -> Ok (TyOption t)
+  | Tconstr (p, [t1; t2], _) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
       type_expr tenv t1 >>= fun t1 ->
       type_expr tenv t2 >>= fun t2 -> Ok (TyOr (t1, t2))
-  | Tconstr (p, [], _) when (match Path.is_scaml p with Some ("operation", _) -> true | _ -> false) ->
+  | Tconstr (p, [], _) when (match Path.is_scaml p with Some "operation" -> true | _ -> false) ->
       Ok TyOperation
   | Tconstr (p, [], _) when p = Predef.path_unit -> Ok TyUnit
   | Tconstr (p, [], _) when p = Predef.path_string -> Ok TyString
-  | Tconstr (p, [], _) ->
-      begin match Path.is_scaml p with
-        | Some ("int", _) -> Ok TyInt
-        | Some ("nat", _) -> Ok TyNat
+  | Tconstr (p, tys, _) ->
+      let rec f res = function
+        | [] -> Ok (List.rev res)
+        | ty::tys ->
+            type_expr tenv ty >>= fun ty -> 
+            f (ty::res) tys
+      in
+      f [] tys >>= fun tys ->
+      begin match Path.is_scaml p, tys with
+        | Some "int", [] -> Ok TyInt
+        | Some "nat", [] -> Ok TyNat
+        | Some "tz", [] -> Ok TyMutez
+        | Some "set", [ty] -> Ok (TySet ty)
         | _ -> Error (Unsupported_type ty)
       end
   | _ -> Error (Unsupported_type ty)
@@ -186,11 +236,12 @@ let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
   (* bool *)
   | Tconstr (p, [], _) when p = Predef.path_bool ->
       make TyBool (match cstr_name with
-          | "true" -> Const M.Opcode.True
-          | "false" -> Const M.Opcode.False
+          | "true" -> Const (M.Opcode.Bool true)
+          | "false" -> Const (M.Opcode.Bool false)
           | s -> internal_error ~loc "strange bool constructor %s" s)
 
   (* list *)
+  (* XXX if it is a constant, we must compile it to a constant *)
   | Tconstr (p, [ty], _) when p = Predef.path_list ->
       begin match cstr_name with
           | "[]" -> 
@@ -208,8 +259,24 @@ let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
           | s -> internal_error ~loc "strange list constructor %s" s
       end
 
+  (* option *)
+  | Tconstr (p, [ty], _) when p = Predef.path_option ->
+      begin match cstr_name with
+        | "None" -> 
+            let ty = type_expr ~loc exp_env ty in
+            make (TyOption ty) (IML_None ty)
+        | "Some" ->
+            begin match args with
+              | [e1] ->
+                  let e1 = expression env e1 in
+                  make (TyOption e1.typ) @@ IML_Some e1
+              | _ -> internal_error ~loc "strange cons"
+            end
+        | s -> internal_error ~loc "strange list constructor %s" s
+      end
+
   (* sum *)
-  | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some ("sum", _) -> true | _ -> false) ->
+  | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
       let typ = type_expr ~loc exp_env exp_type in
       let ty1, ty2 = match typ with
         | TyOr (ty1, ty2) -> ty1, ty2
@@ -256,7 +323,68 @@ let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
           | _ -> errorf ~loc "Nat can only take an integer constant"
       end
 
-  | Tconstr (p, _, _) -> failwith (Path.xname p)
+  | Tconstr (p, [], _) when Path.is_scaml_dot "tz" p ->
+      make TyMutez begin 
+        let arg = match args with
+          | [arg] -> arg
+          | _ -> internal_error ~loc "strange Tz arguments"
+        in
+        match arg.exp_desc with
+          | Texp_constant (Const_float f) -> 
+              begin try
+                let pos = String.index f '.' in
+                let dec = String.sub f 0 pos in
+                let sub = String.sub f (pos+1) (String.length f - pos - 1) in
+                let all_dec s =
+                  for i = 0 to String.length s - 1 do
+                    match String.unsafe_get s i with
+                    | '0'..'9' -> ()
+                    | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
+                  done
+                in
+                all_dec dec;
+                all_dec sub;
+                let sub = 
+                  if String.length sub > 6 then 
+                    errorf ~loc "%s: the smallest expressive franction of tz is micro" f;
+                  
+                  sub ^ String.init (6 - String.length sub) (fun _ -> '0')
+                in
+                Const (Nat (int_of_string (dec ^ sub)))
+              with
+              | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
+            end
+          | _ -> errorf ~loc "Nat can only take an integer constant"
+      end
+
+  (* set *)
+  | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "set" -> true | _ -> false) ->
+      let typ = type_expr ~loc exp_env exp_type in
+      let ty = match typ with
+        | TySet ty-> ty
+        | _ -> assert false
+      in
+      (* XXX comparable type check *)
+      if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
+      begin match args with 
+        | [arg] -> 
+            let e = expression env arg in
+            ignore @@ unify (TyList ty) e.typ;
+            begin match e.desc with
+              | Cons _ -> 
+                  (* it extracts a list.  we have change the type *)
+                  (* XXX uniqueness and sorting *)
+                  begin match get_constant e with
+                    | Ok (List xs) -> { e with typ; desc= Const (Set xs) }
+                    | Error loc -> errorf ~loc "Element of Set must be a constant"
+                    | _ -> assert false
+                  end
+              | _ -> errorf ~loc "Set only takes a list literal"
+            end
+        | _ -> internal_error ~loc "strange set arguments"
+      end
+
+  | Tconstr (p, _, _) -> unsupported ~loc "data type %s" (Path.name p)
   | _ -> prerr_endline cstr_name; assert false
 
 and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes=_ } =
@@ -273,7 +401,10 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
             make @@ Var (id, typ)
       end
   | Texp_ident (p, {loc}, _vd) ->
-      unsupported ~loc "complex path %s" (Path.xname p)
+      begin match Path.is_scaml p with
+        | Some n -> make @@ primitive ~loc typ n []
+        | None -> unsupported ~loc "complex path %s" (Path.xname p)
+      end
   | Texp_constant (Const_string (s, None)) -> 
       make @@ Const (String s)
   | Texp_constant _ -> unsupported ~loc "constant"
@@ -285,6 +416,7 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
   | Texp_tuple _ -> unsupported ~loc "tuple with more than 2 elems"
   | Texp_construct ({loc}, c, args) -> 
       construct ~loc env exp_env exp_type c args
+
   | Texp_assert e ->
       begin match e.exp_desc with
       | Texp_construct (_, {cstr_name="false"}, []) ->
@@ -294,17 +426,36 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
           make @@ Assert (expression env e)
       end
 
+  | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
+  | Texp_let (Nonrecursive, vbs, e) ->
+      let rev_vbs, env =
+        List.fold_left (fun (rev_vbs, env) vb -> 
+            let v, e = value_binding env vb in
+            (v, e) :: rev_vbs, ((v.id,v.typ)::env)) ([], env) vbs
+      in
+      let e = expression env e in
+      List.fold_left (fun e (v,def) ->
+          { loc; (* XXX inaccurate *)
+            typ= e.typ;
+            desc= Let (v, def, e) } ) e rev_vbs
+
   | Texp_apply (_, []) -> assert false
   | Texp_apply (f, args) -> 
       let args = List.map (function
-          | (Nolabel, Some e) -> expression env e
+          | (Nolabel, Some (e: Typedtree.expression)) -> expression env e
           | _ -> unsupported ~loc "labeled arguments") args
       in
+      let fty' = 
+        List.fold_right (fun arg ty -> TyLambda(arg.typ, ty, { closure_desc= CLList [] })) args typ 
+      in
+      let fty = type_expr ~loc:f.exp_loc f.exp_env f.exp_type in
+      ignore (unify fty fty');
+
       let name = match f with
         | { exp_desc= Texp_ident (p, _, _) } ->
             begin match Path.is_scaml p with
             | None -> None
-            | Some (s, _) -> Some s
+            | Some s -> Some s
             end
         | _ -> None
       in
@@ -312,11 +463,9 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
       begin match name with
         | None -> 
             let f = expression env f in
-            let ftype = List.fold_right (fun arg ty -> TyLambda(arg.typ, ty, { closure_desc= CLList [] })) args typ in
-            ignore (unify f.typ ftype);
+            ignore (unify f.typ fty);
             make @@ App (f, args)
-
-        | Some n -> make @@ primitive ~loc:f.exp_loc n args
+        | Some n -> make @@ primitive ~loc:f.exp_loc fty n args
       end
 
   | Texp_function { arg_label= (Labelled _ | Optional _) } ->
@@ -362,26 +511,29 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
       
   | _ -> unsupported ~loc "this type of expression"
 
-and primitive ~loc n args =
-  (* They need type unifications! *)
-  let arity, ops = match n with
-    | "fst"        -> 1, [CAR]
-    | "snd"        -> 1, [CDR]
-    | "compare"    -> 2, [COMPARE]
-    | "="          -> 2, [COMPARE; EQ]
-    | "<>"         -> 2, [COMPARE; NEQ]
-    | "<"          -> 2, [COMPARE; LT]
-    | ">"          -> 2, [COMPARE; GT]
-    | "<="         -> 2, [COMPARE; LE]
-    | ">="         -> 2, [COMPARE; GE]
-    | ("+" | "+^") -> 2, [ADD]
-    | "-"          -> 2, [SUB]
-    | "&&"         -> 2, [AND]
-    | _ -> errorf ~loc "Unknown primitive SCaml.%s" n
-  in
-  if arity > List.length args then
-    unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
-  Prim (n, ops, args)
+and primitive ~loc fty n args =
+  match List.assoc_opt n Primitives.primitives with
+  | None -> errorf ~loc "Unknown primitive SCaml.%s" n
+  | Some (arity, conv) ->
+      if arity > List.length args then
+        unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
+      let args, left = List.split_at arity args in
+      match left with
+      | [] -> Prim (n, conv, args)
+      | _ -> 
+          let typ = 
+            let rec f ty = function
+              | [] -> ty
+              | _arg::args ->
+                  match ty with
+                  | TyLambda (_,ty2,_) -> f ty2 args
+                  | _ -> assert false
+            in
+            f fty args
+          in
+          App ({ loc; (* XXX inaccurate *)
+                 typ;
+                 desc= Prim (n, conv, args) }, left)
 
 and compile_match ~loc:loc0 env e cases =
   let loc = e.exp_loc in
@@ -406,15 +558,22 @@ and compile_match ~loc:loc0 env e cases =
                  lv, expression ((lv.id, lv.typ)::env) le,
                  rv, expression ((rv.id, rv.typ)::env) re)
   | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
-  | TyList _ty1, [("::",[l],le); ("[]",[],re)] ->
+  | TyList _ty1, [("::",[l1;l2],le); ("[]",[],re)] ->
       let get_var p = match pattern p with [v] -> v | _ -> assert false in
-      let lv = get_var l in
+      let lv1 = get_var l1 in
+      let lv2 = get_var l2 in
       Switch_cons (expression env e,
-                   expression env re,
-                   lv, expression ((lv.id, lv.typ)::env) le)
-  | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum"
+                   lv1, lv2, expression ((lv1.id, lv1.typ)::(lv2.id, lv2.typ)::env) le,
+                   expression env re)
+  | TyOption _ty1, [("None",[],le); ("Some",[r],re)] ->
+      let get_var p = match pattern p with [v] -> v | _ -> assert false in
+      let rv = get_var r in
+      Switch_none (expression env e,
+                   expression env le,
+                   rv, expression ((rv.id, rv.typ)::env) re)
+  | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
 
-let value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
+and value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
   (* currently we only handle very simple sole variable pattern *)
   match pattern vb_pat with
   | [v] ->
@@ -475,6 +634,8 @@ let fix_entrypoint_type sourcefile str =
         raise(Typecore.Error(loc, env, Pattern_type_clash(trace)))
     | Tags(l1,l2) ->
         raise(Typetexp.Error(loc, env, Typetexp.Variant_tags (l1, l2)))
+    | e -> 
+        prerr_endline "unify raised something unfamiliar"; raise e
   in
   let entry_point { vb_pat; vb_expr=_; vb_attributes=_; vb_loc=loc } = 
     let tenv = vb_pat.pat_env in
@@ -484,12 +645,14 @@ let fix_entrypoint_type sourcefile str =
         Ctype.filter_arrow tenv ty Nolabel 
       with
       | Ctype.Unify _ -> errorf ~loc "Entry point must have 2 arguments"
+      | e -> prerr_endline "filter_arrow raised something unfamiliar"; raise e
     in
     let ty_storage, _res_ty = 
       try
         Ctype.filter_arrow tenv ty Nolabel
       with
       | Ctype.Unify _ -> errorf ~loc "Entry point must have 2 arguments"
+      | e -> prerr_endline "filter_arrow raised something unfamiliar"; raise e
     in
     let ty_operations = 
       let path = 

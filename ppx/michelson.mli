@@ -38,12 +38,21 @@ end
 
 module Opcode : sig
   type constant =
-    | True
-    | False
     | Unit
+    | Bool of bool
     | Int of int
     | Nat of int
+    (* | Mutez of int *)
     | String of string
+    | Bytes of string
+    | Option of constant option
+    | List of constant list
+    | Set of constant list
+    | Map of (constant * constant) list
+    | Big_map of (constant * constant) list
+    | Pair of constant * constant
+    | Left of constant
+    | Right of constant
 
   type t =
     | DUP
@@ -70,16 +79,20 @@ module Opcode : sig
     | GE
     | NEQ
     | IF of t list * t list
-    | ADD
-    | SUB
-    | AND
+    | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR 
+    | AND | OR | XOR | NOT
     | EXEC
-    | IF_SOME of t list * t list
+    | IF_NONE of t list * t list
     | IF_LEFT of t list * t list
     | IF_CONS of t list * t list
     | FAIL
     | COMMENT of string * t list
     | UNIT
+    | EMPTY_SET of Type.t
+    | SIZE
+    | MEM
+    | UPDATE
+
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit
   val clean_fail : t list -> t list
