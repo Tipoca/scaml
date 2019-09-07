@@ -149,7 +149,7 @@ module Opcode = struct
     | NONE of Type.t
     | SOME
     | COMPARE
-    | EQ | LT | LE | GT | GE
+    | EQ | LT | LE | GT | GE | NEQ
     | IF of t list * t list
     | ADD
     | SUB
@@ -160,9 +160,9 @@ module Opcode = struct
     | IF_CONS of t list * t list
     | FAIL (* FAILWITH ? *)
     | COMMENT of string * t list
+    | UNIT
 
 (*
-    | UNIT
     | SIZE
     | EMPTY_SET of Type.t
     | EMPTY_MAP of Type.t * Type.t
@@ -190,12 +190,6 @@ module Opcode = struct
     | XOR
     | NOT
     | COMPARE
-    | EQ
-    | NEQ
-    | LT
-    | GT
-    | LE
-    | GE
     | SELF
     | CONTRACT of Type.t
     | TRANSFER_TOKENS
@@ -257,6 +251,7 @@ module Opcode = struct
     | LE -> p "LE"
     | GT -> p "GT"
     | GE -> p "GE"
+    | NEQ -> p "NEQ"
     | IF (t,e) -> f "IF @[<0>{ @[%a@] }@ { @[%a@] }@]" 
                     (Format.list " ;@ " pp) t
                     (Format.list " ;@ " pp) e
@@ -279,6 +274,7 @@ module Opcode = struct
         f "IF_CONS @[<0>{ @[%a@] }@ { @[%a@] }@]" 
           (Format.list " ;@ " pp) t1
           (Format.list " ;@ " pp) t2
+    | UNIT -> p "UNIT"
           
   let rec clean_fail = function
     | [] -> []
@@ -305,12 +301,13 @@ module Opcode = struct
       | NONE _
       | SOME
       | COMPARE
-      | EQ | LT | LE | GT | GE
+      | EQ | LT | LE | GT | GE | NEQ
       | ADD
       | SUB
       | AND
       | EXEC
-      | FAIL as t) -> t
+      | FAIL 
+      | UNIT as t) -> t
 end
 
 module Module = struct

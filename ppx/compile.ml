@@ -124,7 +124,7 @@ let rec compile env t =
   | Right (ty, t) -> 
       let os = compile env t in
       os @ [ RIGHT (closure_type ty) ]
-  | Unit -> [ PUSH (TyUnit, Unit) ]
+  | Unit -> [ UNIT ]
 
   | Var (id, _) -> compile_var ~loc env id
 

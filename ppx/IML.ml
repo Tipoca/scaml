@@ -369,6 +369,7 @@ and primitive ~loc n args =
     | "snd"        -> 1, [CDR]
     | "compare"    -> 2, [COMPARE]
     | "="          -> 2, [COMPARE; EQ]
+    | "<>"         -> 2, [COMPARE; NEQ]
     | "<"          -> 2, [COMPARE; LT]
     | ">"          -> 2, [COMPARE; GT]
     | "<="         -> 2, [COMPARE; LE]

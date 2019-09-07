@@ -21,6 +21,7 @@ let fst = fst
 let snd = snd  
 let compare = compare
 let (=) = (=)
+let (<>) = (<>)
 let (<) = (<)
 let (<=) = (<=)
 let (>) = (>)
