@@ -8,17 +8,21 @@ open M.Opcode
 module MEnv : sig
   type t = (Ident.t * M.Type.t) list
   val find : Ident.t -> t -> (int * M.Type.t) option
+(*
   val add : (Ident.t * M.Type.t) -> t -> t
   val add_list : (Ident.t * M.Type.t) list -> t -> t
   val empty : t
+*)
   val pp : Format.formatter -> t -> unit
+(*
   val of_list : (Ident.t * M.Type.t) list -> t
   val length : t -> int
   val singleton : (Ident.t * M.Type.t) -> t
+*)
 end = struct
   type t = (Ident.t * M.Type.t) list
 
-  let singleton x = [x]
+  (*  let singleton x = [x] *)
 
   let find id env = 
     let rec aux n = function
@@ -28,10 +32,12 @@ end = struct
     in
     aux 0 env
 
+(*
   let add x xs = x :: xs
   let add_list = (@)
 
   let empty = []
+*)
 
   let pp ppf t =
     Format.fprintf ppf "@[<2>[ %a ]@]"
@@ -42,9 +48,11 @@ end = struct
               (Ident.unique_name id)
               M.Type.pp ty)) t
 
+(*
   let of_list xs = xs
     
   let length = List.length
+*)
 end
 
 let closure_env_type xtys =

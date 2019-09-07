@@ -2,9 +2,7 @@ open Spotlib.Spot
 open Tools
 
 module Type = struct
-  (* Michelson type.  This is shamelessly used as types 
-     for IML, too.
-  *)
+  (* Michelson type.  This is shamelessly used as types for IML, too. *)
   type t = 
     | TyString
     | TyNat
@@ -179,6 +177,7 @@ module Opcode = struct
     | SLICE
     | PACK
     | UNPACK
+
     | MUL
     | EDIV
     | ABS
@@ -189,7 +188,6 @@ module Opcode = struct
     | AND
     | XOR
     | NOT
-    | COMPARE
     | SELF
     | CONTRACT of Type.t
     | TRANSFER_TOKENS
