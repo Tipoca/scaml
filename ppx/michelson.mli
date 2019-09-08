@@ -93,6 +93,7 @@ module Opcode : sig
     | SIZE
     | MEM
     | UPDATE
+    | ITER of t list
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit

@@ -184,11 +184,11 @@ module Opcode = struct
     | SIZE
     | MEM
     | UPDATE
+    | ITER of t list
 
 (*
     | EMPTY_MAP of Type.t * Type.t
     | MAP of t list
-    | ITER of t list
     | GET
     | LOOP of t list
     | LOOP_LEFT of t list
@@ -312,6 +312,7 @@ module Opcode = struct
     | SIZE -> p "SIZE"
     | MEM -> p "MEM"
     | UPDATE -> p "UPDATE"
+    | ITER code -> f "ITER @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
           
   let rec clean_fail = function
     | [] -> []
@@ -319,6 +320,7 @@ module Opcode = struct
     | x::xs -> aux x :: clean_fail xs
   and aux = function
     | DIP ts -> DIP (clean_fail ts)
+    | ITER ts -> ITER (clean_fail ts)
     | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_fail ts)
     | IF (t1, t2) -> IF (clean_fail t1, clean_fail t2)
     | IF_NONE (t1, t2) -> IF_NONE (clean_fail t1, clean_fail t2)

@@ -158,7 +158,7 @@ let rec compile env t =
             let env' = (Ident.dummy, TyUnit (* dummy *)) :: env in
             env', os @ os') ts (env, [])
       in
-      conv t.IML.typ pre
+      conv pre
   | Let (pat, t1, t2) ->
       let os1 = compile env t1 in
       let os2 = compile ((pat.id, pat.typ)::env) t2 in
@@ -358,8 +358,8 @@ let compile_structure t =
              [ DIP (List.init (List.length env) (fun _ -> DROP)) ]) ]
   |> clean_fail
     
-let implementation sourcefile outputprefix modulename (str, _coercion) =
-  Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename;
+let implementation sourcefile outputprefix _modulename (str, _coercion) =
+  (* Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename; *)
   let parameter, storage = IML.fix_entrypoint_type sourcefile str in
   let t = 
     try IML.structure [] str with 
