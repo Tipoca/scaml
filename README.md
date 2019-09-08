@@ -2,6 +2,8 @@
 
 > Scam never calls itself a scam.
 
+Small and Simple Strict Subset of OCaml for Smart contracts.
+
 ## Strict subset of OCaml
 
 SCaml is a **strict** subset of OCaml programming language.
@@ -17,7 +19,8 @@ This immediately leads to the following benefits:
 The following OCaml features are not supported:
 
 * Recursion
-* Sum types other than lists and `type ('a,'b) sum = Left of 'a | Right of 'b`.
+* Polymorphism
+* Sum types other than lists, options, and `type ('a,'b) sum = Left of 'a | Right of 'b`.
 * Product types other than a pair: `t1 * t2`.
 * SML modules.
 * Labeled functions.
@@ -28,7 +31,6 @@ The following OCaml features are not supported:
 * Exceptions.
 * Arrays.
 * Classes, and objects.
-* Local `let .. in ..`
 
 ## Desgin
 
@@ -50,13 +52,40 @@ It also forces the typing of `SCaml.self`.
 
 ### Conversion to IML
 
-Typed OCaml AST is converted to InterMediate Laguage `IML`.
+Typed OCaml AST is converted to InterMediate Laguage IML.
+IML is a simple typed purely functional language.
+
 Most of the unsupported features of OCaml are rejected here.
 
-`IML` performs type inference for typed closure conversion.
+IML performs type inference for typed closure conversion.
 
 ### Compilation to Michelson
 
 `IML` AST is compiled to Michelson.
+
+## Features
+
+### Arithmetic types
+
+* Integers: `Int 42`, `Int (-100)`
+* Natural numbers: `Nat 42`, `Nat 12345`
+* Tezzys: `Tz 1.0`, `Tz 0.000001`
+
+Each arithmetic type has its own set of arithmetic binary operators:
+
+* Integers: `+`, `-`, `*`, etc
+* Natural numbers: `+^`, `-^`, `*^`, etc
+* Tezzys: `+$`, `-$`, `*$`, etc
+
+In future,
+
+* We can introduce integer suffixes to natural numbers and tezzys, like `42p`, `1.23t`
+* We can introduce the SML style overloading of these operators.
+
+### Container literals
+
+* Lists: `[ Int 1; Int 2; Int 3 ]`
+* Sets: `Set [ Nat 1; Nat 2; Nat 3 ]`
+* Maps: `Map [ (Nat 1, "1"); (Nat 2, "2"); (Nat 3, "3") ]`
 
 
