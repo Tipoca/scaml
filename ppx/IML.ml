@@ -160,7 +160,7 @@ let rec type_expr tenv ty =
   | Tvar _ -> Error (Type_variable ty)
   | Tarrow (Nolabel, f, t, _) -> 
       type_expr tenv f >>= fun f ->
-      type_expr tenv t >>= fun t -> Ok (TyLambda (f, t, { closure_desc= CLList [] }))
+      type_expr tenv t >>= fun t -> Ok (TyLambda (f, t, { closure_desc= CLEmpty }))
   | Ttuple [t1; t2] -> 
       type_expr tenv t1 >>= fun t1 ->
       type_expr tenv t2 >>= fun t2 -> Ok (TyPair (t1, t2))

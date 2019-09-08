@@ -26,7 +26,8 @@ module Type : sig
   and closure_info = { mutable closure_desc : closure_desc; }
 
   and closure_desc =
-      CLList of (Ident.t * t) list
+    | CLEmpty (* never unified with a proper closure info! *)
+    | CLList of (Ident.t * t) list
     | CLLink of closure_info
 
   val repr_closure_info : closure_info -> closure_info

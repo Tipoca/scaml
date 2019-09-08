@@ -33,11 +33,13 @@ module Type = struct
   
   and closure_info = { mutable closure_desc : closure_desc }
   and closure_desc = 
+    | CLEmpty (* never unified with a proper closure info! *)
     | CLList of (Ident.t * t) list
     | CLLink of closure_info
   
   let rec repr_closure_info ({ closure_desc } as i) = 
     match closure_desc with
+    | CLEmpty -> i
     | CLList _ -> i
     | CLLink cl -> repr_closure_info cl
   
@@ -75,6 +77,7 @@ module Type = struct
           (fun _ppf cli ->
              match (repr_closure_info cli).closure_desc with
              | CLLink _ -> assert false
+             | CLEmpty -> p " /* EMPTY! */"
              | CLList [] -> ()
              | CLList xs -> 
                  f " /* %a */"
@@ -111,11 +114,20 @@ module Type = struct
       | TyLambda (t11, t12, cli1), TyLambda (t21, t22, cli2) ->
           let cli1 = repr_closure_info cli1 in
           let cli2 = repr_closure_info cli2 in
-          let get_list x = match x.closure_desc with CLList xs -> xs | _ -> assert false in
-          let env = merge (get_list cli1) (get_list cli2) in
-          let newcli = { closure_desc= CLList env } in
-          cli1.closure_desc <- CLLink newcli;
-          cli2.closure_desc <- CLLink newcli;
+          begin match cli1.closure_desc, cli2.closure_desc with
+            | CLLink _, _ | _, CLLink _ -> assert false
+            | CLEmpty, CLEmpty -> 
+                cli2.closure_desc <- CLLink cli1
+            | CLEmpty, _ ->
+                cli1.closure_desc <- CLLink cli2
+            | _, CLEmpty ->
+                cli2.closure_desc <- CLLink cli1
+            | CLList env1, CLList env2 ->
+                let env = merge env1 env2 in
+                let newcli = { closure_desc= CLList env } in
+                cli1.closure_desc <- CLLink newcli;
+                cli2.closure_desc <- CLLink newcli
+          end;
           TyLambda (unify t11 t21, unify t12 t22, cli1)
       | _ -> 
           Format.eprintf "Unifying %a and %a!!@." pp t1 pp t2;

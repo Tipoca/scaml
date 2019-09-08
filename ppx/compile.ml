@@ -87,6 +87,7 @@ let rec closure_type = function
   | (TyLambda (t1, t2, closure_info) as t) ->
       match (repr_closure_info closure_info).closure_desc with
       | CLLink _ -> assert false
+      | CLEmpty -> assert false
       | CLList [] -> t
       | CLList xtys -> 
           let env_type = 
@@ -96,12 +97,6 @@ let rec closure_type = function
                              closure_type t2,
                              { closure_desc = CLList [] } ),
                   env_type)
-
-let rec repr_closure_info ({ closure_desc } as i) = 
-  match closure_desc with
-  | CLList _ -> i
-  | CLLink cl -> repr_closure_info cl
-
 
 let compile_var ~loc env id = match MEnv.find id env with
   | None -> 
@@ -189,6 +184,7 @@ let rec compile env t =
         | TyLambda (ty1, ty2, cli) ->
             begin match (repr_closure_info cli).closure_desc with
               | CLLink _ -> assert false
+              | CLEmpty -> assert false
               | CLList [] ->
                   let env = (p.id,p.typ)::env in
                   let o = compile env body in
@@ -276,29 +272,38 @@ let rec compile env t =
         | _ -> assert false
       end
   | App (t, []) -> compile env t
-  | App (f, [arg]) ->
-      let ofun = compile env f in
-      ofun @ application ((Ident.dummy,TyUnit)::env) f.typ arg
   | App (f, args) ->
       let ofun = compile env f in
       let env = (Ident.dummy,TyUnit)::env in
       fst @@ List.fold_left (fun (ofun, ftyp) arg ->
-          let ofun = ofun @ application env ftyp arg in
+          let oarg = compile env arg in
+          let ofun = ofun @ oarg @ mk_application ftyp in
           let ftyp = match ftyp with
             | TyLambda (_, ty2, _) -> ty2
             | _ -> assert false
           in
         (ofun, ftyp)) (ofun, f.typ) args
 
-and application env funty arg =
-  begin match funty with
+and mk_application fty =
+  (* arg :: <lambda/closure> :: s 
+     
+     arg :: <lambda> :: s   EXEC
+     res :: s                
+     
+     arg :: <closure> :: s           DIP [ DUP; CDR ; DIP [CAR ] ]
+     arg :: <env> :: <lambda> :: s   PAIR
+     (arg,<env>) :: <lambda> :: s    EXEC
+     res :: s
+     
+  *)
+  begin match fty with
     | TyLambda (_ty1, _ty2, cinfo) ->
         begin match (repr_closure_info cinfo).closure_desc with
           | CLLink _ -> assert false
+          | CLEmpty -> assert false
           | CLList [] ->
               (* it is not a closure *)
-              let oarg = compile env arg in
-              oarg @ [ EXEC ]
+              [ EXEC ]
           | CLList _xs -> 
               (* it is a closure 
                  arg :: (lambda, env) :: s  
@@ -306,8 +311,7 @@ and application env funty arg =
                  (arg,env) :: lambda ::s    <- PAIR
                  EXEC!
               *)
-              let oarg = compile env arg in
-              oarg @ [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR ; EXEC ]
+              [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR ; EXEC ]
         end
     | _ -> assert false
   end
