@@ -153,18 +153,22 @@ let rec compile env t =
       let othen = compile env t2 in
       let oelse = compile env t3 in
       oif @ [IF (othen, oelse)]
-  | Prim (_, ops, ts) ->
+  | Prim (_n, conv, ts) ->
       (* Prim (ops, [t1; t2])
          t2 ; t1; ops
       *)
-      (snd @@ List.fold_right (fun t (env, os) ->
-          let os' = compile env t in
-          let env' = (Ident.dummy, TyUnit (* dummy *)) :: env in
-          env', os @ os') ts (env, [])) @ ops
+      let _, pre = 
+        List.fold_right (fun t (env, os) ->
+            let os' = compile env t in
+            let env' = (Ident.dummy, TyUnit (* dummy *)) :: env in
+            env', os @ os') ts (env, [])
+      in
+      conv t.IML.typ pre
   | Let (pat, t1, t2) ->
       let os1 = compile env t1 in
       let os2 = compile ((pat.id, pat.typ)::env) t2 in
-      COMMENT (Ident.name pat.id, os1) :: os2
+      COMMENT (Ident.name pat.id, os1) :: os2 
+      @ [COMMENT ("clean " ^ Ident.name pat.id, [DIP [DROP]])]
   | Switch_or (t, p1, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile ((p1.id,p1.typ)::env) t1 in

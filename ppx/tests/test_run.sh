@@ -3,6 +3,7 @@ set -e
 
 for i in $*
 do
+  echo "----- $i"    
   case "$i" in
   *.tz)
       tz="$i"

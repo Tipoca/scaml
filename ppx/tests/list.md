@@ -41,7 +41,7 @@ V     | NIL <type>
 V     | CONS
 V     | IF_CONS { <instruction> ... } { <instruction> ... }
       | SIZE
-      | EMPTY_SET <comparable type>
+V     | EMPTY_SET <comparable type>
       | EMPTY_MAP <comparable type> <type>
       | MAP { <instruction> ... }
       | ITER { <instruction> ... }

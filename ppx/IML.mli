@@ -23,7 +23,7 @@ and desc =
       (Tools.Ident.t * Michelson.Type.t) list
   | IfThenElse of t * t * t
   | App of t * t list
-  | Prim of string * Michelson.Opcode.t list * t list
+  | Prim of string * (Michelson.Type.t -> Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
   | Let of pat * t * t
   | Switch_or of t * pat * t * pat * t
   | Switch_cons of t * pat * pat * t * t

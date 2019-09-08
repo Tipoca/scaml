@@ -124,12 +124,21 @@ end
 
 module Opcode = struct
   type constant = 
-    | True | False
     | Unit
+    | Bool of bool
     | Int of int
     | Nat of int
-    | Mutez of int
+    (* | Mutez of int *)
     | String of string
+    | Bytes of string
+    | Option of constant option
+    | List of constant list
+    | Set of constant list
+    | Map of (constant * constant) list
+    | Big_map of (constant * constant) list
+    | Pair of constant * constant
+    | Left of constant
+    | Right of constant
 
   type t = 
     | DUP
@@ -161,14 +170,14 @@ module Opcode = struct
     | UNIT
     | EMPTY_SET of Type.t
     | SIZE
+    | MEM
+    | UPDATE
 
 (*
     | EMPTY_MAP of Type.t * Type.t
     | MAP of t list
     | ITER of t list
-    | MEM
     | GET
-    | UPDATE
     | LOOP of t list
     | LOOP_LEFT of t list
     | CAST
@@ -203,18 +212,28 @@ module Opcode = struct
 *)
                               
     
-  let pp_constant ppf =
+  let rec pp_constant ppf =
     let open Format in
     let p = pp_print_string ppf in
     let f fmt = fprintf ppf fmt in
     function
-    | True     -> p "True"
-    | False    -> p "False"
+    | Bool true  -> p "True"
+    | Bool false -> p "False"
     | Unit     -> p "Unit"
     | Int n    -> f "%d" n
     | Nat n    -> f "%d" n
-    | Mutez n  -> f "%d" n
+    (*    | Mutez n  -> f "%d" n *)
     | String s -> f "%S" s
+    | Bytes s ->  f "%S" s (* XXX unknown *)
+    | Option None -> p "None"
+    | Option (Some t) -> f "Some (%a)" pp_constant t
+    | Pair (t1, t2) -> f "(Pair (%a) (%a))" pp_constant t1 pp_constant t2
+    | Left t -> f "(Left (%a))" pp_constant t
+    | Right t -> f "(Right (%a))" pp_constant t
+    | List ts -> f "{ %a }" (list " ; " pp_constant) ts
+    | Set ts -> f "{ %a }" (list " ; " pp_constant) (List.sort compare ts)
+    | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt (%a) (%a)" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt (%a) (%a)" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
 
   let rec pp ppf =
     let open Format in
@@ -279,6 +298,8 @@ module Opcode = struct
     | UNIT -> p "UNIT"
     | EMPTY_SET ty -> f "EMPTY_SET (%a)" Type.pp ty
     | SIZE -> p "SIZE"
+    | MEM -> p "MEM"
+    | UPDATE -> p "UPDATE"
           
   let rec clean_fail = function
     | [] -> []
@@ -313,6 +334,8 @@ module Opcode = struct
       | UNIT 
       | EMPTY_SET _ 
       | SIZE
+      | MEM
+      | UPDATE
       as t) -> t
 end
 

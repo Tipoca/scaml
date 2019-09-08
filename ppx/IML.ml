@@ -7,6 +7,7 @@ open Tools
 module M = Michelson
 open M.Type
 open M.Opcode
+module O = M.Opcode
 
 type pat = 
   { loc : Location.t
@@ -31,11 +32,12 @@ and desc =
   | Fun of M.Type.t * M.Type.t * pat * t * (Ident.t * M.Type.t) list (* freevars *)
   | IfThenElse of t * t * t
   | App of t * t list
-  | Prim of string * M.Opcode.t list * t list
+  | Prim of string * (M.Type.t -> M.Opcode.t list -> M.Opcode.t list) * t list
   | Let of pat * t * t
   | Switch_or of t * pat * t * pat * t
   | Switch_cons of t * pat * pat * t * t
   | Switch_none of t * t * pat * t
+
 
 let rec pp ppf = 
   let p = Format.pp_print_string ppf in
@@ -129,6 +131,24 @@ let rec freevars t =
            (freevars t1)
            (remove (p2.id, p2.typ) (freevars t2)))
 
+let rec get_constant t = 
+  let open Result.Infix in
+  match t.desc with
+  | Unit -> Ok O.Unit
+  | Const c -> Ok c
+  | IML_None _ -> Ok (O.Option None)
+  | IML_Some t -> get_constant t >>= fun c -> Ok (O.Option (Some c))
+  | Left (_, t) -> get_constant t >>= fun t -> Ok (O.Left t)
+  | Right (_, t) -> get_constant t >>= fun t -> Ok (O.Right t)
+  | Tuple (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (Pair (t1, t2))
+  | Nil _ -> Ok (O.List [])
+  | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
+      begin match t2 with
+        | O.List t2 -> Ok (O.List (t1::t2))
+        | _ -> assert false
+      end
+  | _ -> Error t.loc
+
 type type_expr_error =
   | Type_variable of Types.type_expr
   | Unsupported_type of Types.type_expr
@@ -216,11 +236,12 @@ let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
   (* bool *)
   | Tconstr (p, [], _) when p = Predef.path_bool ->
       make TyBool (match cstr_name with
-          | "true" -> Const M.Opcode.True
-          | "false" -> Const M.Opcode.False
+          | "true" -> Const (M.Opcode.Bool true)
+          | "false" -> Const (M.Opcode.Bool false)
           | s -> internal_error ~loc "strange bool constructor %s" s)
 
   (* list *)
+  (* XXX if it is a constant, we must compile it to a constant *)
   | Tconstr (p, [ty], _) when p = Predef.path_list ->
       begin match cstr_name with
           | "[]" -> 
@@ -329,11 +350,38 @@ let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
                   
                   sub ^ String.init (6 - String.length sub) (fun _ -> '0')
                 in
-                Const (Mutez (int_of_string (dec ^ sub)))
+                Const (Nat (int_of_string (dec ^ sub)))
               with
               | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
             end
           | _ -> errorf ~loc "Nat can only take an integer constant"
+      end
+
+  (* set *)
+  | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "set" -> true | _ -> false) ->
+      let typ = type_expr ~loc exp_env exp_type in
+      let ty = match typ with
+        | TySet ty-> ty
+        | _ -> assert false
+      in
+      (* XXX comparable type check *)
+      if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
+      begin match args with 
+        | [arg] -> 
+            let e = expression env arg in
+            ignore @@ unify (TyList ty) e.typ;
+            begin match e.desc with
+              | Cons _ -> 
+                  (* it extracts a list.  we have change the type *)
+                  (* XXX uniqueness and sorting *)
+                  begin match get_constant e with
+                    | Ok (List xs) -> { e with typ; desc= Const (Set xs) }
+                    | Error loc -> errorf ~loc "Element of Set must be a constant"
+                    | _ -> assert false
+                  end
+              | _ -> errorf ~loc "Set only takes a list literal"
+            end
+        | _ -> internal_error ~loc "strange set arguments"
       end
 
   | Tconstr (p, _, _) -> unsupported ~loc "data type %s" (Path.name p)
@@ -368,6 +416,7 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
   | Texp_tuple _ -> unsupported ~loc "tuple with more than 2 elems"
   | Texp_construct ({loc}, c, args) -> 
       construct ~loc env exp_env exp_type c args
+
   | Texp_assert e ->
       begin match e.exp_desc with
       | Texp_construct (_, {cstr_name="false"}, []) ->
@@ -377,12 +426,31 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
           make @@ Assert (expression env e)
       end
 
+  | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
+  | Texp_let (Nonrecursive, vbs, e) ->
+      let rev_vbs, env =
+        List.fold_left (fun (rev_vbs, env) vb -> 
+            let v, e = value_binding env vb in
+            (v, e) :: rev_vbs, ((v.id,v.typ)::env)) ([], env) vbs
+      in
+      let e = expression env e in
+      List.fold_left (fun e (v,def) ->
+          { loc; (* XXX inaccurate *)
+            typ= e.typ;
+            desc= Let (v, def, e) } ) e rev_vbs
+
   | Texp_apply (_, []) -> assert false
   | Texp_apply (f, args) -> 
       let args = List.map (function
           | (Nolabel, Some (e: Typedtree.expression)) -> expression env e
           | _ -> unsupported ~loc "labeled arguments") args
       in
+      let fty' = 
+        List.fold_right (fun arg ty -> TyLambda(arg.typ, ty, { closure_desc= CLList [] })) args typ 
+      in
+      let fty = type_expr ~loc:f.exp_loc f.exp_env f.exp_type in
+      ignore (unify fty fty');
+
       let name = match f with
         | { exp_desc= Texp_ident (p, _, _) } ->
             begin match Path.is_scaml p with
@@ -395,11 +463,9 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
       begin match name with
         | None -> 
             let f = expression env f in
-            let ftype = List.fold_right (fun arg ty -> TyLambda(arg.typ, ty, { closure_desc= CLList [] })) args typ in
-            ignore (unify f.typ ftype);
+            ignore (unify f.typ fty);
             make @@ App (f, args)
-
-        | Some n -> make @@ primitive ~loc:f.exp_loc (type_expr ~loc:f.exp_loc f.exp_env f.exp_type) n args
+        | Some n -> make @@ primitive ~loc:f.exp_loc fty n args
       end
 
   | Texp_function { arg_label= (Labelled _ | Optional _) } ->
@@ -445,39 +511,29 @@ and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_
       
   | _ -> unsupported ~loc "this type of expression"
 
-and primitive ~loc typ n args =
-  (* They need type unifications! *)
-  let arity, ops = match n with
-    | "fst"        -> 1, [CAR]
-    | "snd"        -> 1, [CDR]
-    | "compare"    -> 2, [COMPARE]
-    | "="          -> 2, [COMPARE; EQ]
-    | "<>"         -> 2, [COMPARE; NEQ]
-    | "<"          -> 2, [COMPARE; LT]
-    | ">"          -> 2, [COMPARE; GT]
-    | "<="         -> 2, [COMPARE; LE]
-    | ">="         -> 2, [COMPARE; GE]
-    | ("+" | "+^" | "+$") -> 2, [ADD]
-    | ("-" | "-^" | "-$") -> 2, [SUB]
-    | ("*" | "*^" | "*$") -> 2, [MUL]
-    | ("/" | "/^" | "/$") -> 2, [EDIV]
-    | "&&"         -> 2, [AND]
-    | "||"         -> 2, [OR]
-    | "xor"        -> 2, [XOR]
-    | "not"        -> 1, [NOT]
-    | "abs"        -> 1, [ABS]
-    | "~-"         -> 1, [NEG]
-    | "Set.empty"  -> 
-        begin match typ with
-          | TySet ty -> 0, [EMPTY_SET ty]
-          | _ -> assert false
-        end
-    | "Set.length"  -> 1, [SIZE]
-    | _ -> errorf ~loc "Unknown primitive SCaml.%s" n
-  in
-  if arity > List.length args then
-    unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
-  Prim (n, ops, args)
+and primitive ~loc fty n args =
+  match List.assoc_opt n Primitives.primitives with
+  | None -> errorf ~loc "Unknown primitive SCaml.%s" n
+  | Some (arity, conv) ->
+      if arity > List.length args then
+        unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
+      let args, left = List.split_at arity args in
+      match left with
+      | [] -> Prim (n, conv, args)
+      | _ -> 
+          let typ = 
+            let rec f ty = function
+              | [] -> ty
+              | _arg::args ->
+                  match ty with
+                  | TyLambda (_,ty2,_) -> f ty2 args
+                  | _ -> assert false
+            in
+            f fty args
+          in
+          App ({ loc; (* XXX inaccurate *)
+                 typ;
+                 desc= Prim (n, conv, args) }, left)
 
 and compile_match ~loc:loc0 env e cases =
   let loc = e.exp_loc in
@@ -517,7 +573,7 @@ and compile_match ~loc:loc0 env e cases =
                    rv, expression ((rv.id, rv.typ)::env) re)
   | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
 
-let value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
+and value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
   (* currently we only handle very simple sole variable pattern *)
   match pattern vb_pat with
   | [v] ->

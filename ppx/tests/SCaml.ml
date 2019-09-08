@@ -16,6 +16,9 @@ type 'a set = Set of 'a list
 module Set = struct
   let empty : 'a set = Set []
   let length (Set xs) = Nat (List.length xs)
+  let mem : 'a -> 'a set -> bool = fun _ -> assert false 
+  let update : 'a -> bool -> 'a set -> 'a set = fun _ -> assert false
+  let fold : ('elt -> 'acc -> 'acc) -> 'elt set -> 'acc -> 'acc = fun _ -> assert false
 end
       
 let (+) : int -> int -> int = fun _ -> assert false

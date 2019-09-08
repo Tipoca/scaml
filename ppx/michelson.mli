@@ -38,13 +38,21 @@ end
 
 module Opcode : sig
   type constant =
-    | True
-    | False
     | Unit
+    | Bool of bool
     | Int of int
     | Nat of int
-    | Mutez of int
+    (* | Mutez of int *)
     | String of string
+    | Bytes of string
+    | Option of constant option
+    | List of constant list
+    | Set of constant list
+    | Map of (constant * constant) list
+    | Big_map of (constant * constant) list
+    | Pair of constant * constant
+    | Left of constant
+    | Right of constant
 
   type t =
     | DUP
@@ -82,6 +90,8 @@ module Opcode : sig
     | UNIT
     | EMPTY_SET of Type.t
     | SIZE
+    | MEM
+    | UPDATE
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit
