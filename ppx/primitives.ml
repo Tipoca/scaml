@@ -20,6 +20,11 @@ let simple os = fun _ty pre -> pre @ os
 
 (* We can omit the types here, since they are coded in SCaml.ml *)
 
+(* EXEC for pure lambda and closure *)
+let exec = function
+  | false -> [ EXEC ]
+  | true -> [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR; EXEC ]
+
 let primitives = 
   [ "fst"     , (1, simple [CAR])
   ; "snd"     , (1, simple [CDR])
@@ -57,10 +62,6 @@ let primitives =
   ; "Set.update"  , (3, simple [UPDATE])
                     
   ; "Set.fold"    , (3, fun typ xs -> 
-        let exec = function
-          | false -> [ EXEC ]
-          | true -> [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR; EXEC ]
-        in
         let is_closure1, is_closure2 =
           match typ with
           | TyLambda (typ, _, _) ->
@@ -78,8 +79,7 @@ let primitives =
               Format.eprintf "Set.fold: %a@." M.Type.pp typ;
               assert false
         in
-(* I do not know this is optimal or not
-
+(*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
   elt : acc : lam : s                   DIP { DIP { DUP } SWAP }
@@ -93,7 +93,6 @@ let primitives =
   empty : acc : lam : s                 ITER {
   acc : lam : s                         DIP { DROP }
   acc : s
-   
 *)           
 
         xs @
@@ -104,4 +103,43 @@ let primitives =
                 @ exec is_closure2);
           DIP [ DROP ]
         ])
+      
+  ; "Loop.left"    , (2, fun typ xs -> 
+        let is_closure =
+          match typ with
+          | TyLambda (typ, _, _) ->
+              begin match typ with
+              | TyLambda (_, _, cli1) ->
+                  (match (repr_closure_info cli1).closure_desc with
+                   | CLList xs -> xs <> []
+                   | _ -> assert false)
+              | _ -> assert false
+              end
+          | _ -> 
+              Format.eprintf "Loop.left %a@." M.Type.pp typ;
+              assert false
+        in
+        let rty =
+          match typ with
+          | TyLambda (_, TyLambda(_, rty, _), _) -> rty
+          | _ -> 
+              Format.eprintf "Loop.left %a@." M.Type.pp typ;
+              assert false
+        in
+(* lambda : acc : S                 SWAP ; LEFT ;
+   Left acc : lambda : S            LOOP_LEFT {
+   acc : lambda : S                   DUP DIP
+   acc : lambda : lambda : S          EXECx
+   LorR : lambda : S
+   
+   Left acc : lambda : S            LOOP_LEFT { ..
+   
+   Right res : lambda : S           LOOP_LEFT { .. }
+   res : lambda : S                 DIP DROP
+
+*)
+        xs @
+        [ SWAP ; LEFT rty;
+          LOOP_LEFT (  DIP [ DUP ] :: exec is_closure );
+          DIP [ DROP ] ])
   ]

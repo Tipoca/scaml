@@ -185,12 +185,13 @@ module Opcode = struct
     | MEM
     | UPDATE
     | ITER of t list
+    | LOOP of t list (* It is not really useful for SCaml *)
+    | LOOP_LEFT of t list 
 
 (*
     | EMPTY_MAP of Type.t * Type.t
     | MAP of t list
     | GET
-    | LOOP of t list
     | LOOP_LEFT of t list
     | CAST
     | RENAME
@@ -313,7 +314,9 @@ module Opcode = struct
     | MEM -> p "MEM"
     | UPDATE -> p "UPDATE"
     | ITER code -> f "ITER @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
-          
+    | LOOP code -> f "LOOP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
+    | LOOP_LEFT code -> f "LOOP_LEFT @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
+
   let rec clean_fail = function
     | [] -> []
     | FAIL::_ -> [FAIL]
@@ -327,6 +330,8 @@ module Opcode = struct
     | IF_LEFT (t1, t2) -> IF_LEFT (clean_fail t1, clean_fail t2)
     | IF_CONS (t1, t2) -> IF_CONS (clean_fail t1, clean_fail t2)
     | COMMENT (s, t) -> COMMENT (s, clean_fail t)
+    | LOOP t -> LOOP (clean_fail t)
+    | LOOP_LEFT t -> LOOP_LEFT (clean_fail t)
     | (DUP
       | DROP
       | SWAP
