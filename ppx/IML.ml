@@ -32,7 +32,7 @@ and desc =
   | Fun of M.Type.t * M.Type.t * pat * t * (Ident.t * M.Type.t) list (* freevars *)
   | IfThenElse of t * t * t
   | App of t * t list
-  | Prim of string * (M.Type.t -> M.Opcode.t list -> M.Opcode.t list) * t list
+  | Prim of string * (M.Opcode.t list -> M.Opcode.t list) * t list
   | Let of pat * t * t
   | Switch_or of t * pat * t * pat * t
   | Switch_cons of t * pat * pat * t * t
@@ -160,7 +160,7 @@ let rec type_expr tenv ty =
   | Tvar _ -> Error (Type_variable ty)
   | Tarrow (Nolabel, f, t, _) -> 
       type_expr tenv f >>= fun f ->
-      type_expr tenv t >>= fun t -> Ok (TyLambda (f, t, { closure_desc= CLList [] }))
+      type_expr tenv t >>= fun t -> Ok (TyLambda (f, t, { closure_desc= CLEmpty }))
   | Ttuple [t1; t2] -> 
       type_expr tenv t1 >>= fun t1 ->
       type_expr tenv t2 >>= fun t2 -> Ok (TyPair (t1, t2))
@@ -519,7 +519,12 @@ and primitive ~loc fty n args =
         unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
       let args, left = List.split_at arity args in
       match left with
-      | [] -> Prim (n, conv, args)
+      | [] -> 
+          (* Bit tricky.  fty will be unified and its closure info will be
+             modified.  The changes will be fixed when [conv fty] is used
+             in compile.ml
+          *)
+          Prim (n, conv fty, args)
       | _ -> 
           let typ = 
             let rec f ty = function
@@ -533,7 +538,7 @@ and primitive ~loc fty n args =
           in
           App ({ loc; (* XXX inaccurate *)
                  typ;
-                 desc= Prim (n, conv, args) }, left)
+                 desc= Prim (n, conv fty, args) }, left)
 
 and compile_match ~loc:loc0 env e cases =
   let loc = e.exp_loc in

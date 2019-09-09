@@ -20,7 +20,11 @@ module Set = struct
   let update : 'a -> bool -> 'a set -> 'a set = fun _ -> assert false
   let fold : ('elt -> 'acc -> 'acc) -> 'elt set -> 'acc -> 'acc = fun _ -> assert false
 end
-      
+
+module Loop = struct
+  let left : ('a -> ('a, 'b) sum) -> 'a -> 'b = fun _ -> assert false
+end
+  
 let (+) : int -> int -> int = fun _ -> assert false
 let (+^) : nat -> nat -> nat = fun _ -> assert false
 let (+$) : tz -> tz -> tz = fun _ -> assert false

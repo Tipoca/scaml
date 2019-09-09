@@ -21,7 +21,7 @@ do
   if [ -f "$tz" ]; then
       cp "$tz" /Users/jun/.share/projects/dailambda/docker/docker-tezos-hands-on/contracts/
       tz=`basename $tz`
-      (cd /Users/jun/.share/projects/dailambda/docker/docker-tezos-hands-on; ./tezos-client run script "contracts/$tz" on storage 'Unit' and input 'Unit')
+      (cd /Users/jun/.share/projects/dailambda/docker/docker-tezos-hands-on; ./tezos-client run script "contracts/$tz" on storage 'Unit' and input 'Unit' )
   fi
 done
 
