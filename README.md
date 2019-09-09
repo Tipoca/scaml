@@ -48,7 +48,7 @@ Primitives defined in a module `SCaml` is referred.
 An additional small typing phase to enforce the type of the entry point
 to be `'parameter -> 'storage -> (SCaml.operation list, 'storage)`
 
-It also forces the typing of `SCaml.self`.
+TODO: It will also force the typing of `SCaml.self`.
 
 ### Conversion to IML
 
