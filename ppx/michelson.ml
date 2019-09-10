@@ -178,6 +178,7 @@ module Opcode = struct
     | IF_LEFT of t list * t list
     | IF_CONS of t list * t list
     | FAIL (* FAILWITH ? *)
+    | FAILWITH
     | COMMENT of string * t list
     | UNIT
     | EMPTY_SET of Type.t
@@ -291,6 +292,7 @@ module Opcode = struct
 
     | EXEC -> p "EXEC"
     | FAIL -> p "FAIL"
+    | FAILWITH -> p "FAILWITH"
     | COMMENT (s, ts) ->
         f "{ @[/* %s */@ @[%a@]@] }" s (Format.list " ;@ " pp) ts
     | IF_LEFT (t1, t2) ->
@@ -371,6 +373,7 @@ module Opcode = struct
       | AND | OR | XOR | NOT 
       | EXEC
       | FAIL 
+      | FAILWITH
       | UNIT 
       | EMPTY_SET _ | EMPTY_MAP _
       | SIZE

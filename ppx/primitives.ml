@@ -216,32 +216,33 @@ let primitives =
   ; "String.slice", (3, simple [ SLICE ])
   ; "Bytes.slice", (3, simple [ SLICE ]) (* XXX not tested *)
                    
-(*V*)  ; "Contract.contract", (1, fun ty xs ->
+  ; "Contract.contract", (1, fun ty xs ->
         match ty with
         | TyLambda (_, TyOption (TyContract ty), _) ->
             xs @ [ CONTRACT ty ]
         | _ -> assert false)
 
-  (*V*)  ; "Contract.implicit_account", (1, simple [ IMPLICIT_ACCOUNT ])
-  (*V*)  ; "Contract.address", (1, simple [ ADDRESS ])
-  (*V*)  ; "Contract.self",   (0, simple [SELF])
+  ; "Contract.implicit_account", (1, simple [ IMPLICIT_ACCOUNT ])
+  ; "Contract.address", (1, simple [ ADDRESS ])
+  ; "Contract.self",   (0, simple [SELF])
 
+  ; "Operation.transfer_tokens", (3, simple [ TRANSFER_TOKENS ])
+  ; "Operation.set_delegate", (1, simple [ SET_DELEGATE ])
+  ; "Operation.create_account", (4, simple [ CREATE_ACCOUNT; PAIR ])
 
-  (*V*)  ; "Operation.transfer_tokens", (3, simple [ TRANSFER_TOKENS ])
-  (*V (not some case)*)  ; "Operation.set_delegate", (1, simple [ SET_DELEGATE ])
-  (*V*)  ; "Operation.create_account", (4, simple [ CREATE_ACCOUNT; PAIR ])
-
-  (*V*)  ; "Global.get_now", (1, simple [ DROP; NOW ])
-  (*V*)  ; "Global.get_amount", (1, simple [ DROP; AMOUNT ])
-  (*V*)  ; "Global.get_balance", (1, simple [ DROP; BALANCE ])
-  (*V*)  ; "Global.get_source", (1, simple [ DROP; SOURCE ])
-  (*V*)  ; "Global.get_sender", (1, simple [ DROP; SENDER ])
-  (*V*)  ; "Global.get_steps_to_quota", (1, simple [ DROP; STEPS_TO_QUOTA ])
+  ; "Global.get_now", (1, simple [ DROP; NOW ])
+  ; "Global.get_amount", (1, simple [ DROP; AMOUNT ])
+  ; "Global.get_balance", (1, simple [ DROP; BALANCE ])
+  ; "Global.get_source", (1, simple [ DROP; SOURCE ])
+  ; "Global.get_sender", (1, simple [ DROP; SENDER ])
+  ; "Global.get_steps_to_quota", (1, simple [ DROP; STEPS_TO_QUOTA ])
 
   ; "Crypto.check_signature", (3, simple [ CHECK_SIGNATURE ])
-  (* V *); "Crypto.blake2b", (1, simple [ BLAKE2B ])
-  (* V *); "Crypto.sha256", (1, simple [ SHA256 ])
-  (* V *); "Crypto.sha512", (1, simple [ SHA512 ])
-  (* V *); "Crypto.hash_key", (1, simple [ HASH_KEY ])
+  ; "Crypto.blake2b", (1, simple [ BLAKE2B ])
+  ; "Crypto.sha256", (1, simple [ SHA256 ])
+  ; "Crypto.sha512", (1, simple [ SHA512 ])
+  ; "Crypto.hash_key", (1, simple [ HASH_KEY ])
+
+  ; "Error.failwith", (1, simple [ FAILWITH ])
   ]
     

@@ -166,3 +166,7 @@ module Obj = struct
   let pack : 'a -> bytes = fun _ -> assert false
   let unpack : bytes -> 'a option = fun _ -> assert false
 end
+
+module Error = struct
+  let failwith : 'a -> 'b = fun _ -> assert false
+end

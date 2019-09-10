@@ -88,6 +88,7 @@ module Opcode : sig
     | IF_LEFT of t list * t list
     | IF_CONS of t list * t list
     | FAIL
+    | FAILWITH
     | COMMENT of string * t list
     | UNIT
     | EMPTY_SET of Type.t
