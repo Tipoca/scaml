@@ -196,15 +196,11 @@ module Opcode = struct
     | PACK
     | UNPACK of Type.t
     | SLICE
-
-(*
-    | CAST
-
+    | CAST (* to remove type name. *)
     | CONTRACT of Type.t
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT
-    | CREATE_CONTRACT of t list
     | IMPLICIT_ACCOUNT
     | NOW
     | AMOUNT
@@ -218,8 +214,9 @@ module Opcode = struct
     | SOURCE
     | SENDER
     | ADDRESS
+(*
+    | CREATE_CONTRACT of t list
 *)
-                              
     
   let rec pp_constant ppf =
     let open Format in
@@ -321,9 +318,24 @@ module Opcode = struct
     | PACK -> p "PACK"
     | UNPACK ty -> f "UNPACK (%a)" Type.pp ty
     | SLICE -> p "SLICE"
-      
-      
-      
+    | CAST -> p "CAST"
+    | CONTRACT ty -> f "CONTRACT (%a)" Type.pp ty
+    | TRANSFER_TOKENS -> p "TRANSFER_TOKENS"
+    | SET_DELEGATE -> p "SET_DELEGATE"
+    | CREATE_ACCOUNT -> p "CREATE_ACCOUNT"
+    | IMPLICIT_ACCOUNT -> p "IMPLICIT_ACCOUNT"
+    | NOW -> p "NOW"
+    | AMOUNT -> p "AMOUNT"
+    | BALANCE -> p "BALANCE"
+    | CHECK_SIGNATURE -> p "CHECK_SIGNATURE"
+    | BLAKE2B -> p "BLAKE2B"
+    | SHA256 -> p "SHA256"
+    | SHA512 -> p "SHA512"
+    | HASH_KEY -> p "HASH_KEY"
+    | STEPS_TO_QUOTA -> p "STEPS_TO_QUOTA"
+    | SOURCE -> p "SOURCE"
+    | SENDER -> p "SENDER"
+    | ADDRESS -> p "ADDRESS"
 
   let rec clean_fail = function
     | [] -> []
@@ -370,6 +382,26 @@ module Opcode = struct
       | RENAME _
       | PACK | UNPACK _
       | SLICE
+      | CAST
+
+      | CONTRACT _
+      | TRANSFER_TOKENS
+      | SET_DELEGATE
+      | CREATE_ACCOUNT
+      | IMPLICIT_ACCOUNT
+      | NOW
+      | AMOUNT
+      | BALANCE
+      | CHECK_SIGNATURE
+      | BLAKE2B
+      | SHA256
+      | SHA512
+      | HASH_KEY
+      | STEPS_TO_QUOTA
+      | SOURCE
+      | SENDER
+      | ADDRESS
+
       as t) -> t
 end
 

@@ -182,14 +182,19 @@ let rec type_expr tenv ty =
       in
       f [] tys >>= fun tys ->
       begin match Path.is_scaml p, tys with
-        | Some "operation", [] -> Ok TyOperation
         | Some "sum", [t1; t2] -> Ok (TyOr (t1, t2))
         | Some "int", [] -> Ok TyInt
         | Some "nat", [] -> Ok TyNat
         | Some "tz", [] -> Ok TyMutez
         | Some "Set.t", [ty] -> Ok (TySet ty)
         | Some "Map.t", [ty1; ty2] -> Ok (TyMap (ty1, ty2))
+        | Some "Operation.t", [] -> Ok TyOperation
         | Some "Contract.t", [ty] -> Ok (TyContract ty)
+        | Some "Timestamp.t", [] -> Ok TyTimestamp
+        | Some "Address.t", [] -> Ok TyAddress
+        | Some "Key.t", [] -> Ok TyKey
+        | Some "Signature.t", [] -> Ok TySignature
+        | Some "Key_hash.t", [] -> Ok TyKeyHash
         | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_data_type p)
         | None, _ -> prerr_endline "GAGA"; Error (Unsupported_data_type p)
       end

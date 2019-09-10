@@ -1,8 +1,5 @@
 type ('a, 'b) sum = Left of 'a | Right of 'b
 
-type operation
-type operations = operation list
-
 type ocaml_int = int
 
 type nat = Nat of ocaml_int
@@ -82,14 +79,86 @@ module Bytes = struct
   let slice : nat -> nat -> bytes -> bytes option = fun _ -> assert false
 end
 
+module Address = struct
+  type t
+end
+type address = Address.t
+
+module Key_hash = struct
+  type t
+end
+type key_hash = Key_hash.t
+
 module Contract : sig
   type 'a t
   val self : 'a t
+  val contract : address -> 'a t option
+  val implicit_account : key_hash -> unit t
+  val address : 'a t -> address
 end = struct
   type 'a t = Self
   let self = Self
+  let contract = fun _ -> assert false
+  let implicit_account = fun _ -> assert false
+  let address _ = assert false
 end
 type 'a contract = 'a Contract.t
+
+module Operation = struct
+  type t
+  let transfer_tokens : 'a -> tz -> 'a contract -> t = fun _ -> assert false
+  let set_delegate : key_hash option -> t = fun _ -> assert false
+  let create_account : key_hash -> key_hash option -> bool -> tz -> (t * address) = fun _ -> assert false
+end
+
+type operation = Operation.t
+type operations = operation list
+
+module Timestamp = struct
+  type t
+end
+type timestamp = Timestamp.t
+
+(* maybe the place is not good *)
+module Global : sig
+  val get_now : unit -> timestamp
+  val get_amount : unit -> tz
+  val get_balance : unit -> tz
+  val get_source : unit -> address
+  val get_sender : unit -> address
+  val get_steps_to_quota : unit -> nat
+end = struct
+  let get_now _ = assert false
+  let get_amount _ = assert false
+  let get_balance _ = assert false
+  let get_source _ = assert false
+  let get_sender _ = assert false
+  let get_steps_to_quota _ = assert false
+end
+
+module Key = struct
+  type t
+end
+type key = Key.t
+
+module Signature = struct
+  type t
+end
+type signature = Signature.t
+
+module Crypto = struct
+  let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
+  let blake2b : bytes -> bytes = fun _ -> assert false
+  let sha256 : bytes -> bytes = fun _ -> assert false
+  let sha512 : bytes -> bytes = fun _ -> assert false
+  let hash_key  : key -> key_hash = fun _ -> assert false
+(*
+      | STEPS_TO_QUOTA
+      | SOURCE
+      | SENDER
+      | ADDRESS
+        *)
+end
 
 module Obj = struct
   let pack : 'a -> bytes = fun _ -> assert false

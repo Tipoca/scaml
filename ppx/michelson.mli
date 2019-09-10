@@ -106,6 +106,27 @@ module Opcode : sig
     | PACK
     | UNPACK of Type.t
     | SLICE
+    | CAST (* to remove type name. *)
+    | CONTRACT of Type.t
+    | TRANSFER_TOKENS
+    | SET_DELEGATE
+    | CREATE_ACCOUNT
+    | IMPLICIT_ACCOUNT
+    | NOW
+    | AMOUNT
+    | BALANCE
+    | CHECK_SIGNATURE
+    | BLAKE2B
+    | SHA256
+    | SHA512
+    | HASH_KEY
+    | STEPS_TO_QUOTA
+    | SOURCE
+    | SENDER
+    | ADDRESS
+(*
+    | CREATE_CONTRACT of t list
+*)
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit
