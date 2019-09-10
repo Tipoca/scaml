@@ -34,6 +34,7 @@ module Type : sig
 
   val pp : Format.formatter -> t -> unit
 
+  exception Unification_error of t * t
   val unify : t -> t -> t
 end
 
@@ -96,6 +97,8 @@ module Opcode : sig
     | ITER of t list
     | LOOP of t list (* It is not really useful for SCaml *)
     | LOOP_LEFT of t list 
+    | CONCAT
+    | SELF
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit

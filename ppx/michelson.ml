@@ -84,7 +84,9 @@ module Type = struct
                    Format.(list ";@ " (fun ppf (id, ty) ->
                        fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs) cli
           pp t2
-  
+
+  exception Unification_error of t * t
+
   let rec merge env1 env2 =
     let ids = List.map fst env1 @ List.map fst env2 in
     let ids = List.sort_uniq compare ids in
@@ -130,8 +132,7 @@ module Type = struct
           end;
           TyLambda (unify t11 t21, unify t12 t22, cli1)
       | _ -> 
-          Format.eprintf "Unifying %a and %a!!@." pp t1 pp t2;
-          assert false
+          raise (Unification_error (t1,t2))
 end
 
 module Opcode = struct
@@ -140,7 +141,6 @@ module Opcode = struct
     | Bool of bool
     | Int of int
     | Nat of int
-    (* | Mutez of int *)
     | String of string
     | Bytes of string
     | Option of constant option
@@ -187,23 +187,19 @@ module Opcode = struct
     | ITER of t list
     | LOOP of t list (* It is not really useful for SCaml *)
     | LOOP_LEFT of t list 
+    | CONCAT
+    | SELF
 
 (*
     | EMPTY_MAP of Type.t * Type.t
     | MAP of t list
     | GET
-    | LOOP_LEFT of t list
     | CAST
     | RENAME
-    | CONCAT
     | SLICE
     | PACK
     | UNPACK
 
-    | LSL
-    | LSR
-
-    | SELF
     | CONTRACT of Type.t
     | TRANSFER_TOKENS
     | SET_DELEGATE
@@ -316,6 +312,8 @@ module Opcode = struct
     | ITER code -> f "ITER @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
     | LOOP code -> f "LOOP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
     | LOOP_LEFT code -> f "LOOP_LEFT @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
+    | CONCAT -> p "CONCAT"
+    | SELF -> p "SELF"
 
   let rec clean_fail = function
     | [] -> []
@@ -355,6 +353,8 @@ module Opcode = struct
       | SIZE
       | MEM
       | UPDATE
+      | CONCAT
+      | SELF
       as t) -> t
 end
 
@@ -367,6 +367,3 @@ module Module = struct
       Type.pp storage
       (Format.list ";@ " Opcode.pp ) code
 end
-
-
-

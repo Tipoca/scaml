@@ -44,6 +44,8 @@ let primitives =
   ; "*"       , (2, simple [MUL])
   ; "*^"      , (2, simple [MUL])
   ; "*$"      , (2, simple [MUL])
+  ; "lsl"     , (2, simple [LSL])
+  ; "lsr"     , (2, simple [LSR])
   ; "&&"      , (2, simple [AND])
   ; "||"      , (2, simple [OR])
   ; "xor"     , (2, simple [XOR])
@@ -142,4 +144,9 @@ let primitives =
         [ SWAP ; LEFT rty;
           LOOP_LEFT (  DIP [ DUP ] :: exec is_closure );
           DIP [ DROP ] ])
+      
+  ; "String.concat",   (2, simple [CONCAT])
+  ; "Bytes.concat",    (2, simple [CONCAT]) (* XXX no test available *)
+                       
+  ; "Contract.self",   (0, simple [SELF])
   ]

@@ -44,6 +44,9 @@ let ediv_int_nat : int -> nat -> (int * nat) option = fun _ -> assert false
 let ediv_nat_int : nat -> int -> (int * nat) option = fun _ -> assert false
 let ediv_nat_nat : nat -> nat -> (nat * nat) option = fun _ -> assert false
 
+let (lsl) : nat -> nat -> nat = fun _ -> assert false
+let (lsr) : nat -> nat -> nat = fun _ -> assert false
+
 let abs : int -> nat = fun _ -> assert false
 
 let fst = fst
@@ -60,3 +63,21 @@ let (||) = (||)
 let xor : bool -> bool -> bool = fun _ -> assert false
 let not = not
   
+module String = struct
+  let concat : string -> string -> string = fun _ -> assert false
+end
+
+module Bytes = struct
+  type t
+  let concat : t -> t -> t = fun _ -> assert false
+end
+type bytes = Bytes.t
+
+module Contract : sig
+  type 'a t
+  val self : 'a t
+end = struct
+  type 'a t = Self
+  let self = Self
+end
+type 'a contract = 'a Contract.t
