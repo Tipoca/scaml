@@ -230,7 +230,7 @@ module Opcode = struct
     | Nat n    -> f "%d" n
     (*    | Mutez n  -> f "%d" n *)
     | String s -> f "%S" s
-    | Bytes s ->  f "%S" s (* XXX unknown *)
+    | Bytes s (* in hex *) ->  f "0x%s" s
     | Option None -> p "None"
     | Option (Some t) -> f "Some (%a)" pp_constant t
     | Pair (t1, t2) -> f "(Pair (%a) (%a))" pp_constant t1 pp_constant t2

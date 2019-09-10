@@ -1,4 +1,7 @@
 EXCLUDE_QUERY_DIR
+B /Users/jun/.opam/4.07.1/lib/bigarray-compat
+B /Users/jun/.opam/4.07.1/lib/cstruct
+B /Users/jun/.opam/4.07.1/lib/hex
 B /Users/jun/.opam/4.07.1/lib/ocaml
 B /Users/jun/.opam/4.07.1/lib/ocaml-migrate-parsetree
 B /Users/jun/.opam/4.07.1/lib/ocaml/compiler-libs
@@ -14,6 +17,9 @@ B ../../../_build/default/ppx_test/runtime/.ppx_test_runtime.objs/byte
 B ../../../_build/default/ppxx/src/.ppxx.objs/byte
 B ../../../_build/default/spotlib/lib/.spotlib.objs/byte
 B ../../../_build/default/typpx/src/.typpx.objs/byte
+S /Users/jun/.opam/4.07.1/lib/bigarray-compat
+S /Users/jun/.opam/4.07.1/lib/cstruct
+S /Users/jun/.opam/4.07.1/lib/hex
 S /Users/jun/.opam/4.07.1/lib/ocaml
 S /Users/jun/.opam/4.07.1/lib/ocaml-migrate-parsetree
 S /Users/jun/.opam/4.07.1/lib/ocaml/compiler-libs

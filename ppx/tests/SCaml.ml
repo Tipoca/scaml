@@ -75,9 +75,11 @@ module String = struct
 end
 
 module Bytes = struct
-  let concat : bytes -> bytes -> bytes = fun _ -> assert false
-  let slice : nat -> nat -> bytes -> bytes option = fun _ -> assert false
+  type t = Bytes of string
+  let concat : t -> t -> t = fun _ -> assert false
+  let slice : nat -> nat -> t -> t option = fun _ -> assert false
 end
+type bytes = Bytes.t = Bytes of string
 
 module Address = struct
   type t

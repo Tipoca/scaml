@@ -195,6 +195,7 @@ let rec type_expr tenv ty =
         | Some "Key.t", [] -> Ok TyKey
         | Some "Signature.t", [] -> Ok TySignature
         | Some "Key_hash.t", [] -> Ok TyKeyHash
+        | Some "Bytes.t", [] -> Ok TyBytes
         | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_data_type p)
         | None, _ -> prerr_endline "GAGA"; Error (Unsupported_data_type p)
       end
@@ -314,7 +315,7 @@ let structure ~parameter:_ env str =
             make typ @@ Right (ty1, e)
         | s -> internal_error ~loc "strange sum constructor %s" s
         end
-  
+
     | Tconstr (p, _, _) when p = Predef.path_unit -> 
         make TyUnit Unit
   
@@ -377,6 +378,26 @@ let structure ~parameter:_ env str =
             | _ -> errorf ~loc "Nat can only take an integer constant"
         end
   
+    (* bytes *)
+    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Bytes.t" -> true | _ -> false) ->
+        if cstr_name <> "Bytes" then internal_error ~loc "strange bytes constructor";
+        begin match args with 
+          | [arg] -> 
+              let e = expression env arg in
+              begin match e.desc with
+                | Const (String s) -> 
+                    let _hex = 
+                      try
+                        Hex.to_string (`Hex s) 
+                      with
+                      | _ -> errorf ~loc:e.loc "Bytes must take hex representation of bytes"
+                    in
+                    { e with typ= TyBytes; desc= Const (Bytes s) }
+                | _ -> errorf ~loc "Bytes only takes a string literal"
+              end
+          | _ -> internal_error ~loc "strange bytes arguments"
+        end
+
     (* set *)
     | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
