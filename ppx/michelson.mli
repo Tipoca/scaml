@@ -101,6 +101,7 @@ module Opcode : sig
     | LOOP_LEFT of t list 
     | CONCAT
     | SELF
+    | GET
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit

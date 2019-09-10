@@ -24,6 +24,7 @@ module Map = struct
   let empty : ('k, 'v) t = Map []
   let length : ('k, 'v) t -> nat = fun _ -> assert false
   let map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t = fun _ -> assert false
+  let get : 'k -> ('k, 'v) t -> 'k option = fun _ -> assert false
 end
 type ('k, 'v) map = ('k, 'v) Map.t
 

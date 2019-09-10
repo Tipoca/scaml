@@ -191,9 +191,9 @@ module Opcode = struct
     | LOOP_LEFT of t list 
     | CONCAT
     | SELF
+    | GET
 
 (*
-    | GET
     | CAST
     | RENAME
     | SLICE
@@ -316,6 +316,7 @@ module Opcode = struct
     | LOOP_LEFT code -> f "LOOP_LEFT @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
     | CONCAT -> p "CONCAT"
     | SELF -> p "SELF"
+    | GET -> p "GET"
 
   let rec clean_fail = function
     | [] -> []
@@ -358,6 +359,7 @@ module Opcode = struct
       | UPDATE
       | CONCAT
       | SELF
+      | GET
       as t) -> t
 end
 

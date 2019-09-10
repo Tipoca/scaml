@@ -204,4 +204,6 @@ let primitives =
           ) ;
           DIP [ DROP ]
         ])
+
+  ; "Map.get", (2, simple [ GET ] )
   ]
