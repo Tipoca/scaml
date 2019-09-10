@@ -192,10 +192,12 @@ module Opcode = struct
     | CONCAT
     | SELF
     | GET
+    | RENAME of string (* for debugging *)
+    | PACK
+    | UNPACK of Type.t
 
 (*
     | CAST
-    | RENAME
     | SLICE
     | PACK
     | UNPACK
@@ -317,6 +319,12 @@ module Opcode = struct
     | CONCAT -> p "CONCAT"
     | SELF -> p "SELF"
     | GET -> p "GET"
+    | RENAME s -> f "RENAME @%s" s
+    | PACK -> p "PACK"
+    | UNPACK ty -> f "UNPACK (%a)" Type.pp ty
+      
+      
+      
 
   let rec clean_fail = function
     | [] -> []
@@ -360,6 +368,8 @@ module Opcode = struct
       | CONCAT
       | SELF
       | GET
+      | RENAME _
+      | PACK | UNPACK _
       as t) -> t
 end
 

@@ -102,6 +102,9 @@ module Opcode : sig
     | CONCAT
     | SELF
     | GET
+    | RENAME of string (* for debugging *)
+    | PACK
+    | UNPACK of Type.t
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit

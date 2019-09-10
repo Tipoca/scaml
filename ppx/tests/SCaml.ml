@@ -77,10 +77,8 @@ module String = struct
 end
 
 module Bytes = struct
-  type t
-  let concat : t -> t -> t = fun _ -> assert false
+  let concat : bytes -> bytes -> bytes = fun _ -> assert false
 end
-type bytes = Bytes.t
 
 module Contract : sig
   type 'a t
@@ -90,3 +88,8 @@ end = struct
   let self = Self
 end
 type 'a contract = 'a Contract.t
+
+module Obj = struct
+  let pack : 'a -> bytes = fun _ -> assert false
+  let unpack : bytes -> 'a option = fun _ -> assert false
+end

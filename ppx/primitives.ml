@@ -206,4 +206,12 @@ let primitives =
         ])
 
   ; "Map.get", (2, simple [ GET ] )
+               
+  ; "Obj.pack", (1, simple [ PACK ])
+
+  ; "Obj.unpack", (1, fun ty xs ->
+      match ty with
+      | TyLambda (_, TyOption ty, _) ->
+          xs @ [ UNPACK ty ]
+      | _ -> assert false)
   ]
