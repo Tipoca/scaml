@@ -152,6 +152,7 @@ let rec get_constant t =
 type type_expr_error =
   | Type_variable of Types.type_expr
   | Unsupported_type of Types.type_expr
+  | Unsupported_data_type of Path.t
 
 let rec type_expr tenv ty = 
   let open Result.Infix in
@@ -185,11 +186,13 @@ let rec type_expr tenv ty =
         | Some "int", [] -> Ok TyInt
         | Some "nat", [] -> Ok TyNat
         | Some "tz", [] -> Ok TyMutez
-        | Some "set", [ty] -> Ok (TySet ty)
+        | Some "Set.t", [ty] -> Ok (TySet ty)
+        | Some "Map.t", [ty1; ty2] -> Ok (TyMap (ty1, ty2))
         | Some "Contract.t", [ty] -> Ok (TyContract ty)
-        | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_type ty)
-        | _ -> Error (Unsupported_type ty)
+        | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_data_type p)
+        | None, _ -> prerr_endline "GAGA"; Error (Unsupported_data_type p)
       end
+
   | Tpoly (ty, []) -> type_expr tenv ty
   | _ -> 
       Format.eprintf "YYY %a@." Printtyp.type_expr ty;
@@ -208,6 +211,11 @@ let type_expr ~loc tenv ty =
       errorf ~loc "This expression has type %a, which has unsupported type %a in SCaml"
         Printtyp.type_expr ty
         Printtyp.type_expr ty'
+  | Error (Unsupported_data_type p) ->
+      (* XXX sometimes it is a pattern *)
+      errorf ~loc "This expression has type %a, which has unsupported data type %s in SCaml"
+        Printtyp.type_expr ty
+        (Path.name p)
 
 let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } = 
   match pat_desc with
@@ -364,7 +372,7 @@ let structure ~parameter:_ env str =
         end
   
     (* set *)
-    | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "set" -> true | _ -> false) ->
+    | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
         let ty = match typ with
           | TySet ty-> ty

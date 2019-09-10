@@ -181,6 +181,7 @@ module Opcode = struct
     | COMMENT of string * t list
     | UNIT
     | EMPTY_SET of Type.t
+    | EMPTY_MAP of Type.t * Type.t
     | SIZE
     | MEM
     | UPDATE
@@ -191,7 +192,6 @@ module Opcode = struct
     | SELF
 
 (*
-    | EMPTY_MAP of Type.t * Type.t
     | MAP of t list
     | GET
     | CAST
@@ -306,6 +306,7 @@ module Opcode = struct
           (Format.list " ;@ " pp) t2
     | UNIT -> p "UNIT"
     | EMPTY_SET ty -> f "EMPTY_SET (%a)" Type.pp ty
+    | EMPTY_MAP (ty1, ty2) -> f "EMPTY_MAP (%a) (%a)" Type.pp ty1 Type.pp ty2
     | SIZE -> p "SIZE"
     | MEM -> p "MEM"
     | UPDATE -> p "UPDATE"
@@ -349,7 +350,7 @@ module Opcode = struct
       | EXEC
       | FAIL 
       | UNIT 
-      | EMPTY_SET _ 
+      | EMPTY_SET _ | EMPTY_MAP _
       | SIZE
       | MEM
       | UPDATE

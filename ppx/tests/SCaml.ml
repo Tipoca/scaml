@@ -1,8 +1,5 @@
 type ('a, 'b) sum = Left of 'a | Right of 'b
 
-type ('a, 'b) map = Map of ('a * 'b) list
-type ('a, 'b) big_map = BigMap of ('a * 'b) list
-
 type operation
 type operations = operation list
 
@@ -12,14 +9,24 @@ type nat = Nat of ocaml_int
 type int = Int of ocaml_int
 type tz = Tz of float
 
-type 'a set = Set of 'a list
 module Set = struct
-  let empty : 'a set = Set []
+  type 'a t = Set of 'a list
+  let empty : 'a t = Set []
   let length (Set xs) = Nat (List.length xs)
-  let mem : 'a -> 'a set -> bool = fun _ -> assert false 
-  let update : 'a -> bool -> 'a set -> 'a set = fun _ -> assert false
-  let fold : ('elt -> 'acc -> 'acc) -> 'elt set -> 'acc -> 'acc = fun _ -> assert false
+  let mem : 'a -> 'a t -> bool = fun _ -> assert false 
+  let update : 'a -> bool -> 'a t -> 'a t = fun _ -> assert false
+  let fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false
 end
+type 'a set = 'a Set.t
+
+module Map = struct
+  type ('k, 'v) t = Map
+  let empty : ('k, 'v) t = Map
+  let length : ('k, 'v) t -> nat = fun _ -> assert false
+end
+type ('k, 'v) map = ('k, 'v) Map.t
+
+type ('a, 'b) big_map = BigMap of ('a * 'b) list
 
 module Loop = struct
   let left : ('a -> ('a, 'b) sum) -> 'a -> 'b = fun _ -> assert false

@@ -91,6 +91,7 @@ module Opcode : sig
     | COMMENT of string * t list
     | UNIT
     | EMPTY_SET of Type.t
+    | EMPTY_MAP of Type.t * Type.t
     | SIZE
     | MEM
     | UPDATE

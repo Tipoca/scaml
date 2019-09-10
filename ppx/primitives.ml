@@ -59,7 +59,15 @@ let primitives =
         | TySet ty -> [EMPTY_SET ty]
         | _ -> assert false)
 
+  ; "Map.empty", (0, fun typ xs ->
+        assert (xs = []);
+        match typ with
+        | TyMap (ty1,ty2) -> [EMPTY_MAP (ty1, ty2)]
+        | _ -> assert false)
+
   ; "Set.length"  , (1, simple [SIZE])
+  ; "Map.length"  , (1, simple [SIZE])
+
   ; "Set.mem"     , (2, simple [MEM])
   ; "Set.update"  , (3, simple [UPDATE])
                     
