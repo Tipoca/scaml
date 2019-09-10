@@ -78,6 +78,7 @@ module Bytes = struct
   type t = Bytes of string
   let concat : t -> t -> t = fun _ -> assert false
   let slice : nat -> nat -> t -> t option = fun _ -> assert false
+  let length : t -> nat = fun _ -> assert false
 end
 type bytes = Bytes.t = Bytes of string
 

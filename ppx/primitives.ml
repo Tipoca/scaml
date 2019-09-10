@@ -155,7 +155,8 @@ let primitives =
           DIP [ DROP ] ])
       
   ; "String.concat",   (2, simple [CONCAT])
-  ; "Bytes.concat",    (2, simple [CONCAT]) (* XXX no test available *)
+  ; "Bytes.concat",    (2, simple [CONCAT])
+  ; "Bytes.length",    (1, simple [SIZE]) 
                        
   ; "Map.map", (2, fun typ xs ->
         (* XXX dup *)
