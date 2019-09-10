@@ -186,13 +186,13 @@ module Opcode = struct
     | MEM
     | UPDATE
     | ITER of t list
+    | MAP of t list
     | LOOP of t list (* It is not really useful for SCaml *)
     | LOOP_LEFT of t list 
     | CONCAT
     | SELF
 
 (*
-    | MAP of t list
     | GET
     | CAST
     | RENAME
@@ -311,6 +311,7 @@ module Opcode = struct
     | MEM -> p "MEM"
     | UPDATE -> p "UPDATE"
     | ITER code -> f "ITER @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
+    | MAP code -> f "MAP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
     | LOOP code -> f "LOOP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
     | LOOP_LEFT code -> f "LOOP_LEFT @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
     | CONCAT -> p "CONCAT"
@@ -323,6 +324,7 @@ module Opcode = struct
   and aux = function
     | DIP ts -> DIP (clean_fail ts)
     | ITER ts -> ITER (clean_fail ts)
+    | MAP ts -> MAP (clean_fail ts)
     | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_fail ts)
     | IF (t1, t2) -> IF (clean_fail t1, clean_fail t2)
     | IF_NONE (t1, t2) -> IF_NONE (clean_fail t1, clean_fail t2)

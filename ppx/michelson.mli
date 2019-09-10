@@ -96,6 +96,7 @@ module Opcode : sig
     | MEM
     | UPDATE
     | ITER of t list
+    | MAP of t list
     | LOOP of t list (* It is not really useful for SCaml *)
     | LOOP_LEFT of t list 
     | CONCAT

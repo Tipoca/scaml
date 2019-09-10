@@ -1,0 +1,4 @@
+open SCaml
+let main (x:unit) y = 
+  [], assert (Map.length (Map.map (fun x y -> x+y) (Map [ (Int 1, Int 1); (Int 2, Int 2) ])) = Nat 2)
+

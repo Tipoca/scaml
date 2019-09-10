@@ -157,4 +157,51 @@ let primitives =
   ; "Bytes.concat",    (2, simple [CONCAT]) (* XXX no test available *)
                        
   ; "Contract.self",   (0, simple [SELF])
+                       
+  ; "Map.map", (2, fun typ xs ->
+        (* XXX dup *)
+        let is_closure1, is_closure2 =
+          match typ with
+          | TyLambda (typ, _, _) ->
+              begin match typ with
+              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
+                  (match (repr_closure_info cli1).closure_desc with
+                   | CLList xs -> xs <> []
+                   | _ -> assert false),
+                  (match (repr_closure_info cli2).closure_desc with
+                   | CLList xs -> xs <> []
+                   | _ -> assert false)
+              | _ -> assert false
+              end
+          | _ -> 
+              Format.eprintf "Set.fold: %a@." M.Type.pp typ;
+              assert false
+        in
+(* lambda : map : S                 SWAP ;
+   { (k,v); <tl> } : lambda : S     MAP {
+     (k, v) : lambda : S              DIP DUP
+     (k, v) : lambda : lambda : S     DUP CAR DIP { CDR ; SWAP }
+     k : lambda : v : lambda : S      EXECx
+     lambda' : v : lambda : S         SWAP EXECx
+     w : : lambda : S
+   
+   { <tl> } : lambda : S            MAP { ..
+   
+   {} : lambda : S                  Map {
+
+   map' : lambda : S                  DIP DROP
+   map' : S 
+   
+*)
+        xs @
+        [ SWAP ; 
+          MAP ( 
+            [ DIP [ DUP ];
+              DUP; CAR; DIP [ CDR; SWAP ] ]
+            @ exec is_closure1
+            @ [ SWAP ]
+            @ exec is_closure2
+          ) ;
+          DIP [ DROP ]
+        ])
   ]
