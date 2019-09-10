@@ -241,7 +241,11 @@ module Opcode = struct
     | Set ts -> f "{ %a }" (list " ; " pp_constant) (List.sort compare ts)
     | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
     | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
-    | Timestamp z -> Z.pp_print ppf z
+    | Timestamp z -> 
+        begin match Ptime.of_float_s @@ Z.to_float z with
+          | None -> assert false
+          | Some t -> f "\"%s\"" (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
+        end
 
   let rec pp ppf =
     let open Format in

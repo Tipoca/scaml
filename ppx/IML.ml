@@ -257,7 +257,7 @@ let parse_timestamp s =
       else 
         let posix = Ptime.to_float_s t in
         if posix < 0. then Error "Timestamp before Epoch is not allowed"
-        else Ok (Int (Z.of_float posix))
+        else Ok (Timestamp (Z.of_float posix))
   | Error (`RFC3339 (_, e)) -> 
       Error (Format.sprintf "%a" Ptime.pp_rfc3339_error e)
 
