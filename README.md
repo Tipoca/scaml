@@ -1,6 +1,6 @@
 # SCaml, Smart Contract Abstract Machine Language.
 
-> Scam never calls itself a scam.
+> Scam never calls it a scam.
 
 Small and Simple Strict Subset of OCaml for Smart contracts.
 
@@ -32,7 +32,7 @@ The following OCaml features are not supported:
 * Arrays.
 * Classes, and objects.
 
-## Desgin
+## Design
 
 ### Parsing by OCaml
 
@@ -48,7 +48,7 @@ Primitives defined in a module `SCaml` is referred.
 An additional small typing phase to enforce the type of the entry point
 to be `'parameter -> 'storage -> (SCaml.operation list, 'storage)`
 
-TODO: It will also force the typing of `SCaml.self`.
+It will also try forcing the typing of `SCaml.self`.
 
 ### Conversion to IML
 
@@ -87,5 +87,15 @@ In future,
 * Lists: `[ Int 1; Int 2; Int 3 ]`
 * Sets: `Set [ Nat 1; Nat 2; Nat 3 ]`
 * Maps: `Map [ (Nat 1, "1"); (Nat 2, "2"); (Nat 3, "3") ]`
+
+### String based constants
+
+* Bytes: `Bytes "0123456789abcdef"`
+* Address: `Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN" = Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN"`
+* Keys: `Key "edpkuSR6ywqsk17myFVRcw2eXhVib2MeLc9D1QkEQb98ctWUBwSJpF"`
+* Key hashes: `Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx" = Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"`
+* Signatures: `Signature "edsigu4chLHh7rDAUxHyifHYTJyuS8zybSSFQ5eSXydXD7PWtHXrpeS19ds3hA587p5JNjyJcZbLx8QtemuJBEFkLyzjAhTjjta"`
+
+
 
 
