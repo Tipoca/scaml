@@ -398,6 +398,66 @@ let structure ~parameter:_ env str =
           | _ -> internal_error ~loc "strange bytes arguments"
         end
 
+    (* address *)
+    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Address.t" -> true | _ -> false) ->
+        if cstr_name <> "Address" then internal_error ~loc "strange address constructor";
+        begin match args with 
+          | [arg] -> 
+              let e = expression env arg in
+              begin match e.desc with
+                | Const (String s) -> 
+                    (* XXX must check the form of address *)
+                    { e with typ= TyAddress; desc= Const (String s) }
+                | _ -> errorf ~loc "Address only takes a string literal"
+              end
+          | _ -> internal_error ~loc "strange address arguments"
+        end
+
+    (* key *)
+    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Key.t" -> true | _ -> false) ->
+        if cstr_name <> "Key" then internal_error ~loc "strange key constructor";
+        begin match args with 
+          | [arg] -> 
+              let e = expression env arg in
+              begin match e.desc with
+                | Const (String s) -> 
+                    (* XXX must check the form of key *)
+                    { e with typ= TyKey; desc= Const (String s) }
+                | _ -> errorf ~loc "Key only takes a string literal"
+              end
+          | _ -> internal_error ~loc "strange key arguments"
+        end
+
+    (* key_hash *)
+    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Key_hash.t" -> true | _ -> false) ->
+        if cstr_name <> "Key_hash" then internal_error ~loc "strange key_hash constructor";
+        begin match args with 
+          | [arg] -> 
+              let e = expression env arg in
+              begin match e.desc with
+                | Const (String s) -> 
+                    (* XXX must check the form of key_hash *)
+                    { e with typ= TyKeyHash; desc= Const (String s) }
+                | _ -> errorf ~loc "Key_hash only takes a string literal"
+              end
+          | _ -> internal_error ~loc "strange key_hash arguments"
+        end
+
+    (* signature *)
+    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Signature.t" -> true | _ -> false) ->
+        if cstr_name <> "Signature" then internal_error ~loc "strange signature constructor";
+        begin match args with 
+          | [arg] -> 
+              let e = expression env arg in
+              begin match e.desc with
+                | Const (String s) -> 
+                    (* XXX must check the form of signature *)
+                    { e with typ= TySignature; desc= Const (String s) }
+                | _ -> errorf ~loc "Signature only takes a string literal"
+              end
+          | _ -> internal_error ~loc "strange Signature arguments"
+        end
+
     (* set *)
     | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in

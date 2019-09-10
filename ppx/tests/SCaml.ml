@@ -82,14 +82,14 @@ end
 type bytes = Bytes.t = Bytes of string
 
 module Address = struct
-  type t
+  type t = Address of string
 end
-type address = Address.t
+type address = Address.t = Address of string
 
 module Key_hash = struct
-  type t
+  type t = Key_hash of string
 end
-type key_hash = Key_hash.t
+type key_hash = Key_hash.t = Key_hash of string
 
 module Contract : sig
   type 'a t
@@ -139,14 +139,14 @@ end = struct
 end
 
 module Key = struct
-  type t
+  type t = Key of string
 end
-type key = Key.t
+type key = Key.t = Key of string
 
 module Signature = struct
-  type t
+  type t = Signature of string
 end
-type signature = Signature.t
+type signature = Signature.t = Signature of string
 
 module Crypto = struct
   let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
