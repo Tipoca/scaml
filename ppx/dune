@@ -3,4 +3,5 @@
   (name ppx_scaml)
   (public_name ppx_scaml)
   (flags -w A-4-9-40-41-42-44)
-  (libraries compiler-libs.common ocaml-migrate-parsetree ppxx typpx spotlib hex))
+  (libraries compiler-libs.common ocaml-migrate-parsetree ppxx typpx spotlib
+  	     hex ptime zarith))

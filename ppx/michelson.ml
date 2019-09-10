@@ -139,8 +139,8 @@ module Opcode = struct
   type constant = 
     | Unit
     | Bool of bool
-    | Int of int
-    | Nat of int
+    | Int of Z.t
+    | Nat of Z.t
     | String of string
     | Bytes of string
     | Option of constant option
@@ -151,6 +151,7 @@ module Opcode = struct
     | Pair of constant * constant
     | Left of constant
     | Right of constant
+    | Timestamp of Z.t
 
   type t = 
     | DUP
@@ -226,8 +227,8 @@ module Opcode = struct
     | Bool true  -> p "True"
     | Bool false -> p "False"
     | Unit     -> p "Unit"
-    | Int n    -> f "%d" n
-    | Nat n    -> f "%d" n
+    | Int n    -> Z.pp_print ppf n
+    | Nat n    -> Z.pp_print ppf n
     (*    | Mutez n  -> f "%d" n *)
     | String s -> f "%S" s
     | Bytes s (* in hex *) ->  f "0x%s" s
@@ -240,6 +241,7 @@ module Opcode = struct
     | Set ts -> f "{ %a }" (list " ; " pp_constant) (List.sort compare ts)
     | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
     | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | Timestamp z -> Z.pp_print ppf z
 
   let rec pp ppf =
     let open Format in

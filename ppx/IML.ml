@@ -249,6 +249,34 @@ let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_or _        -> unsupported ~loc "or pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
 
+let parse_timestamp s =
+  match Ptime.of_rfc3339 s with
+  | Ok (t, _, _) -> 
+      let t' = Ptime.truncate ~frac_s:0 t in
+      if not (Ptime.equal t t') then Error "Subsecond is not allowed in timestamps"
+      else 
+        let posix = Ptime.to_float_s t in
+        if posix < 0. then Error "Timestamp before Epoch is not allowed"
+        else Ok (Int (Z.of_float posix))
+  | Error (`RFC3339 (_, e)) -> 
+      Error (Format.sprintf "%a" Ptime.pp_rfc3339_error e)
+
+let parse_bytes s =
+  try
+    ignore @@ Hex.to_string (`Hex s); Ok (Bytes s)
+  with
+  | _ -> Error "Bytes must take hex representation of bytes"
+
+let constructions_by_string =
+  [ ("Signature.t", ("signature", "Signature", TySignature, fun x -> Ok (String x)));
+    ("Key_hash.t", ("key_hash", "Key_hash", TyKeyHash, fun x -> Ok (String x)));
+    ("Key.t", ("key", "Key", TyKey, fun x -> Ok (String x)));
+    ("Address.t", ("address", "Address", TyAddress, fun x -> Ok (String x)));
+    ("Timestamp.t", ("timestamp", "Timestamp", TyTimestamp, parse_timestamp));
+    ("Bytes.t", ("bytes", "Bytes", TyBytes, parse_bytes))
+  ]
+
+
 let structure ~parameter:_ env str =
 
   let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
@@ -281,6 +309,7 @@ let structure ~parameter:_ env str =
         end
   
     (* option *)
+    (* XXX constant compilation *)
     | Tconstr (p, [ty], _) when p = Predef.path_option ->
         begin match cstr_name with
           | "None" -> 
@@ -297,6 +326,7 @@ let structure ~parameter:_ env str =
         end
   
     (* sum *)
+    (* XXX constant compilation *)
     | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
         let ty1, ty2 = match typ with
@@ -326,7 +356,7 @@ let structure ~parameter:_ env str =
               | _ -> internal_error ~loc "strange Int arguments"
             in
             match arg.exp_desc with
-              | Texp_constant (Const_int n) -> Const (Int n)
+              | Texp_constant (Const_int n) -> Const (Int (Z.of_int n))
               | _ -> errorf ~loc "Int can only take an integer constant"
           end
   
@@ -340,7 +370,7 @@ let structure ~parameter:_ env str =
             | Texp_constant (Const_int n) -> 
                 if n < 0 then 
                   errorf ~loc "Nat can only take a positive integer constant";
-                Const (Nat n)
+                Const (Nat (Z.of_int n))
             | _ -> errorf ~loc "Nat can only take an integer constant"
         end
   
@@ -371,93 +401,13 @@ let structure ~parameter:_ env str =
                     
                     sub ^ String.init (6 - String.length sub) (fun _ -> '0')
                   in
-                  Const (Nat (int_of_string (dec ^ sub)))
+                  Const (Nat (Z.of_string (dec ^ sub)))
                 with
                 | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
               end
             | _ -> errorf ~loc "Nat can only take an integer constant"
         end
   
-    (* bytes *)
-    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Bytes.t" -> true | _ -> false) ->
-        if cstr_name <> "Bytes" then internal_error ~loc "strange bytes constructor";
-        begin match args with 
-          | [arg] -> 
-              let e = expression env arg in
-              begin match e.desc with
-                | Const (String s) -> 
-                    let _hex = 
-                      try
-                        Hex.to_string (`Hex s) 
-                      with
-                      | _ -> errorf ~loc:e.loc "Bytes must take hex representation of bytes"
-                    in
-                    { e with typ= TyBytes; desc= Const (Bytes s) }
-                | _ -> errorf ~loc "Bytes only takes a string literal"
-              end
-          | _ -> internal_error ~loc "strange bytes arguments"
-        end
-
-    (* address *)
-    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Address.t" -> true | _ -> false) ->
-        if cstr_name <> "Address" then internal_error ~loc "strange address constructor";
-        begin match args with 
-          | [arg] -> 
-              let e = expression env arg in
-              begin match e.desc with
-                | Const (String s) -> 
-                    (* XXX must check the form of address *)
-                    { e with typ= TyAddress; desc= Const (String s) }
-                | _ -> errorf ~loc "Address only takes a string literal"
-              end
-          | _ -> internal_error ~loc "strange address arguments"
-        end
-
-    (* key *)
-    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Key.t" -> true | _ -> false) ->
-        if cstr_name <> "Key" then internal_error ~loc "strange key constructor";
-        begin match args with 
-          | [arg] -> 
-              let e = expression env arg in
-              begin match e.desc with
-                | Const (String s) -> 
-                    (* XXX must check the form of key *)
-                    { e with typ= TyKey; desc= Const (String s) }
-                | _ -> errorf ~loc "Key only takes a string literal"
-              end
-          | _ -> internal_error ~loc "strange key arguments"
-        end
-
-    (* key_hash *)
-    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Key_hash.t" -> true | _ -> false) ->
-        if cstr_name <> "Key_hash" then internal_error ~loc "strange key_hash constructor";
-        begin match args with 
-          | [arg] -> 
-              let e = expression env arg in
-              begin match e.desc with
-                | Const (String s) -> 
-                    (* XXX must check the form of key_hash *)
-                    { e with typ= TyKeyHash; desc= Const (String s) }
-                | _ -> errorf ~loc "Key_hash only takes a string literal"
-              end
-          | _ -> internal_error ~loc "strange key_hash arguments"
-        end
-
-    (* signature *)
-    | Tconstr (p, [], _) when (match Path.is_scaml p with Some "Signature.t" -> true | _ -> false) ->
-        if cstr_name <> "Signature" then internal_error ~loc "strange signature constructor";
-        begin match args with 
-          | [arg] -> 
-              let e = expression env arg in
-              begin match e.desc with
-                | Const (String s) -> 
-                    (* XXX must check the form of signature *)
-                    { e with typ= TySignature; desc= Const (String s) }
-                | _ -> errorf ~loc "Signature only takes a string literal"
-              end
-          | _ -> internal_error ~loc "strange Signature arguments"
-        end
-
     (* set *)
     | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
@@ -519,7 +469,30 @@ let structure ~parameter:_ env str =
           | _ -> internal_error ~loc "strange map arguments"
         end
   
-    | Tconstr (p, _, _) -> unsupported ~loc "constants of data type %s" (Path.name p)
+    (* C "string" style constants *)
+    | Tconstr (p, [], _) when (Path.is_scaml p <> None) ->
+        begin match Path.is_scaml p with
+          | None -> assert false
+          | Some n ->
+              match List.assoc_opt n constructions_by_string with
+              | None -> 
+                  unsupported ~loc "constants of data type %s" (Path.name p)
+              | Some (tyname, cname, typ, parse) ->
+                  if cstr_name <> cname then internal_error ~loc "strange constructor for %s" tyname;
+                  match args with 
+                  | [] | _::_::_ ->
+                      internal_error ~loc "strange %s arguments" cname
+                  | [arg] -> 
+                      let e = expression env arg in
+                      match e.desc with
+                      | Const (String s) -> 
+                          begin match parse s with
+                            | Ok v -> { e with typ; desc= Const v }
+                            | Error s -> errorf ~loc "Parse error of %s string: %s" tyname s
+                          end
+                      | _ -> errorf ~loc "%s only takes a string literal" cname
+        end
+
     | _ -> prerr_endline cstr_name; assert false
   
   and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes=_ } =

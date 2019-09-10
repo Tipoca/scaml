@@ -42,8 +42,8 @@ module Opcode : sig
   type constant =
     | Unit
     | Bool of bool
-    | Int of int
-    | Nat of int
+    | Int of Z.t
+    | Nat of Z.t
     (* | Mutez of int *)
     | String of string
     | Bytes of string
@@ -55,6 +55,7 @@ module Opcode : sig
     | Pair of constant * constant
     | Left of constant
     | Right of constant
+    | Timestamp of Z.t
 
   type t =
     | DUP

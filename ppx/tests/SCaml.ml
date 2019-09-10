@@ -117,12 +117,12 @@ type operation = Operation.t
 type operations = operation list
 
 module Timestamp = struct
-  type t
+  type t = Timestamp of string
   let add : t -> int -> t = fun _ -> assert false
   let sub : t -> int -> t = fun _ -> assert false
   let diff : t -> t -> int = fun _ -> assert false
 end
-type timestamp = Timestamp.t
+type timestamp = Timestamp.t = Timestamp of string
 
 (* maybe the place is not good *)
 module Global : sig
