@@ -385,20 +385,54 @@ let structure ~parameter:_ env str =
               let e = expression env arg in
               ignore @@ unify (TyList ty) e.typ;
               begin match e.desc with
+                | Nil _ -> { e with typ; desc= Const (Set []) }
                 | Cons _ -> 
                     (* it extracts a list.  we have change the type *)
                     (* XXX uniqueness and sorting *)
                     begin match get_constant e with
                       | Ok (List xs) -> { e with typ; desc= Const (Set xs) }
-                      | Error loc -> errorf ~loc "Element of Set must be a constant"
+                      | Error loc -> errorf ~loc "Elements of Set must be constants"
                       | _ -> assert false
                     end
+                    
                 | _ -> errorf ~loc "Set only takes a list literal"
               end
           | _ -> internal_error ~loc "strange set arguments"
         end
   
-    | Tconstr (p, _, _) -> unsupported ~loc "data type %s" (Path.name p)
+    (* map *)
+    | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "Map.t" -> true | _ -> false) ->
+        let typ = type_expr ~loc exp_env exp_type in
+        let ty1, ty2 = match typ with
+          | TyMap (ty1, ty2) -> ty1, ty2
+          | _ -> assert false
+        in
+        (* XXX comparable type check *)
+        if cstr_name <> "Map" then internal_error ~loc "strange map constructor";
+        begin match args with 
+          | [arg] -> 
+              let e = expression env arg in
+              ignore @@ unify (TyList (TyPair (ty1, ty2))) e.typ;
+              begin match e.desc with
+                | Nil _ -> { e with typ; desc= Const (Map []) }
+                | Cons _ -> 
+                    (* it extracts a list.  we have change the type *)
+                    (* XXX uniqueness and sorting *)
+                    begin match get_constant e with
+                      | Ok (List xs) -> 
+                          let xs = List.map (function
+                              | Pair (c1,c2) -> (c1,c2)
+                              | _ -> assert false) xs in
+                          { e with typ; desc= Const (Map xs) }
+                      | Error loc -> errorf ~loc "Elements of Map must be constants"
+                      | _ -> assert false
+                    end
+                | _ -> errorf ~loc "Map only takes a list literal"
+              end
+          | _ -> internal_error ~loc "strange map arguments"
+        end
+  
+    | Tconstr (p, _, _) -> unsupported ~loc "constants of data type %s" (Path.name p)
     | _ -> prerr_endline cstr_name; assert false
   
   and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes=_ } =

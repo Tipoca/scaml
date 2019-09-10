@@ -241,8 +241,8 @@ module Opcode = struct
     | Right t -> f "(Right (%a))" pp_constant t
     | List ts -> f "{ %a }" (list " ; " pp_constant) ts
     | Set ts -> f "{ %a }" (list " ; " pp_constant) (List.sort compare ts)
-    | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt (%a) (%a)" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
-    | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt (%a) (%a)" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
 
   let rec pp ppf =
     let open Format in
