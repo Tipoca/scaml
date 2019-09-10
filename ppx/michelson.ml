@@ -195,12 +195,10 @@ module Opcode = struct
     | RENAME of string (* for debugging *)
     | PACK
     | UNPACK of Type.t
+    | SLICE
 
 (*
     | CAST
-    | SLICE
-    | PACK
-    | UNPACK
 
     | CONTRACT of Type.t
     | TRANSFER_TOKENS
@@ -322,6 +320,7 @@ module Opcode = struct
     | RENAME s -> f "RENAME @%s" s
     | PACK -> p "PACK"
     | UNPACK ty -> f "UNPACK (%a)" Type.pp ty
+    | SLICE -> p "SLICE"
       
       
       
@@ -370,6 +369,7 @@ module Opcode = struct
       | GET
       | RENAME _
       | PACK | UNPACK _
+      | SLICE
       as t) -> t
 end
 

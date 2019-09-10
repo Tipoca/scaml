@@ -74,10 +74,12 @@ let not = not
   
 module String = struct
   let concat : string -> string -> string = fun _ -> assert false
+  let slice : nat -> nat -> string -> string option = fun _ -> assert false
 end
 
 module Bytes = struct
   let concat : bytes -> bytes -> bytes = fun _ -> assert false
+  let slice : nat -> nat -> bytes -> bytes option = fun _ -> assert false
 end
 
 module Contract : sig

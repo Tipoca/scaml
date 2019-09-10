@@ -214,4 +214,7 @@ let primitives =
       | TyLambda (_, TyOption ty, _) ->
           xs @ [ UNPACK ty ]
       | _ -> assert false)
+      
+  ; "String.slice", (3, simple [ SLICE ])
+  ; "Bytes.slice", (3, simple [ SLICE ])
   ]

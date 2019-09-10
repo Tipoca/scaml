@@ -105,6 +105,7 @@ module Opcode : sig
     | RENAME of string (* for debugging *)
     | PACK
     | UNPACK of Type.t
+    | SLICE
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit
