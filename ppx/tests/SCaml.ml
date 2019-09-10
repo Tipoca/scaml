@@ -118,6 +118,9 @@ type operations = operation list
 
 module Timestamp = struct
   type t
+  let add : t -> int -> t = fun _ -> assert false
+  let sub : t -> int -> t = fun _ -> assert false
+  let diff : t -> t -> int = fun _ -> assert false
 end
 type timestamp = Timestamp.t
 

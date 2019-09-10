@@ -28,6 +28,7 @@ let exec = function
 let primitives = 
   [ "fst"     , (1, simple [CAR])
   ; "snd"     , (1, simple [CDR])
+  (* XXXX comparable type check *)
   ; "compare" , (2, simple [COMPARE])
   ; "="       , (2, simple [COMPARE; EQ])
   ; "<>"      , (2, simple [COMPARE; NEQ])
@@ -244,5 +245,9 @@ let primitives =
   ; "Crypto.hash_key", (1, simple [ HASH_KEY ])
 
   ; "Error.failwith", (1, simple [ FAILWITH ])
+                      
+  ; "Timestamp.add", (2, simple [ADD])
+  ; "Timestamp.sub", (2, simple [SUB])
+  ; "Timestamp.diff", (2, simple [SUB])
   ]
     
