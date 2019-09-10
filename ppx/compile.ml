@@ -142,7 +142,7 @@ let rec compile env t =
   | Assert t ->
       let os = compile env t in
       os @ [ ASSERT; PUSH (TyUnit, Unit) ]
-  | AssertFalse -> [ FAIL ]
+  | AssertFalse -> [ UNIT ; FAILWITH ]
   | IfThenElse (t1, t2, t3) ->
       let oif = compile env t1 in
       let othen = compile env t2 in
@@ -218,12 +218,12 @@ let rec compile env t =
                     let rec f ops env = function
                       | [] -> assert false
                       | [(x,ty)] -> 
-                          ops @ [ IF_NONE ([ FAIL ], []) ],
+                          ops @ [ IF_NONE ([ UNIT ; FAILWITH ], []) ],
                           if List.mem_assoc x xtys then (x,ty)::env else env
                       | (x,ty)::xtys ->
                           let ops = 
                             ops @
-                            [ DUP ; DIP [ CAR; IF_NONE ([ FAIL (* to avoid the stack type differences *)], [])] ; CDR ]
+                            [ DUP ; DIP [ CAR; IF_NONE ([ UNIT; FAILWITH (* to avoid the stack type differences *)], [])] ; CDR ]
                           in
                           let env = 
                             if List.mem_assoc x xtys then (x,ty)::env else env
@@ -356,7 +356,7 @@ let compile_structure t =
   ; COMMENT ("entry point", os )
   ; COMMENT ("final clean up",
              [ DIP (List.init (List.length env) (fun _ -> DROP)) ]) ]
-  |> clean_fail
+  |> clean_failwith
     
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   (* Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename; *)

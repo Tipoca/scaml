@@ -177,7 +177,6 @@ module Opcode = struct
     | IF_NONE of t list * t list
     | IF_LEFT of t list * t list
     | IF_CONS of t list * t list
-    | FAIL (* FAILWITH ? *)
     | FAILWITH
     | COMMENT of string * t list
     | UNIT
@@ -291,7 +290,6 @@ module Opcode = struct
     | NOT  -> p "NOT"
 
     | EXEC -> p "EXEC"
-    | FAIL -> p "FAIL"
     | FAILWITH -> p "FAILWITH"
     | COMMENT (s, ts) ->
         f "{ @[/* %s */@ @[%a@]@] }" s (Format.list " ;@ " pp) ts
@@ -339,22 +337,22 @@ module Opcode = struct
     | SENDER -> p "SENDER"
     | ADDRESS -> p "ADDRESS"
 
-  let rec clean_fail = function
+  let rec clean_failwith = function
     | [] -> []
-    | FAIL::_ -> [FAIL]
-    | x::xs -> aux x :: clean_fail xs
+    | FAILWITH::_ -> [FAILWITH]
+    | x::xs -> aux x :: clean_failwith xs
   and aux = function
-    | DIP ts -> DIP (clean_fail ts)
-    | ITER ts -> ITER (clean_fail ts)
-    | MAP ts -> MAP (clean_fail ts)
-    | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_fail ts)
-    | IF (t1, t2) -> IF (clean_fail t1, clean_fail t2)
-    | IF_NONE (t1, t2) -> IF_NONE (clean_fail t1, clean_fail t2)
-    | IF_LEFT (t1, t2) -> IF_LEFT (clean_fail t1, clean_fail t2)
-    | IF_CONS (t1, t2) -> IF_CONS (clean_fail t1, clean_fail t2)
-    | COMMENT (s, t) -> COMMENT (s, clean_fail t)
-    | LOOP t -> LOOP (clean_fail t)
-    | LOOP_LEFT t -> LOOP_LEFT (clean_fail t)
+    | DIP ts -> DIP (clean_failwith ts)
+    | ITER ts -> ITER (clean_failwith ts)
+    | MAP ts -> MAP (clean_failwith ts)
+    | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_failwith ts)
+    | IF (t1, t2) -> IF (clean_failwith t1, clean_failwith t2)
+    | IF_NONE (t1, t2) -> IF_NONE (clean_failwith t1, clean_failwith t2)
+    | IF_LEFT (t1, t2) -> IF_LEFT (clean_failwith t1, clean_failwith t2)
+    | IF_CONS (t1, t2) -> IF_CONS (clean_failwith t1, clean_failwith t2)
+    | COMMENT (s, t) -> COMMENT (s, clean_failwith t)
+    | LOOP t -> LOOP (clean_failwith t)
+    | LOOP_LEFT t -> LOOP_LEFT (clean_failwith t)
     | (DUP
       | DROP
       | SWAP
@@ -372,7 +370,6 @@ module Opcode = struct
       | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR
       | AND | OR | XOR | NOT 
       | EXEC
-      | FAIL 
       | FAILWITH
       | UNIT 
       | EMPTY_SET _ | EMPTY_MAP _

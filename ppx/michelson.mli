@@ -87,7 +87,6 @@ module Opcode : sig
     | IF_NONE of t list * t list
     | IF_LEFT of t list * t list
     | IF_CONS of t list * t list
-    | FAIL
     | FAILWITH
     | COMMENT of string * t list
     | UNIT
@@ -131,7 +130,7 @@ module Opcode : sig
 
   val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit
-  val clean_fail : t list -> t list
+  val clean_failwith : t list -> t list
 end
 
 module Module : sig
