@@ -313,25 +313,24 @@ and mk_application fty =
      res :: s
      
   *)
-  begin match fty with
-    | TyLambda (_ty1, _ty2, cinfo) ->
-        begin match (repr_closure_info cinfo).closure_desc with
-          | CLLink _ -> assert false
-          | CLEmpty -> assert false
-          | CLList [] ->
-              (* it is not a closure *)
-              [ EXEC ]
-          | CLList _xs -> 
-              (* it is a closure 
-                 arg :: (lambda, env) :: s  
-                 arg :: env :: lambda :: s  <-  DIP [ DUP; CDR; DIP [ CAR ] ]
-                 (arg,env) :: lambda ::s    <- PAIR
-                 EXEC!
-              *)
-              [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR ; EXEC ]
-        end
-    | _ -> assert false
-  end
+  match fty with
+  | TyLambda (_ty1, _ty2, cinfo) ->
+      begin match (repr_closure_info cinfo).closure_desc with
+        | CLLink _ -> assert false
+        | CLEmpty -> assert false
+        | CLList [] ->
+            (* it is not a closure *)
+            [ EXEC ]
+        | CLList _xs -> 
+            (* it is a closure 
+               arg :: (lambda, env) :: s  
+               arg :: env :: lambda :: s  <-  DIP [ DUP; CDR; DIP [ CAR ] ]
+               (arg,env) :: lambda ::s    <- PAIR
+               EXEC!
+            *)
+            [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR ; EXEC ]
+      end
+  | _ -> assert false
 
 let split_entry_point t =
   let rec f st t = match t.IML.desc with
