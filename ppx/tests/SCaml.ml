@@ -1,46 +1,10 @@
-type ('a, 'b) sum = Left of 'a | Right of 'b
-
 type ocaml_int = int
-
 type nat = Nat of ocaml_int
 type int = Int of ocaml_int
 type tz = Tz of float
 
-module List = struct
-  type 'a t = 'a list
-  let length : 'a t -> nat = fun _ -> assert false
-  let map : ('a -> 'b) -> 'a t -> 'b t = fun _ -> assert false
-  let fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a list -> 'acc = fun _ -> assert false
-end
+type ('a, 'b) sum = Left of 'a | Right of 'b
 
-module Set = struct
-  type 'a t = Set of 'a list
-  let empty : 'a t = Set []
-  let length (Set xs) = Nat (Stdlib.List.length xs)
-  let mem : 'a -> 'a t -> bool = fun _ -> assert false 
-  let update : 'a -> bool -> 'a t -> 'a t = fun _ -> assert false
-  let fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false
-end
-type 'a set = 'a Set.t
-
-module Map = struct
-  type ('k, 'v) t = Map of ('k * 'v) list
-  let empty : ('k, 'v) t = Map []
-  let length : ('k, 'v) t -> nat = fun _ -> assert false
-  let map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t = fun _ -> assert false
-  let get : 'k -> ('k, 'v) t -> 'k option = fun _ -> assert false
-  let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false
-  let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
-  let fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
-end
-type ('k, 'v) map = ('k, 'v) Map.t
-
-type ('a, 'b) big_map = BigMap of ('a * 'b) list
-
-module Loop = struct
-  let left : ('a -> ('a, 'b) sum) -> 'a -> 'b = fun _ -> assert false
-end
-  
 let (+) : int -> int -> int = fun _ -> assert false
 let (+^) : nat -> nat -> nat = fun _ -> assert false
 let (+$) : tz -> tz -> tz = fun _ -> assert false
@@ -87,6 +51,45 @@ let (&&) = (&&)
 let (||) = (||)
 let xor : bool -> bool -> bool = fun _ -> assert false
 let not = not
+  
+module Error = struct
+  let failwith : 'a -> 'b = fun _ -> assert false
+end
+
+module List = struct
+  type 'a t = 'a list
+  let length : 'a t -> nat = fun _ -> assert false
+  let map : ('a -> 'b) -> 'a t -> 'b t = fun _ -> assert false
+  let fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a list -> 'acc = fun _ -> assert false
+end
+
+module Set = struct
+  type 'a t = Set of 'a list
+  let empty : 'a t = Set []
+  let length (Set xs) = Nat (Stdlib.List.length xs)
+  let mem : 'a -> 'a t -> bool = fun _ -> assert false 
+  let update : 'a -> bool -> 'a t -> 'a t = fun _ -> assert false
+  let fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false
+end
+type 'a set = 'a Set.t
+
+module Map = struct
+  type ('k, 'v) t = Map of ('k * 'v) list
+  let empty : ('k, 'v) t = Map []
+  let length : ('k, 'v) t -> nat = fun _ -> assert false
+  let map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t = fun _ -> assert false
+  let get : 'k -> ('k, 'v) t -> 'k option = fun _ -> assert false
+  let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false
+  let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
+  let fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
+end
+type ('k, 'v) map = ('k, 'v) Map.t
+
+type ('a, 'b) big_map = BigMap of ('a * 'b) list
+
+module Loop = struct
+  let left : ('a -> ('a, 'b) sum) -> 'a -> 'b = fun _ -> assert false
+end
   
 module String = struct
   let concat : string -> string -> string = fun _ -> assert false
@@ -189,8 +192,4 @@ end
 module Obj = struct
   let pack : 'a -> bytes = fun _ -> assert false
   let unpack : bytes -> 'a option = fun _ -> assert false
-end
-
-module Error = struct
-  let failwith : 'a -> 'b = fun _ -> assert false
 end

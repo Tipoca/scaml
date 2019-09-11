@@ -1,0 +1,4 @@
+EXCLUDE_QUERY_DIR
+B ../../_build/default/examples/ppx_curried_constr/.ppx_curried_constr.objs/byte
+S .
+FLG -open Ppx_curried_constr -w -9

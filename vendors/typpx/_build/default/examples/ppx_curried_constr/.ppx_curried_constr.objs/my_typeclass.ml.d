@@ -1,0 +1,1 @@
+examples/ppx_curried_constr/my_typeclass.ml: Ast_helper Asttypes Btype Builtin_attributes Cl Clflags Cmt_format Concr Csig Cty Ctype Env Exp Format Ident Includeclass Lazy List Location Longident Meths Misc Parsetree Pat Path Predef Printtyp Stypes Subst Typ Typecore Typedecl Typedtree Types Typetexp Variance Vars Vb Warnings

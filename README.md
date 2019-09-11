@@ -96,6 +96,16 @@ In future,
 * Key hashes: `Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx" = Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"`
 * Signatures: `Signature "edsigu4chLHh7rDAUxHyifHYTJyuS8zybSSFQ5eSXydXD7PWtHXrpeS19ds3hA587p5JNjyJcZbLx8QtemuJBEFkLyzjAhTjjta"`
 
+## Examples
 
+Under `ppx/tests/`
+
+Library functions are listed in `ppx/tests/SCaml.ml`.
+
+## Unsupported
+
+* Big maps
+* `CREATE_CONTRACT`
+* Check of addresses, keys, key_hashes and signatures
 
 

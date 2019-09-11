@@ -1,0 +1,5 @@
+(** @canonical Ppx_type_of.Mod *)
+module Mod = Ppx_type_of__Mod
+
+(** @canonical Ppx_type_of.Ppx *)
+module Ppx = Ppx_type_of__Ppx

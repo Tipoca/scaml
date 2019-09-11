@@ -1,0 +1,26 @@
+(executables
+  (names test add test_sugar)
+  (flags -w -32)
+  (preprocess (pps ppx_overload)))
+
+(alias
+ (name add)
+ (deps add.exe)
+ (action (run ./add.exe)))
+  
+(alias
+ (name test)
+ (deps test.exe)
+ (action (run ./test.exe)))
+
+(alias
+ (name test_sugar)
+ (deps test_sugar.exe)
+ (action (run ./test_sugar.exe)))
+  
+(alias
+ (name runtest)
+ (deps (alias add)
+       (alias test)
+       (alias test_sugar)
+       ))

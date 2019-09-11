@@ -1,0 +1,14 @@
+(executables
+  (names test)
+  (flags -w -32)
+  (preprocess (pps ppx_type_of)))
+
+(alias
+ (name test)
+ (deps test.exe)
+ (action (run ./test.exe)))
+
+(alias
+ (name runtest)
+ (deps (alias test)
+       ))

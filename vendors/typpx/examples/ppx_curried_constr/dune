@@ -1,0 +1,6 @@
+(library
+ (kind ppx_rewriter)
+ (name ppx_curried_constr)
+ (public_name ppx_curried_constr)
+ (flags -w -9)
+ (libraries compiler-libs.common ocaml-migrate-parsetree ppxx typpx))

@@ -1,7 +1,23 @@
 #!/bin/bash
 set -e
 
-ocamlfind ocamlc -package zarith -c SCaml.ml
+script_dir="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
+build_dir=$script_dir/_build
+
+(cd $script_dir; ocamlfind ocamlc -package zarith -c SCaml.ml)
+
+d=$(dirname $script_dir)
+
+while [ ! -x $d/_build/install/default/lib/ppx_scaml/ppx.exe ]; do
+    if [ "$d" = "/" ]; then
+	echo "SCaml compiler binary not found"
+	exit 2
+    fi
+    d=$(dirname $d)
+done
+
+ppx=$d/_build/install/default/lib/ppx_scaml/ppx.exe
+echo ppx=$ppx
 
 for i in $*
 do
@@ -11,18 +27,19 @@ do
       tz="$i"
       ;;
   *)
-      if [ ! -d _build ]; then mkdir _build; fi
-      cp $i _build/$i
-      ml=_build/"$i"
+      if [ ! -d $build_dir ]; then mkdir $build_dir; fi
+      cp $i $build_dir/$(basename $i)
+      ml=$build_dir/$(basename $i)
       tz=`echo $ml | sed -e 's/\.ml$/.tz/'`
       rm -f "$tz"
-      ../../../../_build/install/default/lib/ppx_scaml/ppx.exe $ml
+      echo $ppx $ml
+      (cd $script_dir; $ppx $ml)
       ;;
   esac
-  
-  if [ -f "$tz" ]; then
-      cp "$tz" /Users/jun/.share/projects/dailambda/docker/docker-tezos-hands-on/contracts/
-      tz=`basename $tz`
-      (cd /Users/jun/.share/projects/dailambda/docker/docker-tezos-hands-on; ./tezos-client run script "contracts/$tz" on storage 'Unit' and input 'Unit' )
+
+  tezos_client=`which tezos-client`
+  if [ -f "$tz" -a -n "$tezos_client" ]; then
+      echo Executing $tezos_client run script $tz on storage 'Unit' and input 'Unit'
+      TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y $tezos_client run script $tz on storage 'Unit' and input 'Unit'
   fi
 done
