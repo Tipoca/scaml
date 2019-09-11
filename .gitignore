@@ -1,3 +1,4 @@
 *~
 *.cm*
 dune-project
+.merlin
