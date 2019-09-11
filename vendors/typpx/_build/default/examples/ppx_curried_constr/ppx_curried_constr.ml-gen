@@ -1,0 +1,11 @@
+(** @canonical Ppx_curried_constr.My_typeclass *)
+module My_typeclass = Ppx_curried_constr__My_typeclass
+
+(** @canonical Ppx_curried_constr.My_typecore *)
+module My_typecore = Ppx_curried_constr__My_typecore
+
+(** @canonical Ppx_curried_constr.My_typemod *)
+module My_typemod = Ppx_curried_constr__My_typemod
+
+(** @canonical Ppx_curried_constr.Ppx *)
+module Ppx = Ppx_curried_constr__Ppx

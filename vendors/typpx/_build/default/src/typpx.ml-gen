@@ -1,0 +1,23 @@
+(** @canonical Typpx.Compile *)
+module Compile = Typpx__Compile
+
+(** @canonical Typpx.Compilerlib *)
+module Compilerlib = Typpx__Compilerlib
+
+(** @canonical Typpx.Debug *)
+module Debug = Typpx__Debug
+
+(** @canonical Typpx.Default *)
+module Default = Typpx__Default
+
+(** @canonical Typpx.Forge *)
+module Forge = Typpx__Forge
+
+(** @canonical Typpx.Make *)
+module Make = Typpx__Make
+
+(** @canonical Typpx.Options *)
+module Options = Typpx__Options
+
+(** @canonical Typpx.S *)
+module S = Typpx__S

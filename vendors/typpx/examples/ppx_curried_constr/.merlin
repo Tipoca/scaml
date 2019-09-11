@@ -1,0 +1,18 @@
+EXCLUDE_QUERY_DIR
+B /private/tmp/a/_opam/lib/ocaml-migrate-parsetree
+B /private/tmp/a/_opam/lib/ocaml/compiler-libs
+B /private/tmp/a/_opam/lib/ppx_derivers
+B /private/tmp/a/_opam/lib/ppx_tools_versioned
+B /private/tmp/a/_opam/lib/ppxx
+B /private/tmp/a/_opam/lib/result
+B ../../../_build/default/typpx/examples/ppx_curried_constr/.ppx_curried_constr.objs/byte
+B ../../../_build/default/typpx/src/.typpx.objs/byte
+S /private/tmp/a/_opam/lib/ocaml-migrate-parsetree
+S /private/tmp/a/_opam/lib/ocaml/compiler-libs
+S /private/tmp/a/_opam/lib/ppx_derivers
+S /private/tmp/a/_opam/lib/ppx_tools_versioned
+S /private/tmp/a/_opam/lib/ppxx
+S /private/tmp/a/_opam/lib/result
+S .
+S ../../src
+FLG -open Ppx_curried_constr -w -9
