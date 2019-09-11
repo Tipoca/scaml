@@ -7,7 +7,7 @@ $ git clone https://gitlab.com/dailambda/scaml
 $ cd scaml
 ```
 
-If you have no 4.07.1 OCaml switch:
+If you have no 4.07.1 OCaml switch.  (Of course you have `opam` already!):
 
 ```
 $ opam switch create . ocaml-base-compiler.4.07.1
