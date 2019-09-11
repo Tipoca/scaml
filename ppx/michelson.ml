@@ -72,7 +72,7 @@ module Type = struct
     | TyOperation -> p "operation"
     | TyContract t -> f "contract (%a)" pp t
     | TyLambda (t1, t2, cli) -> 
-        f "@[<2>lambda (%a%a) (%a)@]" 
+        f "lambda (%a%a) (%a)" 
           pp t1 
           (fun _ppf cli ->
              match (repr_closure_info cli).closure_desc with
@@ -262,7 +262,9 @@ module Opcode = struct
     | CDR -> p "CDR"
     | LEFT ty -> f "LEFT (%a)" Type.pp ty
     | RIGHT ty -> f "RIGHT (%a)" Type.pp ty
-    | LAMBDA (ty1, ty2, code) -> f "@[<2>LAMBDA @[(%a) (%a)@ @[<2>{ %a }@]@]@]" Type.pp ty1 Type.pp ty2 (Format.list " ;@ " pp) code
+    | LAMBDA (ty1, ty2, code) -> 
+        f "@[<v2>LAMBDA@ (%a)@ (%a)@ @[<2>{ %a }@]@]" 
+          Type.pp ty1 Type.pp ty2 (Format.list " ;@ " pp) code
     | CONS -> p "CONS"
     | NIL ty -> f "NIL (%a)" Type.pp ty
     | SOME -> p "SOME"

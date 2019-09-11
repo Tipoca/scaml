@@ -25,6 +25,11 @@ let exec = function
   | false -> [ EXEC ]
   | true -> [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR; EXEC ]
 
+let is_closure cli =
+  match (repr_closure_info cli).closure_desc with
+  | CLList xs -> xs <> []
+  | _ -> assert false
+
 let primitives = 
   [ "fst"     , (1, simple [CAR])
   ; "snd"     , (1, simple [CDR])
@@ -75,23 +80,16 @@ let primitives =
         | _ -> assert false)
 
   ; "Set.length"  , (1, simple [SIZE])
-  ; "Map.length"  , (1, simple [SIZE])
-
   ; "Set.mem"     , (2, simple [MEM])
   ; "Set.update"  , (3, simple [UPDATE])
-                    
   ; "Set.fold"    , (3, fun typ xs -> 
         let is_closure1, is_closure2 =
           match typ with
           | TyLambda (typ, _, _) ->
               begin match typ with
               | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
-                  (match (repr_closure_info cli1).closure_desc with
-                   | CLList xs -> xs <> []
-                   | _ -> assert false),
-                  (match (repr_closure_info cli2).closure_desc with
-                   | CLList xs -> xs <> []
-                   | _ -> assert false)
+                  is_closure cli1,
+                  is_closure cli2
               | _ -> assert false
               end
           | _ -> 
@@ -129,9 +127,7 @@ let primitives =
           | TyLambda (typ, _, _) ->
               begin match typ with
               | TyLambda (_, _, cli1) ->
-                  (match (repr_closure_info cli1).closure_desc with
-                   | CLList xs -> xs <> []
-                   | _ -> assert false)
+                  is_closure cli1
               | _ -> assert false
               end
           | _ -> 
@@ -166,7 +162,12 @@ let primitives =
   ; "String.length",   (1, simple [SIZE])
   ; "Bytes.concat",    (2, simple [CONCAT])
   ; "Bytes.length",    (1, simple [SIZE]) 
-                       
+
+  ; "Map.length"  , (1, simple [SIZE])
+  ; "Map.get", (2, simple [ GET ] )
+  ; "Map.mem", (2, simple [MEM])
+  ; "Map.update", (3, simple [UPDATE])
+
   ; "Map.map", (2, fun typ xs ->
         (* XXX dup *)
         let is_closure1, is_closure2 =
@@ -174,12 +175,8 @@ let primitives =
           | TyLambda (typ, _, _) ->
               begin match typ with
               | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
-                  (match (repr_closure_info cli1).closure_desc with
-                   | CLList xs -> xs <> []
-                   | _ -> assert false),
-                  (match (repr_closure_info cli2).closure_desc with
-                   | CLList xs -> xs <> []
-                   | _ -> assert false)
+                  is_closure cli1,
+                  is_closure cli2
               | _ -> assert false
               end
           | _ -> 
@@ -214,7 +211,50 @@ let primitives =
           DIP [ DROP ]
         ])
 
-  ; "Map.get", (2, simple [ GET ] )
+  ; "Map.fold"    , (3, fun typ xs -> 
+        let is_closure1, is_closure2, is_closure3 =
+          match typ with
+          | TyLambda (typ, _, _) ->
+              begin match typ with
+              | TyLambda (_, TyLambda (_, TyLambda (_, _, cli3), cli2), cli1) ->
+                  is_closure cli1,
+                  is_closure cli2,
+                  is_closure cli3
+              | _ -> assert false
+              end
+          | _ -> 
+              Format.eprintf "Map.fold: %a@." M.Type.pp typ;
+              assert false
+        in
+(*
+  lam : map : acc : s                   SWAP DIP { SWAP }
+  set : acc : lam : s                   ITER {
+  (k,v) : acc : lam : s                 DUP CAR DIP { CDR }
+  k : v : acc : lam : s                 DIP { DIP { DIP { DUP } SWAP } SWAP
+  k : lam : v : acc : lam : s           EXECx
+  lam2 : v : acc : lam : s              SWAP
+  v : lam2 : acc : lam : s              EXECx
+  lam3 : acc : lam : s                  SWAP
+  acc : lam3 : lam : s                  EXECx
+  acc' : lam : s
+
+  empty : acc : lam : s                 ITER {..}
+  acc : lam : s                         DIP { DROP }
+  acc : s
+*)           
+
+        xs @
+        [ SWAP ; DIP [ SWAP ];
+          ITER ([ DUP; CAR; DIP [ CDR ];
+                  DIP [ DIP [ DIP [ DUP ]; SWAP ]; SWAP ] ]
+                @ exec is_closure1
+                @ [ SWAP ]
+                @ exec is_closure2
+                @ [ SWAP ]
+                @ exec is_closure3);
+          DIP [ DROP ]
+        ])
+      
                
   ; "Obj.pack", (1, simple [ PACK ])
 

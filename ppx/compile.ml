@@ -110,7 +110,7 @@ let compile_var ~loc env id = match MEnv.find id env with
             assert (n > 0);
             [ DIP (f (n-1)); SWAP ]
       in
-      f n
+      [ COMMENT( Ident.name id, f n ) ]
 
 let rec compile env t = 
   let loc = t.IML.loc in
@@ -180,6 +180,12 @@ let rec compile env t =
       let os2 = compile ((p2.id,p2.typ)::env) t2 in
       os @ [IF_NONE (os1, os2 @ [DIP [DROP]])]
   | Fun (_ty1, _ty2, p, body, fvars) ->
+      Format.eprintf "fvars: @[%a@] env: @[%a@]@." 
+        (Format.list ";@ " (fun ppf (id,ty) ->
+             Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) fvars
+        (Format.list ";@ " (fun ppf (id,ty) ->
+             Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) env;
+
       begin match t.typ with
         | TyLambda (ty1, ty2, cli) ->
             begin match (repr_closure_info cli).closure_desc with
@@ -212,25 +218,35 @@ let rec compile env t =
                     *)
                     (* XXX we should use LOOP?  Maybe not since the types are different *)
 
-                    let init_ops = [ DUP; DIP [ CAR ]; CDR ] in (* to get a *)
-                    (* inside LAMBDA, the env is empty *)
+                    let init_ops = [ COMMENT( "get arg", [ DUP; DIP [ CAR ]; CDR ]) ] in (* to get a *)
+                      (* (a,(x1,(x2,..xn))) ::s 
+                         (x1o,(x2o,..xno)) :: a :: s 
+                      *)
+                    (* inside LAMBDA, the env is reset *)
                     let env = [(p.id,p.typ)] in
                     let rec f ops env = function
                       | [] -> assert false
                       | [(x,ty)] -> 
-                          ops @ [ IF_NONE ([ UNIT ; FAILWITH ], []) ],
-                          if List.mem_assoc x xtys then (x,ty)::env else env
+                          if List.mem_assoc x fvars then 
+                            ops @ [ COMMENT ("get " ^ Ident.name x, [IF_NONE ([ UNIT ; FAILWITH ], []) ]) ],
+                            (x,ty)::env
+                          else
+                            ops @ [ COMMENT ("drop " ^ Ident.name x, [ DROP ] ) ],
+                            env
+
                       | (x,ty)::xtys ->
-                          let ops = 
-                            ops @
-                            [ DUP ; DIP [ CAR; IF_NONE ([ UNIT; FAILWITH (* to avoid the stack type differences *)], [])] ; CDR ]
-                          in
-                          let env = 
-                            if List.mem_assoc x xtys then (x,ty)::env else env
+                          let ops, env =
+                            if List.mem_assoc x fvars then 
+                              ops @ [ DUP ; DIP [ CAR; COMMENT ("get " ^ Ident.name x, [IF_NONE ([ UNIT ; FAILWITH ], [])]) ]; CDR ],
+                              (x,ty)::env
+                            else
+                              ops @ [ COMMENT ("drop " ^ Ident.name x, []); CDR  ],
+                              env
                           in
                           f ops env xtys
                     in
                     let ops, env = f init_ops env xtys in
+Format.eprintf "Compiling body with %a (fvars %a)@." MEnv.pp env MEnv.pp xtys;
                     let o = compile env body in
                     let clean = COMMENT ( "lambda clean up", [DIP (List.map (fun _ -> DROP) env)]) in
                     LAMBDA (closure_type ity, closure_type ty2, ops @ o @ [clean])
@@ -259,15 +275,15 @@ let rec compile env t =
                       | [] -> assert false
                       | [(x,ty)] -> 
                           compile_var_or_default env x ty
-                      | (x,_ty)::xtys ->
-                          let os = compile_var ~loc env x @ [ PAIR ] in
+                      | (x,ty)::xtys ->
+                          let os = f env xtys in
                           let env = (Ident.dummy,TyUnit)::env in
-                          let os' = f env xtys in
-                          os @ os'
+                          let os' = compile_var_or_default env x ty in
+                          os @ os' @ [ PAIR ]
                     in
                     f env xtys
                   in
-                  bindings @ [lambda; PAIR]
+                  [ COMMENT ("clos", bindings); lambda; PAIR]
             end
         | _ -> assert false
       end
