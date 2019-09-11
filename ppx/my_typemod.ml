@@ -7,13 +7,11 @@ let type_interface sourcefile _env _ast =
     "SCaml does not support compilation of interfaces"
 
 let type_implementation sourcefile outputprefix modulename initial_env ast =
-  let res = type_implementation sourcefile outputprefix modulename initial_env ast in
-  let () = 
-    try
-      Compile.implementation sourcefile outputprefix modulename res 
-    with
-    | (Location.Error e as exn) ->
-        Format.eprintf "%a@." Location.report_error e;
-        raise exn
-  in
-  res
+  try
+    let res = type_implementation sourcefile outputprefix modulename initial_env ast in
+    Compile.implementation sourcefile outputprefix modulename res;
+    res
+  with
+  | e -> 
+    Location.report_exception Format.err_formatter e;
+    raise e

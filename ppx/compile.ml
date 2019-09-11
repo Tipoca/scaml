@@ -180,12 +180,13 @@ let rec compile env t =
       let os2 = compile ((p2.id,p2.typ)::env) t2 in
       os @ [IF_NONE (os1, os2 @ [DIP [DROP]])]
   | Fun (_ty1, _ty2, p, body, fvars) ->
+      (*
       Format.eprintf "fvars: @[%a@] env: @[%a@]@." 
         (Format.list ";@ " (fun ppf (id,ty) ->
              Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) fvars
         (Format.list ";@ " (fun ppf (id,ty) ->
              Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) env;
-
+      *)
       begin match t.typ with
         | TyLambda (ty1, ty2, cli) ->
             begin match (repr_closure_info cli).closure_desc with
@@ -246,7 +247,7 @@ let rec compile env t =
                           f ops env xtys
                     in
                     let ops, env = f init_ops env xtys in
-Format.eprintf "Compiling body with %a (fvars %a)@." MEnv.pp env MEnv.pp xtys;
+                    (* Format.eprintf "Compiling body with %a (fvars %a)@." MEnv.pp env MEnv.pp xtys; *)
                     let o = compile env body in
                     let clean = COMMENT ( "lambda clean up", [DIP (List.map (fun _ -> DROP) env)]) in
                     LAMBDA (closure_type ity, closure_type ty2, ops @ o @ [clean])
