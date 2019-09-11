@@ -6,10 +6,17 @@ type nat = Nat of ocaml_int
 type int = Int of ocaml_int
 type tz = Tz of float
 
+module List = struct
+  type 'a t = 'a list
+  let length : 'a t -> nat = fun _ -> assert false
+  let map : ('a -> 'b) -> 'a t -> 'b t = fun _ -> assert false
+  let fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a list -> 'acc = fun _ -> assert false
+end
+
 module Set = struct
   type 'a t = Set of 'a list
   let empty : 'a t = Set []
-  let length (Set xs) = Nat (List.length xs)
+  let length (Set xs) = Nat (Stdlib.List.length xs)
   let mem : 'a -> 'a t -> bool = fun _ -> assert false 
   let update : 'a -> bool -> 'a t -> 'a t = fun _ -> assert false
   let fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false

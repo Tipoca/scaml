@@ -67,16 +67,83 @@ let primitives =
   ; "lnot_nat"     , (1, simple [NOT])
   ; "lnot"         , (1, simple [NOT])
 
+  ; "List.length"  , (1, simple [SIZE])
+  ; "List.map"     , (2, fun typ xs ->
+        (* XXX dup *)
+        let is_closure =
+          match typ with
+          | TyLambda (typ, _, _) ->
+              begin match typ with
+              | TyLambda (_, _, cli) ->
+                  is_closure cli
+              | _ -> assert false
+              end
+          | _ -> 
+              Format.eprintf "List.map: %a@." M.Type.pp typ;
+              assert false
+        in
+(* lambda : map : S              SWAP ;
+   { hd; <tl> } : lambda : S     MAP {
+     hd : lambda : S              DIP DUP
+     hd : lambda : lambda : S     EXECx
+     hd' : lambda : S
+   
+   {} : lambda : S               MAP {..}
+
+   list' : lambda : S             DIP DROP
+   list' : S 
+*)
+        xs @
+        [ SWAP ; 
+          MAP ( 
+            [ DIP [ DUP ] ]
+            @ exec is_closure
+          ) ;
+          DIP [ DROP ]
+        ])
+
+
+  ; "List.fold_left"    , (3, fun typ xs -> 
+        let is_closure1, is_closure2 =
+          match typ with
+          | TyLambda (typ, _, _) ->
+              begin match typ with
+              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
+                  is_closure cli1,
+                  is_closure cli2
+              | _ -> assert false
+              end
+          | _ -> 
+              Format.eprintf "List.fold: %a@." M.Type.pp typ;
+              assert false
+        in
+(*
+  lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
+  list : acc : lam : s                  ITER {
+  hd : acc : lam : s                       DIP { DIP { DUP } SWAP }
+  hd : lam : acc : lam : s                 EXECx
+  lam' : acc : lam : s                     SWAP EXECx
+  acc' : lam : s                        }
+
+  [] : acc : lam : s                    ITER {..}
+  acc : lam : s                         DIP { DROP }
+  acc : s
+*)           
+
+        xs @
+        [ SWAP ; DIP [ SWAP ]; SWAP;
+          ITER ([ DIP [ DIP [ DUP ]; SWAP ] ]
+                @ exec is_closure1
+                @ [ SWAP ]
+                @ exec is_closure2);
+          DIP [ DROP ]
+        ])
+
+
   ; "Set.empty", (0, fun typ xs ->
         assert (xs = []);
         match typ with
         | TySet ty -> [EMPTY_SET ty]
-        | _ -> assert false)
-
-  ; "Map.empty", (0, fun typ xs ->
-        assert (xs = []);
-        match typ with
-        | TyMap (ty1,ty2) -> [EMPTY_MAP (ty1, ty2)]
         | _ -> assert false)
 
   ; "Set.length"  , (1, simple [SIZE])
@@ -163,6 +230,12 @@ let primitives =
   ; "Bytes.concat",    (2, simple [CONCAT])
   ; "Bytes.length",    (1, simple [SIZE]) 
 
+  ; "Map.empty", (0, fun typ xs ->
+        assert (xs = []);
+        match typ with
+        | TyMap (ty1,ty2) -> [EMPTY_MAP (ty1, ty2)]
+        | _ -> assert false)
+
   ; "Map.length"  , (1, simple [SIZE])
   ; "Map.get", (2, simple [ GET ] )
   ; "Map.mem", (2, simple [MEM])
@@ -180,7 +253,7 @@ let primitives =
               | _ -> assert false
               end
           | _ -> 
-              Format.eprintf "Set.fold: %a@." M.Type.pp typ;
+              Format.eprintf "Map.map: %a@." M.Type.pp typ;
               assert false
         in
 (* lambda : map : S                 SWAP ;
