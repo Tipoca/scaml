@@ -255,6 +255,8 @@ let primitives =
   ; "ediv_int_nat", (2, simple [EDIV])
   ; "ediv_nat_int", (2, simple [EDIV])
   ; "ediv_nat_nat", (2, simple [EDIV])
+  ; "ediv_tz_tz", (2, simple [EDIV])
+  ; "ediv_tz_nat", (2, simple [EDIV])
                     
   ]
     

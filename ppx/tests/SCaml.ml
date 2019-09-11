@@ -49,6 +49,8 @@ let ediv_int_int : int -> int -> (int * nat) option = fun _ -> assert false
 let ediv_int_nat : int -> nat -> (int * nat) option = fun _ -> assert false
 let ediv_nat_int : nat -> int -> (int * nat) option = fun _ -> assert false
 let ediv_nat_nat : nat -> nat -> (nat * nat) option = fun _ -> assert false
+let ediv_tz_tz : tz -> tz -> (nat * tz) option = fun _ -> assert false
+let ediv_tz_nat : tz -> nat -> (tz * tz) option = fun _ -> assert false
 
 let (lsl) : nat -> nat -> nat = fun _ -> assert false
 let (lsr) : nat -> nat -> nat = fun _ -> assert false
