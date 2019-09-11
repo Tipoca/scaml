@@ -38,6 +38,60 @@ and desc =
   | Switch_cons of t * pat * pat * t * t
   | Switch_none of t * t * pat * t
 
+let almost_constant t = 
+  match t.desc with
+  | Const c -> Some c
+  | Nil ty when ty <> TyOperation -> 
+     (* We cannot PUSH (list operation) {}. We get
+        "operation type forbidden in parameter, storage and constants" *)
+      Some (M.Opcode.List [])
+  | IML_None _ -> Some (M.Opcode.Option None)
+  | Unit -> Some M.Opcode.Unit
+  | _ -> None
+
+let make_constant t = 
+  match
+    let module O = M.Opcode in
+    let (>>=) o f = match o with
+      | None -> None
+      | Some x -> f x
+    in
+    match t.desc with
+    | Const c -> Some c
+    | Nil _ | IML_None _ | Unit -> None (* let's keep it *)
+    | Cons (t1, t2) ->
+        begin almost_constant t1 >>= fun c1 ->
+          almost_constant t2 >>= function 
+          | O.List c2 -> Some (O.List (c1 :: c2))
+          | _ -> assert false
+        end
+    | IML_Some t -> almost_constant t >>= fun c -> Some (O.Option (Some c))
+    | Tuple (t1, t2) -> 
+        almost_constant t1 >>= fun c1 ->
+        almost_constant t2 >>= fun c2 ->
+        Some (O.Pair (c1, c2))
+    | _ -> None
+  with
+  | None -> t
+  | Some c -> { t with desc= Const c }
+
+let rec get_constant t = 
+  let open Result.Infix in
+  match t.desc with
+  | Unit -> Ok O.Unit
+  | Const c -> Ok c
+  | IML_None _ -> Ok (O.Option None)
+  | IML_Some t -> get_constant t >>= fun c -> Ok (O.Option (Some c))
+  | Left (_, t) -> get_constant t >>= fun t -> Ok (O.Left t)
+  | Right (_, t) -> get_constant t >>= fun t -> Ok (O.Right t)
+  | Tuple (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (Pair (t1, t2))
+  | Nil _ -> Ok (O.List [])
+  | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
+      begin match t2 with
+        | O.List t2 -> Ok (O.List (t1::t2))
+        | _ -> assert false
+      end
+  | _ -> Error t.loc
 
 let rec pp ppf = 
   let p = Format.pp_print_string ppf in
@@ -130,24 +184,6 @@ let rec freevars t =
         (union 
            (freevars t1)
            (remove (p2.id, p2.typ) (freevars t2)))
-
-let rec get_constant t = 
-  let open Result.Infix in
-  match t.desc with
-  | Unit -> Ok O.Unit
-  | Const c -> Ok c
-  | IML_None _ -> Ok (O.Option None)
-  | IML_Some t -> get_constant t >>= fun c -> Ok (O.Option (Some c))
-  | Left (_, t) -> get_constant t >>= fun t -> Ok (O.Left t)
-  | Right (_, t) -> get_constant t >>= fun t -> Ok (O.Right t)
-  | Tuple (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (Pair (t1, t2))
-  | Nil _ -> Ok (O.List [])
-  | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
-      begin match t2 with
-        | O.List t2 -> Ok (O.List (t1::t2))
-        | _ -> assert false
-      end
-  | _ -> Error t.loc
 
 type type_expr_error =
   | Type_variable of Types.type_expr
@@ -254,6 +290,8 @@ let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_or _        -> unsupported ~loc "or pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
 
+(* Literals *)
+
 let parse_timestamp s =
   match Ptime.of_rfc3339 s with
   | Ok (t, _, _) -> 
@@ -281,7 +319,6 @@ let constructions_by_string =
     ("Bytes.t", ("bytes", "Bytes", TyBytes, parse_bytes))
   ]
 
-
 let structure ~parameter:_ env str =
 
   let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
@@ -295,7 +332,6 @@ let structure ~parameter:_ env str =
             | s -> internal_error ~loc "strange bool constructor %s" s)
   
     (* list *)
-    (* XXX if it is a constant, we must compile it to a constant *)
     | Tconstr (p, [ty], _) when p = Predef.path_list ->
         begin match cstr_name with
             | "[]" -> 
@@ -307,14 +343,13 @@ let structure ~parameter:_ env str =
                       let e1 = expression env e1 in
                       let e2 = expression env e2 in
                       let typ = unify (TyList e1.typ) e2.typ in
-                      make typ @@ Cons (e1, e2)
+                      make_constant @@ make typ @@ Cons (e1, e2)
                   | _ -> internal_error ~loc "strange cons"
                 end
             | s -> internal_error ~loc "strange list constructor %s" s
         end
   
     (* option *)
-    (* XXX constant compilation *)
     | Tconstr (p, [ty], _) when p = Predef.path_option ->
         begin match cstr_name with
           | "None" -> 
@@ -324,14 +359,13 @@ let structure ~parameter:_ env str =
               begin match args with
                 | [e1] ->
                     let e1 = expression env e1 in
-                    make (TyOption e1.typ) @@ IML_Some e1
+                    make_constant @@ make (TyOption e1.typ) @@ IML_Some e1
                 | _ -> internal_error ~loc "strange cons"
               end
           | s -> internal_error ~loc "strange list constructor %s" s
         end
   
     (* sum *)
-    (* XXX constant compilation *)
     | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
         let ty1, ty2 = match typ with
@@ -343,11 +377,11 @@ let structure ~parameter:_ env str =
         | "Left" -> 
             let e = expression env arg in
             ignore (unify e.typ ty1);
-            make typ @@ Left (ty2, e)
+            make_constant @@ make typ @@ Left (ty2, e)
         | "Right" ->
             let e = expression env arg in
             ignore (unify e.typ ty2);
-            make typ @@ Right (ty1, e)
+            make_constant @@ make typ @@ Right (ty1, e)
         | s -> internal_error ~loc "strange sum constructor %s" s
         end
 
@@ -525,7 +559,7 @@ let structure ~parameter:_ env str =
         let e1 = expression env e1 in
         let e2 = expression env e2 in
         ignore @@ unify (TyPair (e1.typ, e2.typ)) typ;
-        make @@ Tuple (e1, e2)
+        make_constant @@ make @@ Tuple (e1, e2)
     | Texp_tuple _ -> unsupported ~loc "tuple with more than 2 elems"
     | Texp_construct ({loc}, c, args) -> 
         construct ~loc env exp_env exp_type c args
