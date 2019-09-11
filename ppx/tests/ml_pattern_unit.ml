@@ -1,0 +1,2 @@
+open SCaml
+let main () () = [], ()
