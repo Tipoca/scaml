@@ -17,7 +17,7 @@ B /private/tmp/a/_opam/lib/seq
 B /private/tmp/a/_opam/lib/spotlib
 B /private/tmp/a/_opam/lib/zarith
 B ../_build/default/ppx/.ppx_scaml.objs/byte
-B ../_build/default/typpx/src/.typpx.objs/byte
+B ../_build/default/vendors/typpx/src/.typpx.objs/byte
 S /private/tmp/a/_opam/lib/bigarray-compat
 S /private/tmp/a/_opam/lib/cstruct
 S /private/tmp/a/_opam/lib/hex
@@ -36,5 +36,5 @@ S /private/tmp/a/_opam/lib/seq
 S /private/tmp/a/_opam/lib/spotlib
 S /private/tmp/a/_opam/lib/zarith
 S .
-S ../typpx/src
+S ../vendors/typpx/src
 FLG -open Ppx_scaml -w A-4-9-40-41-42-44

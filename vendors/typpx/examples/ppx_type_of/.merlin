@@ -5,8 +5,8 @@ B /private/tmp/a/_opam/lib/ppx_derivers
 B /private/tmp/a/_opam/lib/ppx_tools_versioned
 B /private/tmp/a/_opam/lib/ppxx
 B /private/tmp/a/_opam/lib/result
-B ../../../_build/default/typpx/examples/ppx_type_of/.ppx_type_of.objs/byte
-B ../../../_build/default/typpx/src/.typpx.objs/byte
+B ../../../../_build/default/vendors/typpx/examples/ppx_type_of/.ppx_type_of.objs/byte
+B ../../../../_build/default/vendors/typpx/src/.typpx.objs/byte
 S /private/tmp/a/_opam/lib/ocaml-migrate-parsetree
 S /private/tmp/a/_opam/lib/ocaml/compiler-libs
 S /private/tmp/a/_opam/lib/ppx_derivers
