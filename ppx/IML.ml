@@ -238,7 +238,10 @@ let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } =
       let ty = type_expr ~loc pat_env pat_type in
       [{ loc; id; typ= ty }]
 
-  | Tpat_any         -> unsupported ~loc "any pattern"
+  | Tpat_any         -> 
+      let typ = type_expr ~loc pat_env pat_type in
+      [{ loc; id=Ident.dummy; typ }]
+
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
   | Tpat_tuple _     -> unsupported ~loc "tuple pattern"
