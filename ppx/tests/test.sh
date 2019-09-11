@@ -37,9 +37,7 @@ do
       ;;
   esac
 
-  set +e
-  tezos_client=`which tezos-client`
-  set -e
+  tezos_client=`which tezos-client || true`
   if [ -f "$tz" -a -n "$tezos_client" ]; then
       echo Executing $tezos_client run script $tz on storage 'Unit' and input 'Unit'
       TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y $tezos_client run script $tz on storage 'Unit' and input 'Unit'
