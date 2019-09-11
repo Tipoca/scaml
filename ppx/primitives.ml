@@ -53,6 +53,7 @@ let primitives =
   ; "not"     , (1, simple [NOT])
   ; "abs"     , (1, simple [ABS])
   ; "~-"      , (1, simple [NEG])
+  ; "~-^"     , (1, simple [NEG])
 
   ; "lor"          , (2, simple [OR])
   ; "land"         , (2, simple [AND])

@@ -44,6 +44,7 @@ let ( *^ ) : nat -> nat -> nat = fun _ -> assert false
 let ( *$ ) : tz -> nat -> tz = fun _ -> assert false
 
 let (~-) : int -> int = fun _ -> assert false
+let (~-^) : nat -> int = fun _ -> assert false
 
 let ediv_int_int : int -> int -> (int * nat) option = fun _ -> assert false
 let ediv_int_nat : int -> nat -> (int * nat) option = fun _ -> assert false
