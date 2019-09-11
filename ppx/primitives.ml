@@ -250,5 +250,11 @@ let primitives =
   ; "Timestamp.add", (2, simple [ADD])
   ; "Timestamp.sub", (2, simple [SUB])
   ; "Timestamp.diff", (2, simple [SUB])
+
+  ; "ediv_int_int", (2, simple [EDIV])
+  ; "ediv_int_nat", (2, simple [EDIV])
+  ; "ediv_nat_int", (2, simple [EDIV])
+  ; "ediv_nat_nat", (2, simple [EDIV])
+                    
   ]
     
