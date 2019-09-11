@@ -163,6 +163,7 @@ let primitives =
           DIP [ DROP ] ])
       
   ; "String.concat",   (2, simple [CONCAT])
+  ; "String.length",   (1, simple [SIZE])
   ; "Bytes.concat",    (2, simple [CONCAT])
   ; "Bytes.length",    (1, simple [SIZE]) 
                        
