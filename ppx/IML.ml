@@ -225,26 +225,28 @@ let type_expr ~loc tenv ty =
         (Path.name p)
 
 let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } = 
+  let typ = type_expr ~loc pat_env pat_type in
   match pat_desc with
   | Tpat_var (id, {loc}) ->
-      let ty = type_expr ~loc pat_env pat_type in
-      [{ loc; id; typ= ty }]
+      [{ loc; id; typ }]
 
   | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
       (* We transform (_ as x) in x if _ and x have the same location.
          The compiler transforms (x:t) into (_ as x : t).
          This avoids transforming a warning 27 into a 26.
        *)
-      let ty = type_expr ~loc pat_env pat_type in
-      [{ loc; id; typ= ty }]
+      [{ loc; id; typ }]
 
   | Tpat_any         -> 
-      let typ = type_expr ~loc pat_env pat_type in
       [{ loc; id=Ident.dummy; typ }]
 
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
   | Tpat_tuple _     -> unsupported ~loc "tuple pattern"
+
+  | Tpat_construct ({loc}, _, []) when typ = TyUnit ->
+      [{ loc; id=Ident.dummy; typ }]
+
   | Tpat_construct _ -> unsupported ~loc "variant pattern"
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
   | Tpat_record _    -> unsupported ~loc "record pattern"
