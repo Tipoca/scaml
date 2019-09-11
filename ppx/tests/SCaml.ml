@@ -54,6 +54,12 @@ let ediv_tz_nat : tz -> nat -> (tz * tz) option = fun _ -> assert false
 
 let (lsl) : nat -> nat -> nat = fun _ -> assert false
 let (lsr) : nat -> nat -> nat = fun _ -> assert false
+let (lor) : nat -> nat -> nat = fun _ -> assert false
+let (land) : nat -> nat -> nat = fun _ -> assert false
+let land_int_nat : int -> nat -> nat = fun _ -> assert false
+let (lxor) : nat -> nat -> nat = fun _ -> assert false
+let lnot_nat : nat -> int = fun _ -> assert false
+let (lnot) : int -> int = fun _ -> assert false
 
 let abs : int -> nat = fun _ -> assert false
 

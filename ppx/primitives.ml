@@ -54,6 +54,13 @@ let primitives =
   ; "abs"     , (1, simple [ABS])
   ; "~-"      , (1, simple [NEG])
 
+  ; "lor"          , (2, simple [OR])
+  ; "land"         , (2, simple [AND])
+  ; "land_int_nat" , (2, simple [AND])
+  ; "lxor"         , (2, simple [XOR])
+  ; "lnot_nat"     , (1, simple [NOT])
+  ; "lnot"         , (1, simple [NOT])
+
   ; "Set.empty", (0, fun typ xs ->
         assert (xs = []);
         match typ with
