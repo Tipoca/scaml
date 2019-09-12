@@ -468,18 +468,12 @@ let structure ~parameter:_ env str =
           | [arg] -> 
               let e = expression env arg in
               ignore @@ unify (TyList ty) e.typ;
-              begin match e.desc with
-                | Nil _ -> { e with typ; desc= Const (Set []) }
-                | Cons _ -> 
-                    (* it extracts a list.  we have change the type *)
-                    (* XXX uniqueness and sorting *)
-                    begin match get_constant e with
-                      | Ok (List xs) -> { e with typ; desc= Const (Set xs) }
-                      | Error loc -> errorf ~loc "Elements of Set must be constants"
-                      | _ -> assert false
-                    end
-                    
-                | _ -> errorf ~loc "Set only takes a list literal"
+              begin match get_constant e with
+              | Ok (List xs) -> 
+                  (* XXX Uniqueness and sorting? *)
+                  { e with typ; desc= Const (Set xs) }
+              | Error loc -> errorf ~loc "Elements of Set must be constants"
+              | Ok _ -> assert false
               end
           | _ -> internal_error ~loc "strange set arguments"
         end
@@ -497,25 +491,19 @@ let structure ~parameter:_ env str =
           | [arg] -> 
               let e = expression env arg in
               ignore @@ unify (TyList (TyPair (ty1, ty2))) e.typ;
-              begin match e.desc with
-                | Nil _ -> { e with typ; desc= Const (Map []) }
-                | Cons _ -> 
-                    (* it extracts a list.  we have change the type *)
-                    (* XXX uniqueness and sorting *)
-                    begin match get_constant e with
-                      | Ok (List xs) -> 
-                          let xs = List.map (function
-                              | Pair (c1,c2) -> (c1,c2)
-                              | _ -> assert false) xs in
-                          { e with typ; desc= Const (Map xs) }
-                      | Error loc -> errorf ~loc "Elements of Map must be constants"
-                      | _ -> assert false
-                    end
-                | _ -> errorf ~loc "Map only takes a list literal"
+              begin match get_constant e with
+              | Ok (List xs) -> 
+                  (* XXX Uniqueness and sorting? *)
+                  let xs = List.map (function
+                      | Pair (c1,c2) -> (c1,c2)
+                      | _ -> assert false) xs in
+                  { e with typ; desc= Const (Map xs) }
+              | Ok _ -> assert false
+              | Error loc -> errorf ~loc "Elements of Set must be constants"
               end
-          | _ -> internal_error ~loc "strange map arguments"
+          | _ -> internal_error ~loc "strange set arguments"
         end
-  
+
     (* C "string" style constants *)
     | Tconstr (p, [], _) when (Path.is_scaml p <> None) ->
         begin match Path.is_scaml p with
