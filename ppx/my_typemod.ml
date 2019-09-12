@@ -9,7 +9,7 @@ let type_interface sourcefile _env _ast =
 let type_implementation sourcefile outputprefix modulename initial_env ast =
   try
     let res = type_implementation sourcefile outputprefix modulename initial_env ast in
-    Compile.implementation sourcefile outputprefix modulename res;
+    SCamlc.implementation sourcefile outputprefix modulename res;
     res
   with
   | e -> 

@@ -8,21 +8,9 @@ open M.Opcode
 module MEnv : sig
   type t = (Ident.t * M.Type.t) list
   val find : Ident.t -> t -> (int * M.Type.t) option
-(*
-  val add : (Ident.t * M.Type.t) -> t -> t
-  val add_list : (Ident.t * M.Type.t) list -> t -> t
-  val empty : t
-*)
   val pp : Format.formatter -> t -> unit
-(*
-  val of_list : (Ident.t * M.Type.t) list -> t
-  val length : t -> int
-  val singleton : (Ident.t * M.Type.t) -> t
-*)
 end = struct
   type t = (Ident.t * M.Type.t) list
-
-  (*  let singleton x = [x] *)
 
   let find id env = 
     let rec aux n = function
@@ -32,13 +20,6 @@ end = struct
     in
     aux 0 env
 
-(*
-  let add x xs = x :: xs
-  let add_list = (@)
-
-  let empty = []
-*)
-
   let pp ppf t =
     Format.fprintf ppf "@[<2>[ %a ]@]"
       (Format.list ";@ "
@@ -47,14 +28,11 @@ end = struct
               "%s : %a"
               (Ident.unique_name id)
               M.Type.pp ty)) t
-
-(*
-  let of_list xs = xs
-    
-  let length = List.length
-*)
 end
 
+(* The Michelson type of the environment part of a closure:
+   (ty1 option * (ty2 option * (ty(n-1) option * tyn option)..))
+*)
 let closure_env_type xtys =
   match List.rev xtys with
   | [] -> assert false
@@ -62,6 +40,10 @@ let closure_env_type xtys =
       List.fold_left (fun acc (_,ty) ->
           TyPair (TyOption ty, acc)) (TyOption tylast) xs
 
+(* Convert closure type represented in TyLambda (ty1, ty2, cinfo)
+   to the real type in Michelson: 
+     (TyLambda (ty1, ty2, empty), closure_env_type (env of cinfo))
+*)
 let rec closure_type = function
   | (TyString
     | TyNat
@@ -98,6 +80,7 @@ let rec closure_type = function
                              { closure_desc = CLList [] } ),
                   env_type)
 
+(* Copy a value of the identifier from the deep of the stack to its top. *)
 let compile_var ~loc env id = match MEnv.find id env with
   | None -> 
       internal_error ~loc "variable not found: %s in %s" 
@@ -115,7 +98,7 @@ let compile_var ~loc env id = match MEnv.find id env with
 let rec compile env t = 
   let loc = t.IML.loc in
   match t.IML.desc with
-  | Const op -> [ PUSH (t.typ, op) ]
+  | IML.Const op -> [ PUSH (t.typ, op) ]
   | Nil ty -> [ NIL (closure_type ty) ]
   | Cons (t1, t2) -> 
       let os2 = compile env t2 in
@@ -161,23 +144,23 @@ let rec compile env t =
       conv pre
   | Let (pat, t1, t2) ->
       let os1 = compile env t1 in
-      let os2 = compile ((pat.id, pat.typ)::env) t2 in
-      COMMENT (Ident.name pat.id, os1) :: os2 
-      @ [COMMENT ("clean " ^ Ident.name pat.id, [DIP [DROP]])]
+      let os2 = compile ((pat.desc, pat.typ)::env) t2 in
+      COMMENT (Ident.name pat.desc, os1) :: os2 
+      @ [COMMENT ("clean " ^ Ident.name pat.desc, [DIP [DROP]])]
   | Switch_or (t, p1, t1, p2, t2) ->
       let os = compile env t in
-      let os1 = compile ((p1.id,p1.typ)::env) t1 in
-      let os2 = compile ((p2.id,p2.typ)::env) t2 in
+      let os1 = compile ((p1.desc,p1.typ)::env) t1 in
+      let os2 = compile ((p2.desc,p2.typ)::env) t2 in
       os @ [IF_LEFT (os1 @ [DIP [DROP]], os2 @ [DIP [DROP]])]
   | Switch_cons (t, p1, p2, t1, t2) ->
       let os = compile env t in
-      let os1 = compile ((p1.id,p1.typ)::(p2.id,p2.typ)::env) t1 in
+      let os1 = compile ((p1.desc,p1.typ)::(p2.desc,p2.typ)::env) t1 in
       let os2 = compile env t2 in
       os @ [IF_CONS (os1 @ [DIP [DROP; DROP]], os2)]
   | Switch_none (t, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile env t1 in
-      let os2 = compile ((p2.id,p2.typ)::env) t2 in
+      let os2 = compile ((p2.desc,p2.typ)::env) t2 in
       os @ [IF_NONE (os1, os2 @ [DIP [DROP]])]
   | Fun (_ty1, _ty2, p, body, fvars) ->
       (*
@@ -193,7 +176,7 @@ let rec compile env t =
               | CLLink _ -> assert false
               | CLEmpty -> assert false
               | CLList [] ->
-                  let env = (p.id,p.typ)::env in
+                  let env = (p.desc,p.typ)::env in
                   let o = compile env body in
                   let clean = [ COMMENT ("lambda clean up", [DIP [ DROP ] ]) ] in
                   [ LAMBDA (closure_type ty1, closure_type ty2, o @ clean) ]
@@ -224,7 +207,7 @@ let rec compile env t =
                          (x1o,(x2o,..xno)) :: a :: s 
                       *)
                     (* inside LAMBDA, the env is reset *)
-                    let env = [(p.id,p.typ)] in
+                    let env = [(p.desc,p.typ)] in
                     let rec f ops env = function
                       | [] -> assert false
                       | [(x,ty)] -> 
@@ -347,8 +330,8 @@ let compile_structure t =
   let ops, env = 
     List.fold_left (fun (ops, env) (p,t) ->
         let os1 = compile env t in
-        ops @ [ COMMENT (Ident.name p.IML.id, os1) ], 
-        ((p.id, p.typ)::env)) ([], []) defs
+        ops @ [ COMMENT (Ident.name p.IML.desc, os1) ], 
+        ((p.desc, p.typ)::env)) ([], []) defs
   in
   (* (parameter, storage) :: []
      -> parameter :: storage :: values
@@ -365,7 +348,7 @@ let compile_structure t =
   in
   let p1, t = get_abst t in
   let p2, t = get_abst t in
-  let env = ((p2.id,p2.typ)::(p1.id,p1.typ)::env) in
+  let env = ((p2.desc,p2.typ)::(p1.desc,p1.typ)::env) in
   let os = compile env t in
   [ COMMENT ("defs", [DIP ops]) 
   ; COMMENT ("entry point init", [DUP ; CDR; DIP [CAR]])
@@ -373,28 +356,3 @@ let compile_structure t =
   ; COMMENT ("final clean up",
              [ DIP (List.init (List.length env) (fun _ -> DROP)) ]) ]
   |> clean_failwith
-    
-let implementation sourcefile outputprefix _modulename (str, _coercion) =
-  (* Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename; *)
-  let parameter, storage = IML.fix_entrypoint_type sourcefile str in
-  let t = 
-    try IML.structure ~parameter [] str with 
-    | e -> 
-        Printexc.print_backtrace stderr;
-        Format.eprintf "IML.structure: %s@." (Printexc.to_string e);
-        raise e
-  in
-
-  let oc = open_out (outputprefix ^ ".scaml") in
-  let ppf = Format.of_out_channel oc in
-  Format.fprintf ppf "%a@." IML.pp t;
-  close_out oc;
-
-  let code = compile_structure t in
-  let m = { M.Module.parameter; storage; code } in
-
-  let oc = open_out (outputprefix ^ ".tz") in
-  let ppf = Format.of_out_channel oc in
-  Format.eprintf "@[<2>%a@]@." M.Module.pp m;
-  Format.fprintf ppf "@[<2>%a@]@." M.Module.pp m;
-  close_out oc

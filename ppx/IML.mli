@@ -1,10 +1,12 @@
-type pat = {
-  loc : Location.t;
-  id : Tools.Ident.t;
-  typ : Michelson.Type.t;
-}
+type 'desc with_loc_and_type =
+  { desc : 'desc
+  ; loc : Location.t
+  ; typ : Michelson.Type.t
+  }
 
-type t = { loc : Location.t; desc : desc; typ : Michelson.Type.t; }
+type pat = Ident.t with_loc_and_type
+
+type t = desc with_loc_and_type
 
 and desc =
   | Const of Michelson.Opcode.constant

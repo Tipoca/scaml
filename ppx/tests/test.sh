@@ -37,6 +37,9 @@ do
       ;;
   esac
 
+  # If tz compilation is successful, and if there is tezos-client in the PATH,
+  # let's try to execute it.
+
   tezos_client=`which tezos-client || true`
   if [ -f "$tz" -a -n "$tezos_client" ]; then
       echo Executing $tezos_client run script $tz on storage 'Unit' and input 'Unit'

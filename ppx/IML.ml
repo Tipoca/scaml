@@ -9,13 +9,15 @@ open M.Type
 open M.Opcode
 module O = M.Opcode
 
-type pat = 
-  { loc : Location.t
-  ; id : Ident.t
+type 'desc with_loc_and_type =
+  { desc : 'desc
+  ; loc : Location.t
   ; typ : M.Type.t
   }
 
-type t = { loc : Location.t ; desc : desc ; typ : M.Type.t }
+type pat = Ident.t with_loc_and_type
+
+type t = desc with_loc_and_type
 and desc =
   | Const of M.Opcode.constant
   | Nil of M.Type.t
@@ -111,7 +113,7 @@ let rec pp ppf =
   | AssertFalse -> p "assert false"
   | Fun (_ty1, _ty2, pat, body, _fvars) ->
       f "@[<2>(fun %s ->@ %a@ : %a)@]"
-        (Ident.name pat.id) pp body M.Type.pp t.typ
+        (Ident.name pat.desc) pp body M.Type.pp t.typ
   | IfThenElse (t1, t2, t3) -> 
       f "(if %a @[then %a@ else %a@])"
         pp t1 pp t2 pp t3
@@ -123,24 +125,24 @@ let rec pp ppf =
         Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
   | Let (p, t1, t2) ->
       f "@[<2>(let %s =@ %a in@ %a)@]"
-        (Ident.name p.id) pp t1 pp t2
+        (Ident.name p.desc) pp t1 pp t2
   | Switch_or (t, p1, t1, p2, t2) ->
       f "@[<2>(match %a with@ | Left %s -> %a@ | Right %s -> %a)@]"
         pp t
-        (Ident.name p1.id) pp t1 
-        (Ident.name p2.id) pp t2
+        (Ident.name p1.desc) pp t1 
+        (Ident.name p2.desc) pp t2
   | Switch_cons (t, p1, p2, t1, t2) ->
       f "@[<2>(match %a with@ | %s::%s -> %a@ | [] -> %a)@]"
         pp t
-        (Ident.name p1.id) 
-        (Ident.name p2.id) 
+        (Ident.name p1.desc) 
+        (Ident.name p2.desc) 
         pp t1 
         pp t2
   | Switch_none (t, t1, p2, t2) ->
       f "@[<2>(match %a with@ | None -> %a@ | Some %s -> %a)@]"
         pp t
         pp t1 
-        (Ident.name p2.id) pp t2
+        (Ident.name p2.desc) pp t2
 
 module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
 
@@ -166,24 +168,24 @@ let rec freevars t =
   | Prim (_,_,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty ts
   | Fun (_,_,pat,t,_fvs) -> 
-      diff (freevars t) (singleton (pat.id, pat.typ))
+      diff (freevars t) (singleton (pat.desc, pat.typ))
   | Let (pat, t1, t2) ->
-      diff (union (freevars t1) (freevars t2)) (singleton (pat.id, pat.typ))
+      diff (union (freevars t1) (freevars t2)) (singleton (pat.desc, pat.typ))
   | Switch_or (t, p1, t1, p2, t2) ->
       union (freevars t)
         (union 
-           (remove (p1.id, p1.typ) (freevars t1))
-           (remove (p2.id, p2.typ) (freevars t2)))
+           (remove (p1.desc, p1.typ) (freevars t1))
+           (remove (p2.desc, p2.typ) (freevars t2)))
   | Switch_cons (t, p1, p2, t1, t2) ->
       union (freevars t)
         (union 
-           (remove (p2.id, p2.typ) ((remove (p1.id, p1.typ) (freevars t1))))
+           (remove (p2.desc, p2.typ) ((remove (p1.desc, p1.typ) (freevars t1))))
            (freevars t2))
   | Switch_none (t, t1, p2, t2) ->
       union (freevars t)
         (union 
            (freevars t1)
-           (remove (p2.id, p2.typ) (freevars t2)))
+           (remove (p2.desc, p2.typ) (freevars t2)))
 
 type type_expr_error =
   | Type_variable of Types.type_expr
@@ -264,24 +266,24 @@ let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } =
   let typ = type_expr ~loc pat_env pat_type in
   match pat_desc with
   | Tpat_var (id, {loc}) ->
-      [{ loc; id; typ }]
+      [{ loc; desc=id; typ }]
 
   | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
       (* We transform (_ as x) in x if _ and x have the same location.
          The compiler transforms (x:t) into (_ as x : t).
          This avoids transforming a warning 27 into a 26.
        *)
-      [{ loc; id; typ }]
+      [{ loc; desc=id; typ }]
 
   | Tpat_any         -> 
-      [{ loc; id=Ident.dummy; typ }]
+      [{ loc; desc=Ident.dummy; typ }]
 
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
   | Tpat_tuple _     -> unsupported ~loc "tuple pattern"
 
   | Tpat_construct ({loc}, _, []) when typ = TyUnit ->
-      [{ loc; id=Ident.dummy; typ }]
+      [{ loc; desc=Ident.dummy; typ }]
 
   | Tpat_construct _ -> unsupported ~loc "variant pattern"
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
@@ -311,12 +313,18 @@ let parse_bytes s =
   | _ -> Error "Bytes must take hex representation of bytes"
 
 let constructions_by_string =
-  [ ("Signature.t", ("signature", "Signature", TySignature, fun x -> Ok (String x)));
-    ("Key_hash.t", ("key_hash", "Key_hash", TyKeyHash, fun x -> Ok (String x)));
-    ("Key.t", ("key", "Key", TyKey, fun x -> Ok (String x)));
-    ("Address.t", ("address", "Address", TyAddress, fun x -> Ok (String x)));
-    ("Timestamp.t", ("timestamp", "Timestamp", TyTimestamp, parse_timestamp));
-    ("Bytes.t", ("bytes", "Bytes", TyBytes, parse_bytes))
+  [ ("Signature.t" , ("signature", "Signature", TySignature, 
+                      fun x -> Ok (String x)));
+    ("Key_hash.t"  , ("key_hash", "Key_hash", TyKeyHash, 
+                      fun x -> Ok (String x)));
+    ("Key.t"       , ("key", "Key", TyKey, 
+                      fun x -> Ok (String x)));
+    ("Address.t"   , ("address", "Address", TyAddress, 
+                      fun x -> Ok (String x)));
+    ("Timestamp.t" , ("timestamp", "Timestamp", TyTimestamp, 
+                      parse_timestamp));
+    ("Bytes.t"     , ("bytes", "Bytes", TyBytes, 
+                      parse_bytes))
   ]
 
 let structure ~parameter:_ env str =
@@ -578,7 +586,7 @@ let structure ~parameter:_ env str =
         let rev_vbs, env =
           List.fold_left (fun (rev_vbs, env) vb -> 
               let v, e = value_binding env vb in
-              (v, e) :: rev_vbs, ((v.id,v.typ)::env)) ([], env) vbs
+              (v, e) :: rev_vbs, ((v.desc,v.typ)::env)) ([], env) vbs
         in
         let e = expression env e in
         List.fold_left (fun e (v,def) ->
@@ -629,9 +637,9 @@ let structure ~parameter:_ env str =
               let ty1 = type_expr ~loc:c_lhs.pat_loc c_lhs.pat_env c_lhs.pat_type in
               let ty2 = type_expr ~loc:c_rhs.exp_loc c_rhs.exp_env c_rhs.exp_type in
               ignore (unify v.typ ty1);
-              let env = (v.id,v.typ)::env in
+              let env = (v.desc,v.typ)::env in
               let e = expression env c_rhs in
-              let s = IdTys.(elements @@ remove (v.id, v.typ) (freevars e)) in
+              let s = IdTys.(elements @@ remove (v.desc, v.typ) (freevars e)) in
               let clinfo = { closure_desc= CLList s } in
               ignore @@ unify typ @@ TyLambda (ty1, ty2, clinfo);
               ignore @@ unify ty2 e.typ;
@@ -707,22 +715,22 @@ let structure ~parameter:_ env str =
         let lv = get_var l in
         let rv = get_var r in
         Switch_or (expression env e,
-                   lv, expression ((lv.id, lv.typ)::env) le,
-                   rv, expression ((rv.id, rv.typ)::env) re)
+                   lv, expression ((lv.desc, lv.typ)::env) le,
+                   rv, expression ((rv.desc, rv.typ)::env) re)
     | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
     | TyList _ty1, [("::",[l1;l2],le); ("[]",[],re)] ->
         let get_var p = match pattern p with [v] -> v | _ -> assert false in
         let lv1 = get_var l1 in
         let lv2 = get_var l2 in
         Switch_cons (expression env e,
-                     lv1, lv2, expression ((lv1.id, lv1.typ)::(lv2.id, lv2.typ)::env) le,
+                     lv1, lv2, expression ((lv1.desc, lv1.typ)::(lv2.desc, lv2.typ)::env) le,
                      expression env re)
     | TyOption _ty1, [("None",[],le); ("Some",[r],re)] ->
         let get_var p = match pattern p with [v] -> v | _ -> assert false in
         let rv = get_var r in
         Switch_none (expression env e,
                      expression env le,
-                     rv, expression ((rv.id, rv.typ)::env) re)
+                     rv, expression ((rv.desc, rv.typ)::env) re)
     | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
   
   and value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
@@ -757,7 +765,7 @@ let structure ~parameter:_ env str =
         let env, rev_vbs = 
           List.fold_left (fun (env, rev_vbs) vb ->
               let v,b = value_binding env vb in
-              (v.id,v.typ)::env, (v,b)::rev_vbs) (env, []) vbs
+              (v.desc,v.typ)::env, (v,b)::rev_vbs) (env, []) vbs
         in
         env, List.rev rev_vbs
   

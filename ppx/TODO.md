@@ -1,7 +1,3 @@
-X List constant is not implemented
-X Pair constant is not implemented
-X Option constant is not implemented
-X Or constant is not implemented
 X Big map is not implemented
 X comparable type check
 X not int nat and nat int-  ``ADD``
