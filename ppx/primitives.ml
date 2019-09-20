@@ -139,6 +139,11 @@ let primitives =
           DIP [ DROP ]
         ])
 
+  ; "List.rev", (1, fun ty xs -> 
+        match ty with
+        | TyLambda (TyList ty, TyList ty', _) when ty = ty' ->
+            xs @ [DIP [NIL ty]; ITER [CONS]]
+        | _ -> assert false)
 
   ; "Set.empty", (0, fun typ xs ->
         assert (xs = []);

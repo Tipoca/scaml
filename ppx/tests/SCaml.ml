@@ -61,6 +61,7 @@ module List = struct
   let length : 'a t -> nat = fun _ -> assert false
   let map : ('a -> 'b) -> 'a t -> 'b t = fun _ -> assert false
   let fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a list -> 'acc = fun _ -> assert false
+  let rev : 'a t -> 'a t = fun _ -> assert false
 end
 
 module Set = struct
