@@ -99,7 +99,7 @@ let rec pp ppf =
   let p = Format.pp_print_string ppf in
   let f fmt = Format.fprintf ppf fmt in
   fun t -> match t.desc with
-  | Const c -> M.Opcode.pp_constant ppf c
+  | Const c -> f "(%a : %a)" M.Opcode.pp_constant c M.Type.pp t.typ
   | Nil ty -> f "([] : %a)" M.Type.pp ty
   | Cons (t1, t2) -> f "(%a :: %a)" pp t1 pp t2
   | IML_None ty -> f "(None : %a)" M.Type.pp ty
