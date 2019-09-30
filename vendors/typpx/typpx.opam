@@ -8,8 +8,7 @@ bug-reports:
 dev-repo: "hg://https://bitbucket.org/camlspotter/typpx"
 build: ["dune" "build" "-p" name "-j" jobs]
 depends: [
-  "ocamlfind" {build}
-  "omake" {build & < "0.10"}
+  "dune" {build}
   "ppxx" {>= "2.3.0" & < "2.4.0"}
 ]
 available: [ocaml-version = "4.07.1" ]

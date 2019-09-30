@@ -13,7 +13,6 @@ build: [
 depends: [
   "ocaml-migrate-parsetree"
   "ppxx"
-  "typpx"
   "spotlib"
   "dune" {build & >= "1.0"}
   "hex"
