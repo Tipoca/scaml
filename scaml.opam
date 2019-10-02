@@ -11,6 +11,7 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
+  "ocaml" { = "4.07.1" }
   "ocaml-migrate-parsetree"
   "ppxx"
   "spotlib"
