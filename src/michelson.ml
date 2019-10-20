@@ -68,7 +68,7 @@ module Type = struct
     | CLEmpty -> i
     | CLList _ -> i
     | CLLink cl -> repr_closure_info cl
-  
+
   let rec pp ppf t =
     let open Format in
     let p = pp_print_string ppf in
@@ -90,7 +90,7 @@ module Type = struct
   
     | TyMutez -> p "mutez"
     | TyKeyHash -> p "key_hash"
-    | TyTimestamp -> p "timestamp"
+    | TyTimestamp -> p "timestamp "
     | TyAddress -> p "address"
   
     | TyKey -> p "key"
@@ -110,6 +110,70 @@ module Type = struct
                    Format.(list ";@ " (fun ppf (id, ty) ->
                        fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs) cli
           pp t2
+
+  let rec to_micheline t = 
+    let open Tezos_micheline.Micheline in
+    let open Tezos_micheline.Micheline_printer in
+    let no_comment = { comment = None } in
+    let add_comment c n = match c, n with
+      | None, _ -> n
+      | Some _, Int ({comment=None}, x) -> Int ({comment= c}, x)
+      | Some _, String ({comment=None}, x) -> String ({comment= c}, x)
+      | Some _, Bytes ({comment=None}, x) -> Bytes ({comment= c}, x)
+      | Some _, Prim ({comment=None}, x, y, z) -> Prim ({comment= c}, x, y, z)
+      | Some _, Seq ({comment=None}, x) -> Seq ({comment= c}, x)
+      | Some s1, Int ({comment=Some s2}, x) -> 
+          Int ({comment= Some (s1 ^ ", " ^ s2)}, x)
+      | Some s1, String ({comment=Some s2}, x) ->
+          String ({comment= Some (s1 ^ ", " ^ s2)}, x)
+      | Some s1, Bytes ({comment=Some s2}, x) ->
+          Bytes ({comment= Some (s1 ^ ", " ^ s2)}, x)
+      | Some s1, Prim ({comment=Some s2}, x, y, z) ->
+          Prim ({comment= Some (s1 ^ ", " ^ s2)}, x, y, z)
+      | Some s1, Seq ({comment=Some s2}, x) -> 
+          Seq ({comment= Some (s1 ^ ", " ^ s2)}, x)
+    in                                                                
+                                                                
+    let p s = String (no_comment, s) in
+    let p1 s t = Prim (no_comment, s, [to_micheline t], []) in
+    let p2 s t1 t2 = Prim (no_comment, s, [to_micheline t1; to_micheline t2], []) in
+    match t.desc with
+    | TyString -> p "string"
+    | TyNat -> p "nat"
+    | TyInt -> p "int"
+    | TyBytes -> p "bytes"
+    | TyBool -> p "bool"
+    | TyUnit -> p "unit"
+    | TyList t -> p1 "list" t
+    | TyPair (t1, t2) -> p2 "pair" t1 t2
+    | TyOption t -> p1 "option" t
+    | TyOr (t1, t2) -> p2 "or" t1 t2
+    | TySet t -> p1 "set" t
+    | TyMap (t1, t2) -> p2 "map" t1 t2
+    | TyBigMap (t1, t2) -> p2 "bigmap" t1 t2
+  
+    | TyMutez -> p "mutez"
+    | TyKeyHash -> p "key_hash"
+    | TyTimestamp -> p "timestamp "
+    | TyAddress -> p "address"
+  
+    | TyKey -> p "key"
+    | TySignature -> p "signature"
+    | TyOperation -> p "operation"
+    | TyContract t -> p1 "contract" t
+    | TyLambda (t1, t2, cli) -> 
+        let comment =
+          match (repr_closure_info cli).closure_desc with
+          | CLLink _ -> assert false
+          | CLEmpty -> Some "EMPTY!"
+          | CLList [] -> None
+          | CLList xs -> 
+              Some (Format.sprintf "%a" Format.(list ";@ " (fun ppf (id, ty) ->
+                       fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs)
+        in
+        add_comment comment
+        & Prim (no_comment, "lambda", 
+                [to_micheline t1; to_micheline t2], [])
 
   exception Unification_error of t * t
 
@@ -161,23 +225,57 @@ module Type = struct
           raise (Unification_error (t1,t2))
 end
 
-module Opcode = struct
-  type constant = 
+module Constant = struct
+  type t = 
     | Unit
     | Bool of bool
     | Int of Z.t
     | Nat of Z.t
     | String of string
     | Bytes of string
-    | Option of constant option
-    | List of constant list
-    | Set of constant list
-    | Map of (constant * constant) list
-    | Big_map of (constant * constant) list
-    | Pair of constant * constant
-    | Left of constant
-    | Right of constant
+    | Option of t option
+    | List of t list
+    | Set of t list
+    | Map of (t * t) list
+    | Big_map of (t * t) list
+    | Pair of t * t
+    | Left of t
+    | Right of t
     | Timestamp of Z.t
+
+  let rec pp ppf =
+    let open Format in
+    let p = pp_print_string ppf in
+    let f fmt = fprintf ppf fmt in
+    function
+    | Bool true  -> p "True"
+    | Bool false -> p "False"
+    | Unit     -> p "Unit"
+    | Int n    -> Z.pp_print ppf n
+    | Nat n    -> Z.pp_print ppf n
+    (*    | Mutez n  -> f "%d" n *)
+    | String s -> f "%S" s
+    | Bytes s (* in hex *) ->  f "0x%s" s
+    | Option None -> p "None"
+    | Option (Some t) -> f "Some (%a)" pp t
+    | Pair (t1, t2) -> f "(Pair (%a) (%a))" pp t1 pp t2
+    | Left t -> f "(Left (%a))" pp t
+    | Right t -> f "(Right (%a))" pp t
+    | List ts -> f "{ %a }" (list " ; " pp) ts
+    | Set ts -> f "{ %a }" (list " ; " pp) (List.sort compare ts)
+    | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp x pp y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp x pp y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | Timestamp z -> 
+        begin match Ptime.of_float_s @@ Z.to_float z with
+          | None -> assert false
+          | Some t -> f "\"%s\"" (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
+        end
+
+end
+
+module Opcode = struct
+
+  type constant = Constant.t
 
   type t = 
     | DUP
@@ -245,34 +343,6 @@ module Opcode = struct
     | CREATE_CONTRACT of t list
 *)
     
-  let rec pp_constant ppf =
-    let open Format in
-    let p = pp_print_string ppf in
-    let f fmt = fprintf ppf fmt in
-    function
-    | Bool true  -> p "True"
-    | Bool false -> p "False"
-    | Unit     -> p "Unit"
-    | Int n    -> Z.pp_print ppf n
-    | Nat n    -> Z.pp_print ppf n
-    (*    | Mutez n  -> f "%d" n *)
-    | String s -> f "%S" s
-    | Bytes s (* in hex *) ->  f "0x%s" s
-    | Option None -> p "None"
-    | Option (Some t) -> f "Some (%a)" pp_constant t
-    | Pair (t1, t2) -> f "(Pair (%a) (%a))" pp_constant t1 pp_constant t2
-    | Left t -> f "(Left (%a))" pp_constant t
-    | Right t -> f "(Right (%a))" pp_constant t
-    | List ts -> f "{ %a }" (list " ; " pp_constant) ts
-    | Set ts -> f "{ %a }" (list " ; " pp_constant) (List.sort compare ts)
-    | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
-    | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp_constant x pp_constant y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
-    | Timestamp z -> 
-        begin match Ptime.of_float_s @@ Z.to_float z with
-          | None -> assert false
-          | Some t -> f "\"%s\"" (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
-        end
-
   let rec pp ppf =
     let open Format in
     let p = pp_print_string ppf in
@@ -282,7 +352,7 @@ module Opcode = struct
     | DIP code -> f "DIP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
     | SWAP -> p "SWAP"
     | PAIR -> p "PAIR"
-    | PUSH (ty, const) -> f "PUSH (%a) %a" Type.pp ty pp_constant const
+    | PUSH (ty, const) -> f "PUSH (%a) %a" Type.pp ty Constant.pp const
     | ASSERT -> p "ASSERT"
     | CAR -> p "CAR"
     | CDR -> p "CDR"

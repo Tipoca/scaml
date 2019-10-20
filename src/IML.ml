@@ -6,8 +6,7 @@ open Tools
 
 module M = Michelson
 open M.Type
-open M.Opcode
-module O = M.Opcode
+module C = M.Constant
 
 type 'desc with_loc_and_type =
   { desc : 'desc
@@ -46,14 +45,14 @@ let almost_constant t =
   | Nil ty when ty.desc <> TyOperation -> 
      (* We cannot PUSH (list operation) {}. We get
         "operation type forbidden in parameter, storage and constants" *)
-      Some (M.Opcode.List [])
-  | IML_None _ -> Some (M.Opcode.Option None)
-  | Unit -> Some M.Opcode.Unit
+      Some (C.List [])
+  | IML_None _ -> Some (C.Option None)
+  | Unit -> Some C.Unit
   | _ -> None
 
 let make_constant t = 
   match
-    let module O = M.Opcode in
+    let module C = C in
     let (>>=) o f = match o with
       | None -> None
       | Some x -> f x
@@ -64,33 +63,34 @@ let make_constant t =
     | Cons (t1, t2) ->
         begin almost_constant t1 >>= fun c1 ->
           almost_constant t2 >>= function 
-          | O.List c2 -> Some (O.List (c1 :: c2))
+          |C.List c2 -> Some (C.List (c1 :: c2))
           | _ -> assert false
         end
-    | IML_Some t -> almost_constant t >>= fun c -> Some (O.Option (Some c))
+    | IML_Some t -> almost_constant t >>= fun c -> Some (C.Option (Some c))
     | Tuple (t1, t2) -> 
         almost_constant t1 >>= fun c1 ->
         almost_constant t2 >>= fun c2 ->
-        Some (O.Pair (c1, c2))
+        Some (C.Pair (c1, c2))
     | _ -> None
   with
   | None -> t
   | Some c -> { t with desc= Const c }
 
 let rec get_constant t = 
+  let module C = C in
   let open Result.Infix in
   match t.desc with
-  | Unit -> Ok O.Unit
+  | Unit -> Ok C.Unit
   | Const c -> Ok c
-  | IML_None _ -> Ok (O.Option None)
-  | IML_Some t -> get_constant t >>= fun c -> Ok (O.Option (Some c))
-  | Left (_, t) -> get_constant t >>= fun t -> Ok (O.Left t)
-  | Right (_, t) -> get_constant t >>= fun t -> Ok (O.Right t)
-  | Tuple (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (Pair (t1, t2))
-  | Nil _ -> Ok (O.List [])
+  | IML_None _ -> Ok (C.Option None)
+  | IML_Some t -> get_constant t >>= fun c -> Ok (C.Option (Some c))
+  | Left (_, t) -> get_constant t >>= fun t -> Ok (C.Left t)
+  | Right (_, t) -> get_constant t >>= fun t -> Ok (C.Right t)
+  | Tuple (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (C.Pair (t1, t2))
+  | Nil _ -> Ok (C.List [])
   | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
       begin match t2 with
-        | O.List t2 -> Ok (O.List (t1::t2))
+        | C.List t2 -> Ok (C.List (t1::t2))
         | _ -> assert false
       end
   | _ -> Error t.loc
@@ -99,7 +99,7 @@ let rec pp ppf =
   let p = Format.pp_print_string ppf in
   let f fmt = Format.fprintf ppf fmt in
   fun t -> match t.desc with
-  | Const c -> f "(%a : %a)" M.Opcode.pp_constant c M.Type.pp t.typ
+  | Const c -> f "(%a : %a)" C.pp c M.Type.pp t.typ
   | Nil ty -> f "([] : %a)" M.Type.pp ty
   | Cons (t1, t2) -> f "(%a :: %a)" pp t1 pp t2
   | IML_None ty -> f "(None : %a)" M.Type.pp ty
@@ -302,25 +302,25 @@ let parse_timestamp s =
       else 
         let posix = Ptime.to_float_s t in
         if posix < 0. then Error "Timestamp before Epoch is not allowed"
-        else Ok (Timestamp (Z.of_float posix))
+        else Ok (C.Timestamp (Z.of_float posix))
   | Error (`RFC3339 (_, e)) -> 
       Error (Format.sprintf "%a" Ptime.pp_rfc3339_error e)
 
 let parse_bytes s =
   try
-    ignore @@ Hex.to_string (`Hex s); Ok (Bytes s)
+    ignore @@ Hex.to_string (`Hex s); Ok (C.Bytes s)
   with
   | _ -> Error "Bytes must take hex representation of bytes"
 
 let constructions_by_string =
   [ ("Signature.t" , ("signature", "Signature", mk TySignature, 
-                      fun x -> Ok (String x)));
+                      fun x -> Ok (C.String x)));
     ("Key_hash.t"  , ("key_hash", "Key_hash", mk TyKeyHash, 
-                      fun x -> Ok (String x)));
+                      fun x -> Ok (C.String x)));
     ("Key.t"       , ("key", "Key", mk TyKey, 
-                      fun x -> Ok (String x)));
+                      fun x -> Ok (C.String x)));
     ("Address.t"   , ("address", "Address", mk TyAddress, 
-                      fun x -> Ok (String x)));
+                      fun x -> Ok (C.String x)));
     ("Timestamp.t" , ("timestamp", "Timestamp", mk TyTimestamp, 
                       parse_timestamp));
     ("Bytes.t"     , ("bytes", "Bytes", mk TyBytes, 
@@ -335,8 +335,8 @@ let structure ~parameter:_ env str =
     (* bool *)
     | Tconstr (p, [], _) when p = Predef.path_bool ->
         make (mk TyBool) (match cstr_name with
-            | "true" -> Const (M.Opcode.Bool true)
-            | "false" -> Const (M.Opcode.Bool false)
+            | "true" -> Const (C.Bool true)
+            | "false" -> Const (C.Bool false)
             | s -> internal_error ~loc "strange bool constructor %s" s)
   
     (* list *)
@@ -495,7 +495,7 @@ let structure ~parameter:_ env str =
               | Ok (List xs) -> 
                   (* XXX Uniqueness and sorting? *)
                   let xs = List.map (function
-                      | Pair (c1,c2) -> (c1,c2)
+                      | C.Pair (c1,c2) -> (c1,c2)
                       | _ -> assert false) xs in
                   { e with typ; desc= Const (Map xs) }
               | Ok _ -> assert false

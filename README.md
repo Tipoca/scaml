@@ -10,8 +10,9 @@ SCaml is a **strict** subset of OCaml programming language.
 All the valid SCaml programs are also valid as OCaml programs.
 This immediately leads to the following benefits:
 
+* OCaml programmers can start writing SCaml programs immediately.
 * Many OCaml programming tools can be used for SCaml for free.
-* SCaml programs are also compilable as OCaml code, which can simulate the behaviour.
+* SCaml programs are also compilable as OCaml code, which can simulate the behaviour with an appropriate primitive library.
 * Users can use the existing OCaml programming language tutorials and references to learn SCaml.
 
 ## Restrictions
@@ -22,7 +23,7 @@ The following OCaml features are not supported:
 * Polymorphism
 * Sum types other than lists, options, and `type ('a,'b) sum = Left of 'a | Right of 'b`.
 * Product types other than a pair: `t1 * t2`.
-* SML modules.
+* Modules.
 * Labeled functions.
 * Nested patterns. Constants in patterns. "Or" pattern.  Pattern guards.  Exception patterns.
 * Multi case in `function`

@@ -59,13 +59,15 @@ module Type : sig
   val repr_closure_info : closure_info -> closure_info
 
   val pp : Format.formatter -> t -> unit
+    val to_micheline : t -> 
+      (Tezos_micheline.Micheline_printer.location, string) Tezos_micheline.Micheline.node
 
   exception Unification_error of t * t
   val unify : t -> t -> t
 end
 
-module Opcode : sig
-  type constant =
+module Constant : sig
+  type t =
     | Unit
     | Bool of bool
     | Int of Z.t
@@ -73,16 +75,22 @@ module Opcode : sig
     (* | Mutez of int *)
     | String of string
     | Bytes of string
-    | Option of constant option
-    | List of constant list
-    | Set of constant list
-    | Map of (constant * constant) list
-    | Big_map of (constant * constant) list
-    | Pair of constant * constant
-    | Left of constant
-    | Right of constant
+    | Option of t option
+    | List of t list
+    | Set of t list
+    | Map of (t * t) list
+    | Big_map of (t * t) list
+    | Pair of t * t
+    | Left of t
+    | Right of t
     | Timestamp of Z.t
 
+  val pp : Format.formatter -> t -> unit
+end
+  
+module Opcode : sig
+  type constant = Constant.t
+                    
   type t =
     | DUP
     | DIP of t list
@@ -155,7 +163,6 @@ module Opcode : sig
     | CREATE_CONTRACT of t list
 *)
 
-  val pp_constant : Format.formatter -> constant -> unit
   val pp : Format.formatter -> t -> unit
   val clean_failwith : t list -> t list
 end
