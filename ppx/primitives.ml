@@ -71,9 +71,9 @@ let primitives =
   ; "List.map"     , (2, fun typ xs ->
         (* XXX dup *)
         let is_closure =
-          match typ with
+          match typ.desc with
           | TyLambda (typ, _, _) ->
-              begin match typ with
+              begin match typ.desc with
               | TyLambda (_, _, cli) ->
                   is_closure cli
               | _ -> assert false
@@ -105,10 +105,10 @@ let primitives =
 
   ; "List.fold_left"    , (3, fun typ xs -> 
         let is_closure1, is_closure2 =
-          match typ with
+          match typ.desc with
           | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
+              begin match typ.desc with
+              | TyLambda (_, { desc= TyLambda (_, _, cli2) }, cli1) ->
                   is_closure cli1,
                   is_closure cli2
               | _ -> assert false
@@ -140,14 +140,15 @@ let primitives =
         ])
 
   ; "List.rev", (1, fun ty xs -> 
-        match ty with
-        | TyLambda (TyList ty, TyList ty', _) when ty = ty' ->
+        match ty.desc with
+        | TyLambda ({ desc= TyList ty }, { desc= TyList _ty' }, _) ->
+            (* ty = _ty' *)
             xs @ [DIP [NIL ty]; ITER [CONS]]
         | _ -> assert false)
 
   ; "Set.empty", (0, fun typ xs ->
         assert (xs = []);
-        match typ with
+        match typ.desc with
         | TySet ty -> [EMPTY_SET ty]
         | _ -> assert false)
 
@@ -156,10 +157,10 @@ let primitives =
   ; "Set.update"  , (3, simple [UPDATE])
   ; "Set.fold"    , (3, fun typ xs -> 
         let is_closure1, is_closure2 =
-          match typ with
+          match typ.desc with
           | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
+              begin match typ.desc with
+              | TyLambda (_, { desc= TyLambda (_, _, cli2) }, cli1) ->
                   is_closure cli1,
                   is_closure cli2
               | _ -> assert false
@@ -195,9 +196,9 @@ let primitives =
       
   ; "Loop.left"    , (2, fun typ xs -> 
         let is_closure =
-          match typ with
+          match typ.desc with
           | TyLambda (typ, _, _) ->
-              begin match typ with
+              begin match typ.desc with
               | TyLambda (_, _, cli1) ->
                   is_closure cli1
               | _ -> assert false
@@ -207,8 +208,8 @@ let primitives =
               assert false
         in
         let rty =
-          match typ with
-          | TyLambda (_, TyLambda(_, rty, _), _) -> rty
+          match typ.desc with
+          | TyLambda (_, { desc= TyLambda(_, rty, _) }, _) -> rty
           | _ -> 
               Format.eprintf "Loop.left %a@." M.Type.pp typ;
               assert false
@@ -237,7 +238,7 @@ let primitives =
 
   ; "Map.empty", (0, fun typ xs ->
         assert (xs = []);
-        match typ with
+        match typ.desc with
         | TyMap (ty1,ty2) -> [EMPTY_MAP (ty1, ty2)]
         | _ -> assert false)
 
@@ -249,10 +250,10 @@ let primitives =
   ; "Map.map", (2, fun typ xs ->
         (* XXX dup *)
         let is_closure1, is_closure2 =
-          match typ with
+          match typ.desc with
           | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
+              begin match typ.desc with
+              | TyLambda (_, { desc= TyLambda (_, _, cli2) }, cli1) ->
                   is_closure cli1,
                   is_closure cli2
               | _ -> assert false
@@ -291,10 +292,10 @@ let primitives =
 
   ; "Map.fold"    , (3, fun typ xs -> 
         let is_closure1, is_closure2, is_closure3 =
-          match typ with
+          match typ.desc with
           | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, TyLambda (_, _, cli3), cli2), cli1) ->
+              begin match typ.desc with
+              | TyLambda (_, { desc= TyLambda (_, { desc= TyLambda (_, _, cli3) }, cli2) }, cli1) ->
                   is_closure cli1,
                   is_closure cli2,
                   is_closure cli3
@@ -337,8 +338,8 @@ let primitives =
   ; "Obj.pack", (1, simple [ PACK ])
 
   ; "Obj.unpack", (1, fun ty xs ->
-      match ty with
-      | TyLambda (_, TyOption ty, _) ->
+      match ty.desc with
+      | TyLambda (_, { desc= TyOption ty }, _) ->
           xs @ [ UNPACK ty ]
       | _ -> assert false)
       
@@ -346,8 +347,8 @@ let primitives =
   ; "Bytes.slice", (3, simple [ SLICE ]) (* XXX not tested *)
                    
   ; "Contract.contract", (1, fun ty xs ->
-        match ty with
-        | TyLambda (_, TyOption (TyContract ty), _) ->
+        match ty.desc with
+        | TyLambda (_, { desc= TyOption ({ desc= TyContract ty }) }, _) ->
             xs @ [ CONTRACT ty ]
         | _ -> assert false)
 

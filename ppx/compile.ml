@@ -38,13 +38,13 @@ let closure_env_type xtys =
   | [] -> assert false
   | (_,tylast)::xs ->
       List.fold_left (fun acc (_,ty) ->
-          TyPair (TyOption ty, acc)) (TyOption tylast) xs
+          tyPair (tyOption ty, acc)) (tyOption tylast) xs
 
 (* Convert closure type represented in TyLambda (ty1, ty2, cinfo)
    to the real type in Michelson: 
      (TyLambda (ty1, ty2, empty), closure_env_type (env of cinfo))
 *)
-let rec closure_type = function
+let rec closure_type t = match t.desc with
   | (TyString
     | TyNat
     | TyInt
@@ -57,28 +57,26 @@ let rec closure_type = function
     | TyAddress
     | TyKey
     | TySignature
-    | TyOperation as t) -> t
-  | TyList t -> TyList (closure_type t)
-  | TyPair (t1,t2) -> TyPair (closure_type t1, closure_type t2)
-  | TyOption t -> TyOption (closure_type t)
-  | TyOr (t1,t2) -> TyOr (closure_type t1, closure_type t2)
-  | TySet t -> TySet (closure_type t)
-  | TyMap (t1,t2) -> TyMap (closure_type t1, closure_type t2)
-  | TyBigMap (t1,t2) -> TyBigMap (closure_type t1, closure_type t2)
-  | TyContract t -> TyContract (closure_type t)
-  | (TyLambda (t1, t2, closure_info) as t) ->
+    | TyOperation) -> t
+  | TyList t -> tyList (closure_type t)
+  | TyPair (t1,t2) -> tyPair (closure_type t1, closure_type t2)
+  | TyOption t -> tyOption (closure_type t)
+  | TyOr (t1,t2) -> tyOr (closure_type t1, closure_type t2)
+  | TySet t -> tySet (closure_type t)
+  | TyMap (t1,t2) -> tyMap (closure_type t1, closure_type t2)
+  | TyBigMap (t1,t2) -> tyBigMap (closure_type t1, closure_type t2)
+  | TyContract t -> tyContract (closure_type t)
+  | TyLambda (t1, t2, closure_info) ->
       match (repr_closure_info closure_info).closure_desc with
       | CLLink _ -> assert false
       | CLEmpty -> assert false
       | CLList [] -> t
       | CLList xtys -> 
-          let env_type = 
-            closure_type @@ closure_env_type xtys
-          in
-          TyPair (TyLambda ( TyPair(closure_type t1, env_type),
-                             closure_type t2,
-                             { closure_desc = CLList [] } ),
-                  env_type)
+          let env_type = closure_type @@ closure_env_type xtys in
+          tyPair (tyLambda ( tyPair(closure_type t1, env_type),
+                                       closure_type t2,
+                                       { closure_desc = CLList [] } ),
+                       env_type)
 
 (* Copy a value of the identifier from the deep of the stack to its top. *)
 let compile_var ~loc env id = match MEnv.find id env with
@@ -124,7 +122,7 @@ let rec compile env t =
       os2 @ os1 @ [ PAIR ]
   | Assert t ->
       let os = compile env t in
-      os @ [ ASSERT; PUSH (TyUnit, Unit) ]
+      os @ [ ASSERT; PUSH (tyUnit, Unit) ]
   | AssertFalse -> [ UNIT ; FAILWITH ]
   | IfThenElse (t1, t2, t3) ->
       let oif = compile env t1 in
@@ -138,7 +136,7 @@ let rec compile env t =
       let _, pre = 
         List.fold_right (fun t (env, os) ->
             let os' = compile env t in
-            let env' = (Ident.dummy, TyUnit (* dummy *)) :: env in
+            let env' = (Ident.dummy, tyUnit (* dummy *)) :: env in
             env', os @ os') ts (env, [])
       in
       conv pre
@@ -170,7 +168,7 @@ let rec compile env t =
         (Format.list ";@ " (fun ppf (id,ty) ->
              Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) env;
       *)
-      begin match t.typ with
+      begin match t.typ.desc with
         | TyLambda (ty1, ty2, cli) ->
             begin match (repr_closure_info cli).closure_desc with
               | CLLink _ -> assert false
@@ -185,7 +183,7 @@ let rec compile env t =
                      => (ty1 * (xty1 option * (xty2 option * ... * xtyn option)))
                   *)
                   let lambda =
-                    let ity = TyPair (ty1, closure_env_type xtys) in
+                    let ity = tyPair (ty1, closure_env_type xtys) in
                     (* This conversion is not required,
                        if we have a way to access variables deep
                        inside the tuple:
@@ -261,7 +259,7 @@ let rec compile env t =
                           compile_var_or_default env x ty
                       | (x,ty)::xtys ->
                           let os = f env xtys in
-                          let env = (Ident.dummy,TyUnit)::env in
+                          let env = (Ident.dummy, tyUnit)::env in
                           let os' = compile_var_or_default env x ty in
                           os @ os' @ [ PAIR ]
                     in
@@ -274,11 +272,11 @@ let rec compile env t =
   | App (t, []) -> compile env t
   | App (f, args) ->
       let ofun = compile env f in
-      let env = (Ident.dummy,TyUnit)::env in
+      let env = (Ident.dummy, tyUnit)::env in
       fst @@ List.fold_left (fun (ofun, ftyp) arg ->
           let oarg = compile env arg in
           let ofun = ofun @ oarg @ mk_application ftyp in
-          let ftyp = match ftyp with
+          let ftyp = match ftyp.desc with
             | TyLambda (_, ty2, _) -> ty2
             | _ -> assert false
           in
@@ -296,7 +294,7 @@ and mk_application fty =
      res :: s
      
   *)
-  match fty with
+  match fty.desc with
   | TyLambda (_ty1, _ty2, cinfo) ->
       begin match (repr_closure_info cinfo).closure_desc with
         | CLLink _ -> assert false

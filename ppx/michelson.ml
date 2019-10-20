@@ -3,7 +3,8 @@ open Tools
 
 module Type = struct
   (* Michelson type.  This is shamelessly used as types for IML, too. *)
-  type t = 
+  type t = { desc : desc } 
+  and desc = 
     | TyString
     | TyNat
     | TyInt
@@ -36,18 +37,43 @@ module Type = struct
     | CLEmpty (* never unified with a proper closure info! *)
     | CLList of (Ident.t * t) list
     | CLLink of closure_info
-  
+
+  let mk desc = { desc }
+
+  let tyString              = mk TyString
+  let tyNat                 = mk TyNat
+  let tyInt                 = mk TyInt
+  let tyBytes               = mk TyBytes
+  let tyBool                = mk TyBool
+  let tyUnit                = mk TyUnit
+  let tyList t              = mk & TyList t
+  let tyPair (t1, t2)       = mk & TyPair (t1, t2)
+  let tyOption t            = mk & TyOption t
+  let tyOr (t1, t2)         = mk & TyOr (t1, t2)
+  let tySet t               = mk & TySet t
+  let tyMap (t1, t2)        = mk & TyMap (t1, t2)
+  let tyBigMap (t1, t2)     = mk & TyBigMap (t1, t2)
+  let tyMutez               = mk TyMutez
+  let tyKeyHash             = mk TyKeyHash
+  let tyTimestamp           = mk TyTimestamp
+  let tyAddress             = mk TyAddress
+  let tyKey                 = mk TyKey
+  let tySignature           = mk TySignature
+  let tyOperation           = mk TyOperation
+  let tyContract t          = mk & TyContract t
+  let tyLambda (t1, t2, ci) = mk & TyLambda (t1, t2, ci)
+
   let rec repr_closure_info ({ closure_desc } as i) = 
     match closure_desc with
     | CLEmpty -> i
     | CLList _ -> i
     | CLLink cl -> repr_closure_info cl
   
-  let rec pp ppf =
+  let rec pp ppf t =
     let open Format in
     let p = pp_print_string ppf in
     let f fmt = fprintf ppf fmt in
-    function
+    match t.desc with
     | TyString -> p "string"
     | TyNat -> p "nat"
     | TyInt -> p "int"
@@ -99,20 +125,20 @@ module Type = struct
          | Some ty1, Some ty2 -> unify ty1 ty2)) ids
   
   and unify t1 t2 = 
-    if t1 == t2 then t1
-    else match t1, t2 with
-      | TyList t1, TyList t2 -> TyList (unify t1 t2)
+    if t1.desc == t2.desc then t1
+    else match t1.desc, t2.desc with
+      | TyList t1, TyList t2 -> tyList (unify t1 t2)
       | TyPair (t11, t12), TyPair (t21, t22) ->
-          TyPair (unify t11 t21, unify t12 t22)
-      | TyOption t1, TyOption t2 -> TyOption (unify t1 t2)
+          tyPair (unify t11 t21, unify t12 t22)
+      | TyOption t1, TyOption t2 -> tyOption (unify t1 t2)
       | TyOr (t11, t12), TyOr (t21, t22) ->
-          TyOr (unify t11 t21, unify t12 t22)
-      | TySet t1, TySet t2 -> TySet (unify t1 t2)
+          tyOr (unify t11 t21, unify t12 t22)
+      | TySet t1, TySet t2 -> tySet (unify t1 t2)
       | TyMap (t11, t12), TyMap (t21, t22) ->
-          TyMap (unify t11 t21, unify t12 t22)
+          tyMap (unify t11 t21, unify t12 t22)
       | TyBigMap (t11, t12), TyBigMap (t21, t22) ->
-          TyBigMap (unify t11 t21, unify t12 t22)
-      | TyContract t1, TyContract t2 ->  TyContract (unify t1 t2)
+          tyBigMap (unify t11 t21, unify t12 t22)
+      | TyContract t1, TyContract t2 ->  tyContract (unify t1 t2)
       | TyLambda (t11, t12, cli1), TyLambda (t21, t22, cli2) ->
           let cli1 = repr_closure_info cli1 in
           let cli2 = repr_closure_info cli2 in
@@ -130,7 +156,7 @@ module Type = struct
                 cli1.closure_desc <- CLLink newcli;
                 cli2.closure_desc <- CLLink newcli
           end;
-          TyLambda (unify t11 t21, unify t12 t22, cli1)
+          tyLambda (unify t11 t21, unify t12 t22, cli1)
       | _ -> 
           raise (Unification_error (t1,t2))
 end

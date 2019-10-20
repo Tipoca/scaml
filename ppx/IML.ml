@@ -43,7 +43,7 @@ and desc =
 let almost_constant t = 
   match t.desc with
   | Const c -> Some c
-  | Nil ty when ty <> TyOperation -> 
+  | Nil ty when ty.desc <> TyOperation -> 
      (* We cannot PUSH (list operation) {}. We get
         "operation type forbidden in parameter, storage and constants" *)
       Some (M.Opcode.List [])
@@ -199,18 +199,18 @@ let rec type_expr tenv ty =
   | Tvar _ -> Error (Type_variable ty)
   | Tarrow (Nolabel, f, t, _) -> 
       type_expr tenv f >>= fun f ->
-      type_expr tenv t >>= fun t -> Ok (TyLambda (f, t, { closure_desc= CLEmpty }))
+      type_expr tenv t >>= fun t -> Ok (tyLambda (f, t, { closure_desc= CLEmpty }))
   | Ttuple [t1; t2] -> 
       type_expr tenv t1 >>= fun t1 ->
-      type_expr tenv t2 >>= fun t2 -> Ok (TyPair (t1, t2))
-  | Tconstr (p, [], _) when p = Predef.path_bool -> Ok TyBool
+      type_expr tenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
+  | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (mk TyBool)
   | Tconstr (p, [t], _) when p = Predef.path_list -> 
-      type_expr tenv t >>= fun t -> Ok (TyList t)
+      type_expr tenv t >>= fun t -> Ok (tyList t)
   | Tconstr (p, [t], _) when p = Predef.path_option -> 
-      type_expr tenv t >>= fun t -> Ok (TyOption t)
-  | Tconstr (p, [], _) when p = Predef.path_unit -> Ok TyUnit
-  | Tconstr (p, [], _) when p = Predef.path_string -> Ok TyString
-  | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok TyBytes
+      type_expr tenv t >>= fun t -> Ok (tyOption t)
+  | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (mk TyUnit)
+  | Tconstr (p, [], _) when p = Predef.path_string -> Ok (mk TyString)
+  | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (mk TyBytes)
   | Tconstr (p, tys, _) ->
       let rec f res = function
         | [] -> Ok (List.rev res)
@@ -220,20 +220,20 @@ let rec type_expr tenv ty =
       in
       f [] tys >>= fun tys ->
       begin match Path.is_scaml p, tys with
-        | Some "sum", [t1; t2] -> Ok (TyOr (t1, t2))
-        | Some "int", [] -> Ok TyInt
-        | Some "nat", [] -> Ok TyNat
-        | Some "tz", [] -> Ok TyMutez
-        | Some "Set.t", [ty] -> Ok (TySet ty)
-        | Some "Map.t", [ty1; ty2] -> Ok (TyMap (ty1, ty2))
-        | Some "Operation.t", [] -> Ok TyOperation
-        | Some "Contract.t", [ty] -> Ok (TyContract ty)
-        | Some "Timestamp.t", [] -> Ok TyTimestamp
-        | Some "Address.t", [] -> Ok TyAddress
-        | Some "Key.t", [] -> Ok TyKey
-        | Some "Signature.t", [] -> Ok TySignature
-        | Some "Key_hash.t", [] -> Ok TyKeyHash
-        | Some "Bytes.t", [] -> Ok TyBytes
+        | Some "sum", [t1; t2] -> Ok (tyOr (t1, t2))
+        | Some "int", [] -> Ok (mk TyInt)
+        | Some "nat", [] -> Ok (mk TyNat)
+        | Some "tz", [] -> Ok (mk TyMutez)
+        | Some "Set.t", [ty] -> Ok (tySet ty)
+        | Some "Map.t", [ty1; ty2] -> Ok (mk &TyMap (ty1, ty2))
+        | Some "Operation.t", [] -> Ok (mk TyOperation)
+        | Some "Contract.t", [ty] -> Ok (tyContract ty)
+        | Some "Timestamp.t", [] -> Ok (mk TyTimestamp)
+        | Some "Address.t", [] -> Ok (mk TyAddress)
+        | Some "Key.t", [] -> Ok (mk TyKey)
+        | Some "Signature.t", [] -> Ok (mk TySignature)
+        | Some "Key_hash.t", [] -> Ok (mk TyKeyHash)
+        | Some "Bytes.t", [] -> Ok (mk TyBytes)
         | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_data_type p)
         | None, _ -> prerr_endline "GAGA"; Error (Unsupported_data_type p)
       end
@@ -282,7 +282,7 @@ let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
   | Tpat_tuple _     -> unsupported ~loc "tuple pattern"
 
-  | Tpat_construct ({loc}, _, []) when typ = TyUnit ->
+  | Tpat_construct ({loc}, _, []) when typ.desc = TyUnit ->
       [{ loc; desc=Ident.dummy; typ }]
 
   | Tpat_construct _ -> unsupported ~loc "variant pattern"
@@ -313,17 +313,17 @@ let parse_bytes s =
   | _ -> Error "Bytes must take hex representation of bytes"
 
 let constructions_by_string =
-  [ ("Signature.t" , ("signature", "Signature", TySignature, 
+  [ ("Signature.t" , ("signature", "Signature", mk TySignature, 
                       fun x -> Ok (String x)));
-    ("Key_hash.t"  , ("key_hash", "Key_hash", TyKeyHash, 
+    ("Key_hash.t"  , ("key_hash", "Key_hash", mk TyKeyHash, 
                       fun x -> Ok (String x)));
-    ("Key.t"       , ("key", "Key", TyKey, 
+    ("Key.t"       , ("key", "Key", mk TyKey, 
                       fun x -> Ok (String x)));
-    ("Address.t"   , ("address", "Address", TyAddress, 
+    ("Address.t"   , ("address", "Address", mk TyAddress, 
                       fun x -> Ok (String x)));
-    ("Timestamp.t" , ("timestamp", "Timestamp", TyTimestamp, 
+    ("Timestamp.t" , ("timestamp", "Timestamp", mk TyTimestamp, 
                       parse_timestamp));
-    ("Bytes.t"     , ("bytes", "Bytes", TyBytes, 
+    ("Bytes.t"     , ("bytes", "Bytes", mk TyBytes, 
                       parse_bytes))
   ]
 
@@ -334,7 +334,7 @@ let structure ~parameter:_ env str =
     match (Ctype.expand_head exp_env exp_type).Types.desc with
     (* bool *)
     | Tconstr (p, [], _) when p = Predef.path_bool ->
-        make TyBool (match cstr_name with
+        make (mk TyBool) (match cstr_name with
             | "true" -> Const (M.Opcode.Bool true)
             | "false" -> Const (M.Opcode.Bool false)
             | s -> internal_error ~loc "strange bool constructor %s" s)
@@ -344,13 +344,13 @@ let structure ~parameter:_ env str =
         begin match cstr_name with
             | "[]" -> 
                 let ty = type_expr ~loc exp_env ty in
-                make (TyList ty) (Nil ty)
+                make (tyList ty) (Nil ty)
             | "::" ->
                 begin match args with
                   | [e1; e2] ->
                       let e1 = expression env e1 in
                       let e2 = expression env e2 in
-                      let typ = unify (TyList e1.typ) e2.typ in
+                      let typ = unify (tyList e1.typ) e2.typ in
                       make_constant @@ make typ @@ Cons (e1, e2)
                   | _ -> internal_error ~loc "strange cons"
                 end
@@ -362,12 +362,12 @@ let structure ~parameter:_ env str =
         begin match cstr_name with
           | "None" -> 
               let ty = type_expr ~loc exp_env ty in
-              make (TyOption ty) (IML_None ty)
+              make (tyOption ty) (IML_None ty)
           | "Some" ->
               begin match args with
                 | [e1] ->
                     let e1 = expression env e1 in
-                    make_constant @@ make (TyOption e1.typ) @@ IML_Some e1
+                    make_constant @@ make (tyOption e1.typ) @@ IML_Some e1
                 | _ -> internal_error ~loc "strange cons"
               end
           | s -> internal_error ~loc "strange list constructor %s" s
@@ -376,7 +376,7 @@ let structure ~parameter:_ env str =
     (* sum *)
     | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
-        let ty1, ty2 = match typ with
+        let ty1, ty2 = match typ.desc with
           | TyOr (ty1, ty2) -> ty1, ty2
           | _ -> assert false
         in
@@ -394,10 +394,10 @@ let structure ~parameter:_ env str =
         end
 
     | Tconstr (p, _, _) when p = Predef.path_unit -> 
-        make TyUnit Unit
+        make (mk TyUnit) Unit
   
     | Tconstr (p, [], _) when Path.is_scaml_dot "int" p ->
-        make TyInt begin
+        make (mk TyInt) begin
           let arg = match args with
               | [arg] -> arg
               | _ -> internal_error ~loc "strange Int arguments"
@@ -408,7 +408,7 @@ let structure ~parameter:_ env str =
           end
   
     | Tconstr (p, [], _) when Path.is_scaml_dot "nat" p ->
-        make TyNat begin 
+        make (mk TyNat) begin 
           let arg = match args with
             | [arg] -> arg
             | _ -> internal_error ~loc "strange Nat arguments"
@@ -422,7 +422,7 @@ let structure ~parameter:_ env str =
         end
   
     | Tconstr (p, [], _) when Path.is_scaml_dot "tz" p ->
-        make TyMutez begin 
+        make (mk TyMutez) begin 
           let arg = match args with
             | [arg] -> arg
             | _ -> internal_error ~loc "strange Tz arguments"
@@ -458,7 +458,7 @@ let structure ~parameter:_ env str =
     (* set *)
     | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
-        let ty = match typ with
+        let ty = match typ.desc with
           | TySet ty-> ty
           | _ -> assert false
         in
@@ -467,7 +467,7 @@ let structure ~parameter:_ env str =
         begin match args with 
           | [arg] -> 
               let e = expression env arg in
-              ignore @@ unify (TyList ty) e.typ;
+              ignore @@ unify (tyList ty) e.typ;
               begin match get_constant e with
               | Ok (List xs) -> 
                   (* XXX Uniqueness and sorting? *)
@@ -481,7 +481,7 @@ let structure ~parameter:_ env str =
     (* map *)
     | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "Map.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
-        let ty1, ty2 = match typ with
+        let ty1, ty2 = match typ.desc with
           | TyMap (ty1, ty2) -> ty1, ty2
           | _ -> assert false
         in
@@ -490,7 +490,7 @@ let structure ~parameter:_ env str =
         begin match args with 
           | [arg] -> 
               let e = expression env arg in
-              ignore @@ unify (TyList (TyPair (ty1, ty2))) e.typ;
+              ignore @@ unify (tyList (tyPair (ty1, ty2))) e.typ;
               begin match get_constant e with
               | Ok (List xs) -> 
                   (* XXX Uniqueness and sorting? *)
@@ -554,7 +554,7 @@ let structure ~parameter:_ env str =
     | Texp_tuple [e1; e2] ->
         let e1 = expression env e1 in
         let e2 = expression env e2 in
-        ignore @@ unify (TyPair (e1.typ, e2.typ)) typ;
+        ignore @@ unify (tyPair (e1.typ, e2.typ)) typ;
         make_constant @@ make @@ Tuple (e1, e2)
     | Texp_tuple _ -> unsupported ~loc "tuple with more than 2 elems"
     | Texp_construct ({loc}, c, args) -> 
@@ -589,7 +589,7 @@ let structure ~parameter:_ env str =
             | _ -> unsupported ~loc "labeled arguments") args
         in
         let fty' = 
-          List.fold_right (fun arg ty -> TyLambda(arg.typ, ty, { closure_desc= CLList [] })) args typ 
+          List.fold_right (fun arg ty -> tyLambda(arg.typ, ty, { closure_desc= CLList [] })) args typ 
         in
         let fty = type_expr ~loc:f.exp_loc f.exp_env f.exp_type in
         ignore (unify fty fty');
@@ -629,7 +629,7 @@ let structure ~parameter:_ env str =
               let e = expression env c_rhs in
               let s = IdTys.(elements @@ remove (v.desc, v.typ) (freevars e)) in
               let clinfo = { closure_desc= CLList s } in
-              ignore @@ unify typ @@ TyLambda (ty1, ty2, clinfo);
+              ignore @@ unify typ @@ mk @@ TyLambda (ty1, ty2, clinfo);
               ignore @@ unify ty2 e.typ;
               make @@ Fun (ty1, ty2, v, e, s)
           | _ -> assert false
@@ -673,7 +673,7 @@ let structure ~parameter:_ env str =
               let rec f ty = function
                 | [] -> ty
                 | _arg::args ->
-                    match ty with
+                    match ty.M.Type.desc with
                     | TyLambda (_,ty2,_) -> f ty2 args
                     | _ -> assert false
               in
@@ -697,7 +697,7 @@ let structure ~parameter:_ env str =
     let cases = 
       List.sort (fun (n1,_,_) (n2,_,_) -> compare n1 n2) (List.map compile_case cases)
     in
-    match ty, cases with
+    match ty.desc, cases with
     | TyOr (_ty1, _ty2), [("Left",[l],le); ("Right",[r],re)] ->
         let get_var p = match pattern p with [v] -> v | _ -> assert false in
         let lv = get_var l in
@@ -770,9 +770,9 @@ let structure ~parameter:_ env str =
           env, vbs :: rev_vbss) (env, []) sitems 
     in
     List.fold_right (fun (v,b) x ->
-        { loc=Location.none; typ= TyUnit; desc= Let (v, b, x) })
+        { loc=Location.none; typ= mk TyUnit; desc= Let (v, b, x) })
       (List.flatten (List.rev rev_vbss))
-      { loc=Location.none; typ= TyUnit; desc= Unit }
+      { loc=Location.none; typ= mk TyUnit; desc= Unit }
   in
   structure env str
 

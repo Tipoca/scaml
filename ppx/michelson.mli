@@ -1,5 +1,6 @@
 module Type : sig
-  type t =
+  type t = { desc : desc }
+  and desc = 
     | TyString
     | TyNat
     | TyInt
@@ -29,6 +30,31 @@ module Type : sig
     | CLEmpty (* never unified with a proper closure info! *)
     | CLList of (Ident.t * t) list
     | CLLink of closure_info
+
+  val mk : desc -> t
+
+  val tyString : t
+  val tyNat : t
+  val tyInt : t
+  val tyBytes : t
+  val tyBool : t
+  val tyUnit : t
+  val tyList : t -> t
+  val tyPair : (t * t) -> t
+  val tyOption : t -> t
+  val tyOr : (t * t) -> t
+  val tySet : t -> t
+  val tyMap : (t * t) -> t
+  val tyBigMap : (t * t) -> t
+  val tyMutez : t
+  val tyKeyHash : t
+  val tyTimestamp : t
+  val tyAddress : t
+  val tyKey : t
+  val tySignature : t
+  val tyOperation : t
+  val tyContract : t -> t
+  val tyLambda : (t * t * closure_info) -> t
 
   val repr_closure_info : closure_info -> closure_info
 

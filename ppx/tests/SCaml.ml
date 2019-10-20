@@ -182,12 +182,6 @@ module Crypto = struct
   let sha256 : bytes -> bytes = fun _ -> assert false
   let sha512 : bytes -> bytes = fun _ -> assert false
   let hash_key  : key -> key_hash = fun _ -> assert false
-(*
-      | STEPS_TO_QUOTA
-      | SOURCE
-      | SENDER
-      | ADDRESS
-        *)
 end
 
 module Obj = struct
