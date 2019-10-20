@@ -105,30 +105,31 @@ module Type = struct
     | CLLink cl -> repr_closure_info cl
 
   let rec to_micheline t = 
+    let prim = Mline.prim in
     match t.desc with
-    | TyString -> Mline.prim "string" []
-    | TyNat -> Mline.prim "nat" []
-    | TyInt -> Mline.prim "int" []
-    | TyBytes -> Mline.prim "bytes" []
-    | TyBool -> Mline.prim "bool" []
-    | TyUnit -> Mline.prim "unit" []
-    | TyList t -> Mline.prim "list" [to_micheline t]
-    | TyPair (t1, t2) -> Mline.prim "pair" [to_micheline t1; to_micheline t2]
-    | TyOption t -> Mline.prim "option" [to_micheline t]
-    | TyOr (t1, t2) -> Mline.prim "or" [to_micheline t1; to_micheline t2]
-    | TySet t -> Mline.prim "set" [to_micheline t]
-    | TyMap (t1, t2) -> Mline.prim "map" [to_micheline t1; to_micheline t2]
-    | TyBigMap (t1, t2) -> Mline.prim "bigmap" [to_micheline t1; to_micheline t2]
+    | TyString -> prim "string" []
+    | TyNat    -> prim "nat" []
+    | TyInt    -> prim "int" []
+    | TyBytes  -> prim "bytes" []
+    | TyBool   -> prim "bool" []
+    | TyUnit   -> prim "unit" []
+    | TyList t -> prim "list" [to_micheline t]
+    | TyPair (t1, t2) -> prim "pair" [to_micheline t1; to_micheline t2]
+    | TyOption t -> prim "option" [to_micheline t]
+    | TyOr (t1, t2) -> prim "or" [to_micheline t1; to_micheline t2]
+    | TySet t -> prim "set" [to_micheline t]
+    | TyMap (t1, t2) -> prim "map" [to_micheline t1; to_micheline t2]
+    | TyBigMap (t1, t2) -> prim "bigmap" [to_micheline t1; to_micheline t2]
   
-    | TyMutez -> Mline.prim "mutez" []
-    | TyKeyHash -> Mline.prim "key_hash" []
-    | TyTimestamp -> Mline.prim "timestamp" []
-    | TyAddress -> Mline.prim "address" []
+    | TyMutez     -> prim "mutez" []
+    | TyKeyHash   -> prim "key_hash" []
+    | TyTimestamp -> prim "timestamp" []
+    | TyAddress   -> prim "address" []
   
-    | TyKey -> Mline.prim "key" []
-    | TySignature -> Mline.prim "signature" []
-    | TyOperation -> Mline.prim "operation" []
-    | TyContract t -> Mline.prim "contract" [to_micheline t]
+    | TyKey       -> prim "key" []
+    | TySignature -> prim "signature" []
+    | TyOperation -> prim "operation" []
+    | TyContract t -> prim "contract" [to_micheline t]
     | TyLambda (t1, t2, cli) -> 
         let comment =
           match (repr_closure_info cli).closure_desc with
@@ -136,11 +137,12 @@ module Type = struct
           | CLEmpty -> Some "EMPTY!"
           | CLList [] -> None
           | CLList xs -> 
-              Some (Format.sprintf "%a" Format.(list ";@ " (fun ppf (id, ty) ->
-                       fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs)
+              Some (Format.sprintf "%a" 
+                      Format.(list ";@ " (fun ppf (id, ty) ->
+                          fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs)
         in
         Mline.add_comment comment
-        & Mline.prim "lambda" [to_micheline t1; to_micheline t2]
+        & prim "lambda" [to_micheline t1; to_micheline t2]
 
   and pp fmt t = Mline.pp fmt & to_micheline t
 
@@ -212,32 +214,34 @@ module Constant = struct
     | Right of t
     | Timestamp of Z.t
 
-  let rec to_micheline = function
-    | Bool true  -> Mline.prim "True" []
-    | Bool false -> Mline.prim "False" []
-    | Unit     -> Mline.prim "Unit" []
-    | Int n    -> Mline.int n
-    | Nat n    -> Mline.int n
+  let rec to_micheline = 
+    let open Mline in
+    function
+    | Bool true  -> prim "True" []
+    | Bool false -> prim "False" []
+    | Unit     -> prim "Unit" []
+    | Int n    -> int n
+    | Nat n    -> int n
     (*    | Mutez n  -> f "%d" n *)
-    | String s -> Mline.string s
-    | Bytes s (* in hex *) ->  Mline.bytes s
-    | Option None -> Mline.prim "None" []
-    | Option (Some t) -> Mline.prim "Some" [to_micheline t]
-    | Pair (t1, t2) -> Mline.prim "Pair" [to_micheline t1; to_micheline t2]
-    | Left t -> Mline.prim "Left" [to_micheline t]
-    | Right t -> Mline.prim "Right" [to_micheline t]
-    | List ts -> Mline.seq (List.map to_micheline ts)
-    | Set ts -> Mline.seq (List.map to_micheline & List.sort compare ts)
+    | String s -> string s
+    | Bytes s (* in hex *) ->  bytes s
+    | Option None -> prim "None" []
+    | Option (Some t) -> prim "Some" [to_micheline t]
+    | Pair (t1, t2) -> prim "Pair" [to_micheline t1; to_micheline t2]
+    | Left t -> prim "Left" [to_micheline t]
+    | Right t -> prim "Right" [to_micheline t]
+    | List ts -> seq (List.map to_micheline ts)
+    | Set ts -> seq (List.map to_micheline & List.sort compare ts)
     | Map xs -> 
-        Mline.seq (List.map (fun (k,v) ->
-            Mline.prim "Elt" [to_micheline k; to_micheline v]) xs)
+        seq (List.map (fun (k,v) ->
+            prim "Elt" [to_micheline k; to_micheline v]) xs)
     | Big_map xs -> 
-        Mline.seq (List.map (fun (k,v) ->
-            Mline.prim "Elt" [to_micheline k; to_micheline v]) xs)
+        seq (List.map (fun (k,v) ->
+            prim "Elt" [to_micheline k; to_micheline v]) xs)
     | Timestamp z -> 
         begin match Ptime.of_float_s @@ Z.to_float z with
           | None -> assert false
-          | Some t -> Mline.string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
+          | Some t -> string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
         end
 
   let pp fmt t = Mline.pp fmt & to_micheline t
