@@ -89,7 +89,7 @@ let compile_var ~loc env id = match MEnv.find id env with
         | 0 -> [ DUP ]
         | n -> 
             assert (n > 0);
-            [ DIP (f (n-1)); SWAP ]
+            [ DIP (1, f (n-1)); SWAP ]
       in
       [ COMMENT( Ident.name id, f n ) ]
 
@@ -144,22 +144,22 @@ let rec compile env t =
       let os1 = compile env t1 in
       let os2 = compile ((pat.desc, pat.typ)::env) t2 in
       COMMENT (Ident.name pat.desc, os1) :: os2 
-      @ [COMMENT ("clean " ^ Ident.name pat.desc, [DIP [DROP]])]
+      @ [COMMENT ("clean " ^ Ident.name pat.desc, [DIP (1, [DROP 1])])]
   | Switch_or (t, p1, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile ((p1.desc,p1.typ)::env) t1 in
       let os2 = compile ((p2.desc,p2.typ)::env) t2 in
-      os @ [IF_LEFT (os1 @ [DIP [DROP]], os2 @ [DIP [DROP]])]
+      os @ [IF_LEFT (os1 @ [DIP (1, [DROP 1])], os2 @ [DIP (1, [DROP 1])])]
   | Switch_cons (t, p1, p2, t1, t2) ->
       let os = compile env t in
       let os1 = compile ((p1.desc,p1.typ)::(p2.desc,p2.typ)::env) t1 in
       let os2 = compile env t2 in
-      os @ [IF_CONS (os1 @ [DIP [DROP; DROP]], os2)]
+      os @ [IF_CONS (os1 @ [DIP (1, [DROP 1; DROP 1])], os2)]
   | Switch_none (t, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile env t1 in
       let os2 = compile ((p2.desc,p2.typ)::env) t2 in
-      os @ [IF_NONE (os1, os2 @ [DIP [DROP]])]
+      os @ [IF_NONE (os1, os2 @ [DIP (1, [DROP 1])])]
   | Fun (_ty1, _ty2, p, body, fvars) ->
       (*
       Format.eprintf "fvars: @[%a@] env: @[%a@]@." 
@@ -176,7 +176,7 @@ let rec compile env t =
               | CLList [] ->
                   let env = (p.desc,p.typ)::env in
                   let o = compile env body in
-                  let clean = [ COMMENT ("lambda clean up", [DIP [ DROP ] ]) ] in
+                  let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP 1]) ]) ] in
                   [ LAMBDA (closure_type ty1, closure_type ty2, o @ clean) ]
               | CLList xtys -> 
                   (* (x1:xty1),(x2:xty2),...,(xn:xtyn)
@@ -200,7 +200,7 @@ let rec compile env t =
                     *)
                     (* XXX we should use LOOP?  Maybe not since the types are different *)
 
-                    let init_ops = [ COMMENT( "get arg", [ DUP; DIP [ CAR ]; CDR ]) ] in (* to get a *)
+                    let init_ops = [ COMMENT( "get arg", [ DUP; DIP (1, [ CAR ]); CDR ]) ] in (* to get a *)
                       (* (a,(x1,(x2,..xn))) ::s 
                          (x1o,(x2o,..xno)) :: a :: s 
                       *)
@@ -213,13 +213,13 @@ let rec compile env t =
                             ops @ [ COMMENT ("get " ^ Ident.name x, [IF_NONE ([ UNIT ; FAILWITH ], []) ]) ],
                             (x,ty)::env
                           else
-                            ops @ [ COMMENT ("drop " ^ Ident.name x, [ DROP ] ) ],
+                            ops @ [ COMMENT ("drop " ^ Ident.name x, [ DROP 1 ] ) ],
                             env
 
                       | (x,ty)::xtys ->
                           let ops, env =
                             if List.mem_assoc x fvars then 
-                              ops @ [ DUP ; DIP [ CAR; COMMENT ("get " ^ Ident.name x, [IF_NONE ([ UNIT ; FAILWITH ], [])]) ]; CDR ],
+                              ops @ [ DUP ; DIP (1, [ CAR; COMMENT ("get " ^ Ident.name x, [IF_NONE ([ UNIT ; FAILWITH ], [])]) ]); CDR ],
                               (x,ty)::env
                             else
                               ops @ [ COMMENT ("drop " ^ Ident.name x, []); CDR  ],
@@ -230,7 +230,7 @@ let rec compile env t =
                     let ops, env = f init_ops env xtys in
                     (* Format.eprintf "Compiling body with %a (fvars %a)@." MEnv.pp env MEnv.pp xtys; *)
                     let o = compile env body in
-                    let clean = COMMENT ( "lambda clean up", [DIP (List.map (fun _ -> DROP) env)]) in
+                    let clean = COMMENT ( "lambda clean up", [DIP (1, List.map (fun _ -> DROP 1) env)]) in
                     LAMBDA (closure_type ity, closure_type ty2, ops @ o @ [clean])
                   in
 
@@ -309,7 +309,7 @@ and mk_application fty =
                (arg,env) :: lambda ::s    <- PAIR
                EXEC!
             *)
-            [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR ; EXEC ]
+            [ DIP (1, [ DUP; CDR; DIP (1, [ CAR ]) ]); PAIR ; EXEC ]
       end
   | _ -> assert false
 
@@ -348,9 +348,9 @@ let compile_structure t =
   let p2, t = get_abst t in
   let env = ((p2.desc,p2.typ)::(p1.desc,p1.typ)::env) in
   let os = compile env t in
-  [ COMMENT ("defs", [DIP ops]) 
-  ; COMMENT ("entry point init", [DUP ; CDR; DIP [CAR]])
+  [ COMMENT ("defs", [DIP (1, ops)]) 
+  ; COMMENT ("entry point init", [DUP ; CDR; DIP (1, [CAR])])
   ; COMMENT ("entry point", os )
   ; COMMENT ("final clean up",
-             [ DIP (List.init (List.length env) (fun _ -> DROP)) ]) ]
+             [ DIP (1, List.init (List.length env) (fun _ -> DROP 1)) ]) ]
   |> clean_failwith

@@ -253,8 +253,10 @@ module Opcode = struct
 
   type t = 
     | DUP
-    | DIP of t list
-    | DROP
+    | DIP of int * t list
+    | DIG of int
+    | DUG of int
+    | DROP of int
     | SWAP
     | PAIR
     | ASSERT
@@ -262,6 +264,7 @@ module Opcode = struct
     | LEFT of Type.t
     | RIGHT of Type.t
     | LAMBDA of Type.t * Type.t * t list
+    | APPLY
     | PUSH of Type.t * constant
     | NIL of Type.t
     | CONS
@@ -321,7 +324,10 @@ module Opcode = struct
     let open Mline in
     let rec f = function
       | DUP -> prim "DUP" []
-      | DIP code -> prim "DIP" [seq (List.map f code)]
+      | DIP (1, code) -> prim "DIP" [seq (List.map f code)]
+      | DIP (n, code) -> prim "DIP" [int & Z.of_int n; seq (List.map f code)]
+      | DIG n -> prim "DIG" [int & Z.of_int n]
+      | DUG n -> prim "DUG" [int & Z.of_int n]
       | SWAP -> prim "SWAP" []
       | PAIR -> prim "PAIR" []
       | PUSH (ty, const) -> prim "PUSH" [Type.to_micheline ty; Constant.to_micheline const]
@@ -333,11 +339,13 @@ module Opcode = struct
       | LAMBDA (ty1, ty2, code) -> 
           prim "LAMBDA" [Type.to_micheline (Type.tyLambda (ty1, ty2, { Type.closure_desc= Type.CLEmpty })); (* XXX clist? *)
                          seq (List.map f code)]
+      | APPLY -> prim "APPLY" []
       | CONS -> prim "CONS" []
       | NIL ty -> prim "NIL" [ Type.to_micheline ty ]
       | SOME -> prim "SOME" []
       | NONE ty -> prim "NONE" [ Type.to_micheline ty ]
-      | DROP -> prim "DROP" []
+      | DROP 1 -> prim "DROP" []
+      | DROP n -> prim "DROP" [int & Z.of_int n]
       | COMPARE -> prim "COMPARE" []
       | EQ -> prim "EQ" []
       | LT -> prim "LT" []
@@ -420,7 +428,7 @@ module Opcode = struct
     | FAILWITH::_ -> [FAILWITH]
     | x::xs -> aux x :: clean_failwith xs
   and aux = function
-    | DIP ts -> DIP (clean_failwith ts)
+    | DIP (n, ts) -> DIP (n, clean_failwith ts)
     | ITER ts -> ITER (clean_failwith ts)
     | MAP ts -> MAP (clean_failwith ts)
     | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_failwith ts)
@@ -432,7 +440,7 @@ module Opcode = struct
     | LOOP t -> LOOP (clean_failwith t)
     | LOOP_LEFT t -> LOOP_LEFT (clean_failwith t)
     | (DUP
-      | DROP
+      | DIG _ | DUG _ | DROP _
       | SWAP
       | PAIR
       | ASSERT
@@ -479,7 +487,7 @@ module Opcode = struct
       | SOURCE
       | SENDER
       | ADDRESS
-
+      | APPLY
       as t) -> t
 end
 

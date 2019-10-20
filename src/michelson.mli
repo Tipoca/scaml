@@ -100,8 +100,10 @@ module Opcode : sig
                     
   type t =
     | DUP
-    | DIP of t list
-    | DROP
+    | DIP of int * t list
+    | DIG of int
+    | DUG of int
+    | DROP of int
     | SWAP
     | PAIR
     | ASSERT
@@ -110,6 +112,7 @@ module Opcode : sig
     | LEFT of Type.t
     | RIGHT of Type.t
     | LAMBDA of Type.t * Type.t * t list
+    | APPLY
     | PUSH of Type.t * constant
     | NIL of Type.t
     | CONS

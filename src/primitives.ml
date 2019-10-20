@@ -23,7 +23,7 @@ let simple os = fun _ty pre -> pre @ os
 (* EXEC for pure lambda and closure *)
 let exec = function
   | false -> [ EXEC ]
-  | true -> [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR; EXEC ]
+  | true -> [ DIP (1, [ DUP; CDR; DIP (1, [ CAR ]) ]); PAIR; EXEC ]
 
 let is_closure cli =
   match (repr_closure_info cli).closure_desc with
@@ -96,10 +96,10 @@ let primitives =
         xs @
         [ SWAP ; 
           MAP ( 
-            [ DIP [ DUP ] ]
+            [ DIP (1, [ DUP ]) ]
             @ exec is_closure
           ) ;
-          DIP [ DROP ]
+          DIP (1, [ DROP 1 ])
         ])
 
 
@@ -131,19 +131,19 @@ let primitives =
 *)           
 
         xs @
-        [ SWAP ; DIP [ SWAP ]; SWAP;
-          ITER ([ DIP [ DIP [ DUP ]; SWAP ] ]
+        [ SWAP ; DIP (1, [ SWAP ]); SWAP;
+          ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
                 @ exec is_closure1
                 @ [ SWAP ]
                 @ exec is_closure2);
-          DIP [ DROP ]
+          DIP (1, [ DROP 1])
         ])
 
   ; "List.rev", (1, fun ty xs -> 
         match ty.desc with
         | TyLambda ({ desc= TyList ty }, { desc= TyList _ty' }, _) ->
             (* ty = _ty' *)
-            xs @ [DIP [NIL ty]; ITER [CONS]]
+            xs @ [DIP (1, [NIL ty]); ITER [CONS]]
         | _ -> assert false)
 
   ; "Set.empty", (0, fun typ xs ->
@@ -186,12 +186,12 @@ let primitives =
 *)           
 
         xs @
-        [ SWAP ; DIP [ SWAP ];
-          ITER ([ DIP [ DIP [ DUP ]; SWAP ] ]
+        [ SWAP ; DIP (1, [ SWAP ]);
+          ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
                 @ exec is_closure1
                 @ [ SWAP ]
                 @ exec is_closure2);
-          DIP [ DROP ]
+          DIP (1, [ DROP 1 ])
         ])
       
   ; "Loop.left"    , (2, fun typ xs -> 
@@ -228,8 +228,8 @@ let primitives =
 *)
         xs @
         [ SWAP ; LEFT rty;
-          LOOP_LEFT (  DIP [ DUP ] :: exec is_closure );
-          DIP [ DROP ] ])
+          LOOP_LEFT (  DIP (1, [ DUP ]) :: exec is_closure );
+          DIP (1, [ DROP 1 ]) ])
       
   ; "String.concat",   (2, simple [CONCAT])
   ; "String.length",   (1, simple [SIZE])
@@ -281,13 +281,13 @@ let primitives =
         xs @
         [ SWAP ; 
           MAP ( 
-            [ DIP [ DUP ];
-              DUP; CAR; DIP [ CDR; SWAP ] ]
+            [ DIP (1, [ DUP ]);
+              DUP; CAR; DIP (1, [ CDR; SWAP ]) ]
             @ exec is_closure1
             @ [ SWAP ]
             @ exec is_closure2
           ) ;
-          DIP [ DROP ]
+          DIP (1, [ DROP 1 ])
         ])
 
   ; "Map.fold"    , (3, fun typ xs -> 
@@ -323,15 +323,15 @@ let primitives =
 *)           
 
         xs @
-        [ SWAP ; DIP [ SWAP ];
-          ITER ([ DUP; CAR; DIP [ CDR ];
-                  DIP [ DIP [ DIP [ DUP ]; SWAP ]; SWAP ] ]
+        [ SWAP ; DIP (1, [ SWAP ]);
+          ITER ([ DUP; CAR; DIP (1, [ CDR ]);
+                  DIP (1, [ DIP (1, [ DIP (1, [ DUP ]); SWAP ]); SWAP ]) ]
                 @ exec is_closure1
                 @ [ SWAP ]
                 @ exec is_closure2
                 @ [ SWAP ]
                 @ exec is_closure3);
-          DIP [ DROP ]
+          DIP (1, [ DROP 1 ])
         ])
       
                
@@ -360,12 +360,12 @@ let primitives =
   ; "Operation.set_delegate", (1, simple [ SET_DELEGATE ])
   ; "Operation.create_account", (4, simple [ CREATE_ACCOUNT; PAIR ])
 
-  ; "Global.get_now", (1, simple [ DROP; NOW ])
-  ; "Global.get_amount", (1, simple [ DROP; AMOUNT ])
-  ; "Global.get_balance", (1, simple [ DROP; BALANCE ])
-  ; "Global.get_source", (1, simple [ DROP; SOURCE ])
-  ; "Global.get_sender", (1, simple [ DROP; SENDER ])
-  ; "Global.get_steps_to_quota", (1, simple [ DROP; STEPS_TO_QUOTA ])
+  ; "Global.get_now", (1, simple [ DROP 1; NOW ])
+  ; "Global.get_amount", (1, simple [ DROP 1; AMOUNT ])
+  ; "Global.get_balance", (1, simple [ DROP 1; BALANCE ])
+  ; "Global.get_source", (1, simple [ DROP 1; SOURCE ])
+  ; "Global.get_sender", (1, simple [ DROP 1; SENDER ])
+  ; "Global.get_steps_to_quota", (1, simple [ DROP 1; STEPS_TO_QUOTA ])
 
   ; "Crypto.check_signature", (3, simple [ CHECK_SIGNATURE ])
   ; "Crypto.blake2b", (1, simple [ BLAKE2B ])
