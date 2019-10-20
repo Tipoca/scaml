@@ -1,6 +1,41 @@
 open Spotlib.Spot
 open Tools
 
+module Mline = struct
+  open Tezos_micheline.Micheline
+  open Tezos_micheline.Micheline_printer
+
+  type t = node
+    
+  let no_comment = { comment = None }
+
+  let add_comment c n = match c, n with
+    | None, _ -> n
+    | Some _, Int ({comment=None}, x) -> Int ({comment= c}, x)
+    | Some _, String ({comment=None}, x) -> String ({comment= c}, x)
+    | Some _, Bytes ({comment=None}, x) -> Bytes ({comment= c}, x)
+    | Some _, Prim ({comment=None}, x, y, z) -> Prim ({comment= c}, x, y, z)
+    | Some _, Seq ({comment=None}, x) -> Seq ({comment= c}, x)
+    | Some s1, Int ({comment=Some s2}, x) -> 
+        Int ({comment= Some (s1 ^ ", " ^ s2)}, x)
+    | Some s1, String ({comment=Some s2}, x) ->
+        String ({comment= Some (s1 ^ ", " ^ s2)}, x)
+    | Some s1, Bytes ({comment=Some s2}, x) ->
+        Bytes ({comment= Some (s1 ^ ", " ^ s2)}, x)
+    | Some s1, Prim ({comment=Some s2}, x, y, z) ->
+        Prim ({comment= Some (s1 ^ ", " ^ s2)}, x, y, z)
+    | Some s1, Seq ({comment=Some s2}, x) -> 
+        Seq ({comment= Some (s1 ^ ", " ^ s2)}, x)
+
+  let string s = String (no_comment, s)
+  let bytes s = String (no_comment, s)
+  let int n = Int (no_comment, n)
+  let prim s ts = Prim (no_comment, s, ts, [])
+  let seq ts = Seq (no_comment, ts)
+      
+  let pp = print_expr
+end
+
 module Type = struct
   (* Michelson type.  This is shamelessly used as types for IML, too. *)
   type t = { desc : desc } 
@@ -69,98 +104,31 @@ module Type = struct
     | CLList _ -> i
     | CLLink cl -> repr_closure_info cl
 
-  let rec pp ppf t =
-    let open Format in
-    let p = pp_print_string ppf in
-    let f fmt = fprintf ppf fmt in
-    match t.desc with
-    | TyString -> p "string"
-    | TyNat -> p "nat"
-    | TyInt -> p "int"
-    | TyBytes -> p "bytes"
-    | TyBool -> p "bool"
-    | TyUnit -> p "unit"
-    | TyList t -> f "list (%a)" pp t
-    | TyPair (t1, t2) -> f "pair (%a) (%a)" pp t1 pp t2
-    | TyOption t -> f "option (%a)" pp t
-    | TyOr (t1, t2) -> f "or (%a) (%a)" pp t1 pp t2
-    | TySet t -> f "set (%a)" pp t
-    | TyMap (t1, t2) -> f "map (%a) (%a)" pp t1 pp t2
-    | TyBigMap (t1, t2) -> f "bigmap (%a) (%a)" pp t1 pp t2
-  
-    | TyMutez -> p "mutez"
-    | TyKeyHash -> p "key_hash"
-    | TyTimestamp -> p "timestamp "
-    | TyAddress -> p "address"
-  
-    | TyKey -> p "key"
-    | TySignature -> p "signature"
-    | TyOperation -> p "operation"
-    | TyContract t -> f "contract (%a)" pp t
-    | TyLambda (t1, t2, cli) -> 
-        f "lambda (%a%a) (%a)" 
-          pp t1 
-          (fun _ppf cli ->
-             match (repr_closure_info cli).closure_desc with
-             | CLLink _ -> assert false
-             | CLEmpty -> p " /* EMPTY! */"
-             | CLList [] -> ()
-             | CLList xs -> 
-                 f " /* %a */"
-                   Format.(list ";@ " (fun ppf (id, ty) ->
-                       fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs) cli
-          pp t2
-
   let rec to_micheline t = 
-    let open Tezos_micheline.Micheline in
-    let open Tezos_micheline.Micheline_printer in
-    let no_comment = { comment = None } in
-    let add_comment c n = match c, n with
-      | None, _ -> n
-      | Some _, Int ({comment=None}, x) -> Int ({comment= c}, x)
-      | Some _, String ({comment=None}, x) -> String ({comment= c}, x)
-      | Some _, Bytes ({comment=None}, x) -> Bytes ({comment= c}, x)
-      | Some _, Prim ({comment=None}, x, y, z) -> Prim ({comment= c}, x, y, z)
-      | Some _, Seq ({comment=None}, x) -> Seq ({comment= c}, x)
-      | Some s1, Int ({comment=Some s2}, x) -> 
-          Int ({comment= Some (s1 ^ ", " ^ s2)}, x)
-      | Some s1, String ({comment=Some s2}, x) ->
-          String ({comment= Some (s1 ^ ", " ^ s2)}, x)
-      | Some s1, Bytes ({comment=Some s2}, x) ->
-          Bytes ({comment= Some (s1 ^ ", " ^ s2)}, x)
-      | Some s1, Prim ({comment=Some s2}, x, y, z) ->
-          Prim ({comment= Some (s1 ^ ", " ^ s2)}, x, y, z)
-      | Some s1, Seq ({comment=Some s2}, x) -> 
-          Seq ({comment= Some (s1 ^ ", " ^ s2)}, x)
-    in                                                                
-                                                                
-    let p s = String (no_comment, s) in
-    let p1 s t = Prim (no_comment, s, [to_micheline t], []) in
-    let p2 s t1 t2 = Prim (no_comment, s, [to_micheline t1; to_micheline t2], []) in
     match t.desc with
-    | TyString -> p "string"
-    | TyNat -> p "nat"
-    | TyInt -> p "int"
-    | TyBytes -> p "bytes"
-    | TyBool -> p "bool"
-    | TyUnit -> p "unit"
-    | TyList t -> p1 "list" t
-    | TyPair (t1, t2) -> p2 "pair" t1 t2
-    | TyOption t -> p1 "option" t
-    | TyOr (t1, t2) -> p2 "or" t1 t2
-    | TySet t -> p1 "set" t
-    | TyMap (t1, t2) -> p2 "map" t1 t2
-    | TyBigMap (t1, t2) -> p2 "bigmap" t1 t2
+    | TyString -> Mline.prim "string" []
+    | TyNat -> Mline.prim "nat" []
+    | TyInt -> Mline.prim "int" []
+    | TyBytes -> Mline.prim "bytes" []
+    | TyBool -> Mline.prim "bool" []
+    | TyUnit -> Mline.prim "unit" []
+    | TyList t -> Mline.prim "list" [to_micheline t]
+    | TyPair (t1, t2) -> Mline.prim "pair" [to_micheline t1; to_micheline t2]
+    | TyOption t -> Mline.prim "option" [to_micheline t]
+    | TyOr (t1, t2) -> Mline.prim "or" [to_micheline t1; to_micheline t2]
+    | TySet t -> Mline.prim "set" [to_micheline t]
+    | TyMap (t1, t2) -> Mline.prim "map" [to_micheline t1; to_micheline t2]
+    | TyBigMap (t1, t2) -> Mline.prim "bigmap" [to_micheline t1; to_micheline t2]
   
-    | TyMutez -> p "mutez"
-    | TyKeyHash -> p "key_hash"
-    | TyTimestamp -> p "timestamp "
-    | TyAddress -> p "address"
+    | TyMutez -> Mline.prim "mutez" []
+    | TyKeyHash -> Mline.prim "key_hash" []
+    | TyTimestamp -> Mline.prim "timestamp" []
+    | TyAddress -> Mline.prim "address" []
   
-    | TyKey -> p "key"
-    | TySignature -> p "signature"
-    | TyOperation -> p "operation"
-    | TyContract t -> p1 "contract" t
+    | TyKey -> Mline.prim "key" []
+    | TySignature -> Mline.prim "signature" []
+    | TyOperation -> Mline.prim "operation" []
+    | TyContract t -> Mline.prim "contract" [to_micheline t]
     | TyLambda (t1, t2, cli) -> 
         let comment =
           match (repr_closure_info cli).closure_desc with
@@ -171,9 +139,10 @@ module Type = struct
               Some (Format.sprintf "%a" Format.(list ";@ " (fun ppf (id, ty) ->
                        fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs)
         in
-        add_comment comment
-        & Prim (no_comment, "lambda", 
-                [to_micheline t1; to_micheline t2], [])
+        Mline.add_comment comment
+        & Mline.prim "lambda" [to_micheline t1; to_micheline t2]
+
+  and pp fmt t = Mline.pp fmt & to_micheline t
 
   exception Unification_error of t * t
 
@@ -243,34 +212,35 @@ module Constant = struct
     | Right of t
     | Timestamp of Z.t
 
-  let rec pp ppf =
-    let open Format in
-    let p = pp_print_string ppf in
-    let f fmt = fprintf ppf fmt in
-    function
-    | Bool true  -> p "True"
-    | Bool false -> p "False"
-    | Unit     -> p "Unit"
-    | Int n    -> Z.pp_print ppf n
-    | Nat n    -> Z.pp_print ppf n
+  let rec to_micheline = function
+    | Bool true  -> Mline.prim "True" []
+    | Bool false -> Mline.prim "False" []
+    | Unit     -> Mline.prim "Unit" []
+    | Int n    -> Mline.int n
+    | Nat n    -> Mline.int n
     (*    | Mutez n  -> f "%d" n *)
-    | String s -> f "%S" s
-    | Bytes s (* in hex *) ->  f "0x%s" s
-    | Option None -> p "None"
-    | Option (Some t) -> f "Some (%a)" pp t
-    | Pair (t1, t2) -> f "(Pair (%a) (%a))" pp t1 pp t2
-    | Left t -> f "(Left (%a))" pp t
-    | Right t -> f "(Right (%a))" pp t
-    | List ts -> f "{ %a }" (list " ; " pp) ts
-    | Set ts -> f "{ %a }" (list " ; " pp) (List.sort compare ts)
-    | Map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp x pp y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
-    | Big_map xs -> f "{ %a }" (list " ; " (fun ppf (x,y) -> fprintf ppf "Elt %a %a" pp x pp y)) (List.sort (fun (k1,_) (k2,_) -> compare k1 k2) xs)
+    | String s -> Mline.string s
+    | Bytes s (* in hex *) ->  Mline.bytes s
+    | Option None -> Mline.prim "None" []
+    | Option (Some t) -> Mline.prim "Some" [to_micheline t]
+    | Pair (t1, t2) -> Mline.prim "Pair" [to_micheline t1; to_micheline t2]
+    | Left t -> Mline.prim "Left" [to_micheline t]
+    | Right t -> Mline.prim "Right" [to_micheline t]
+    | List ts -> Mline.seq (List.map to_micheline ts)
+    | Set ts -> Mline.seq (List.map to_micheline & List.sort compare ts)
+    | Map xs -> 
+        Mline.seq (List.map (fun (k,v) ->
+            Mline.prim "Elt" [to_micheline k; to_micheline v]) xs)
+    | Big_map xs -> 
+        Mline.seq (List.map (fun (k,v) ->
+            Mline.prim "Elt" [to_micheline k; to_micheline v]) xs)
     | Timestamp z -> 
         begin match Ptime.of_float_s @@ Z.to_float z with
           | None -> assert false
-          | Some t -> f "\"%s\"" (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
+          | Some t -> Mline.string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
         end
 
+  let pp fmt t = Mline.pp fmt & to_micheline t
 end
 
 module Opcode = struct
@@ -343,103 +313,103 @@ module Opcode = struct
     | CREATE_CONTRACT of t list
 *)
     
-  let rec pp ppf =
-    let open Format in
-    let p = pp_print_string ppf in
-    let f fmt = fprintf ppf fmt in
-    function
-    | DUP -> p "DUP"
-    | DIP code -> f "DIP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
-    | SWAP -> p "SWAP"
-    | PAIR -> p "PAIR"
-    | PUSH (ty, const) -> f "PUSH (%a) %a" Type.pp ty Constant.pp const
-    | ASSERT -> p "ASSERT"
-    | CAR -> p "CAR"
-    | CDR -> p "CDR"
-    | LEFT ty -> f "LEFT (%a)" Type.pp ty
-    | RIGHT ty -> f "RIGHT (%a)" Type.pp ty
-    | LAMBDA (ty1, ty2, code) -> 
-        f "@[<v2>LAMBDA@ (%a)@ (%a)@ @[<2>{ %a }@]@]" 
-          Type.pp ty1 Type.pp ty2 (Format.list " ;@ " pp) code
-    | CONS -> p "CONS"
-    | NIL ty -> f "NIL (%a)" Type.pp ty
-    | SOME -> p "SOME"
-    | NONE ty -> f "NONE (%a)" Type.pp ty
-    | DROP -> p "DROP"
-    | COMPARE -> p "COMPARE"
-    | EQ -> p "EQ"
-    | LT -> p "LT"
-    | LE -> p "LE"
-    | GT -> p "GT"
-    | GE -> p "GE"
-    | NEQ -> p "NEQ"
-    | IF (t,e) -> f "IF @[<0>{ @[%a@] }@ { @[%a@] }@]" 
-                    (Format.list " ;@ " pp) t
-                    (Format.list " ;@ " pp) e
+  let to_micheline t =
+    let open Mline in
+    let rec f = function
+      | DUP -> prim "DUP" []
+      | DIP code -> prim "DIP" [seq (List.map f code)]
+      | SWAP -> prim "SWAP" []
+      | PAIR -> prim "PAIR" []
+      | PUSH (ty, const) -> prim "PUSH" [Type.to_micheline ty; Constant.to_micheline const]
+      | ASSERT -> prim "ASSERT" []
+      | CAR -> prim "CAR" []
+      | CDR -> prim "CDR" [] 
+      | LEFT ty -> prim "LEFT" [Type.to_micheline ty]
+      | RIGHT ty -> prim "RIGHT" [Type.to_micheline ty]
+      | LAMBDA (ty1, ty2, code) -> 
+          prim "LAMBDA" [Type.to_micheline (Type.tyLambda (ty1, ty2, { Type.closure_desc= Type.CLEmpty })); (* XXX clist? *)
+                         seq (List.map f code)]
+      | CONS -> prim "CONS" []
+      | NIL ty -> prim "NIL" [ Type.to_micheline ty ]
+      | SOME -> prim "SOME" []
+      | NONE ty -> prim "NONE" [ Type.to_micheline ty ]
+      | DROP -> prim "DROP" []
+      | COMPARE -> prim "COMPARE" []
+      | EQ -> prim "EQ" []
+      | LT -> prim "LT" []
+      | LE -> prim "LE" []
+      | GT -> prim "GT" []
+      | GE -> prim "GE" []
+      | NEQ -> prim "NEQ" []
+      | IF (t,e) -> 
+          prim "IF" [ seq & List.map f t;
+                      seq & List.map f e ]
 
-    | IF_NONE (t,e) -> f "IF_NONE @[<0>{ @[%a@] }@ { @[%a@] }@]" 
-                         (Format.list " ;@ " pp) t
-                         (Format.list " ;@ " pp) e
-    | ADD  -> p "ADD"
-    | SUB  -> p "SUB"
-    | MUL  -> p "MUL"
-    | EDIV -> p "EDIV"
-    | ABS  -> p "ABS"
-    | NEG  -> p "NEG"
-    | LSL  -> p "LSL"
-    | LSR  -> p "LSR"
-    | AND  -> p "AND"
-    | OR   -> p "OR"
-    | XOR  -> p "XOR"
-    | NOT  -> p "NOT"
+      | IF_NONE (t,e) -> 
+          prim "IF_NONE" [ seq & List.map f t;
+                           seq & List.map f e ]
+      | ADD  -> prim "ADD" []
+      | SUB  -> prim "SUB" []
+      | MUL  -> prim "MUL" []
+      | EDIV -> prim "EDIV" []
+      | ABS  -> prim "ABS" []
+      | NEG  -> prim "NEG" []
+      | LSL  -> prim "LSL" []
+      | LSR  -> prim "LSR" []
+      | AND  -> prim "AND" []
+      | OR   -> prim "OR"  []
+      | XOR  -> prim "XOR" []
+      | NOT  -> prim "NOT" []
 
-    | EXEC -> p "EXEC"
-    | FAILWITH -> p "FAILWITH"
-    | COMMENT (s, ts) ->
-        f "{ @[/* %s */@ @[%a@]@] }" s (Format.list " ;@ " pp) ts
-    | IF_LEFT (t1, t2) ->
-        f "IF_LEFT @[<0>{ @[%a@] }@ { @[%a@] }@]" 
-          (Format.list " ;@ " pp) t1
-          (Format.list " ;@ " pp) t2
-    | IF_CONS (t1, t2) ->
-        f "IF_CONS @[<0>{ @[%a@] }@ { @[%a@] }@]" 
-          (Format.list " ;@ " pp) t1
-          (Format.list " ;@ " pp) t2
-    | UNIT -> p "UNIT"
-    | EMPTY_SET ty -> f "EMPTY_SET (%a)" Type.pp ty
-    | EMPTY_MAP (ty1, ty2) -> f "EMPTY_MAP (%a) (%a)" Type.pp ty1 Type.pp ty2
-    | SIZE -> p "SIZE"
-    | MEM -> p "MEM"
-    | UPDATE -> p "UPDATE"
-    | ITER code -> f "ITER @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
-    | MAP code -> f "MAP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
-    | LOOP code -> f "LOOP @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
-    | LOOP_LEFT code -> f "LOOP_LEFT @[<2>{ %a }@]" (Format.list " ;@ " pp) code 
-    | CONCAT -> p "CONCAT"
-    | SELF -> p "SELF"
-    | GET -> p "GET"
-    | RENAME s -> f "RENAME @%s" s
-    | PACK -> p "PACK"
-    | UNPACK ty -> f "UNPACK (%a)" Type.pp ty
-    | SLICE -> p "SLICE"
-    | CAST -> p "CAST"
-    | CONTRACT ty -> f "CONTRACT (%a)" Type.pp ty
-    | TRANSFER_TOKENS -> p "TRANSFER_TOKENS"
-    | SET_DELEGATE -> p "SET_DELEGATE"
-    | CREATE_ACCOUNT -> p "CREATE_ACCOUNT"
-    | IMPLICIT_ACCOUNT -> p "IMPLICIT_ACCOUNT"
-    | NOW -> p "NOW"
-    | AMOUNT -> p "AMOUNT"
-    | BALANCE -> p "BALANCE"
-    | CHECK_SIGNATURE -> p "CHECK_SIGNATURE"
-    | BLAKE2B -> p "BLAKE2B"
-    | SHA256 -> p "SHA256"
-    | SHA512 -> p "SHA512"
-    | HASH_KEY -> p "HASH_KEY"
-    | STEPS_TO_QUOTA -> p "STEPS_TO_QUOTA"
-    | SOURCE -> p "SOURCE"
-    | SENDER -> p "SENDER"
-    | ADDRESS -> p "ADDRESS"
+      | EXEC -> prim "EXEC" []
+      | FAILWITH -> prim "FAILWITH" []
+      | COMMENT (s, ts) ->
+          add_comment (Some s) & seq (List.map f ts)
+      | IF_LEFT (t1, t2) ->
+          prim "IF_LEFT" [ seq & List.map f t1;
+                           seq & List.map f t2 ]
+      | IF_CONS (t1, t2) ->
+          prim "IF_CONS" [ seq & List.map f t1;
+                           seq & List.map f t2 ]
+      | UNIT -> prim "UNIT" []
+      | EMPTY_SET ty -> prim "EMPTY_SET" [ Type.to_micheline ty ]
+      | EMPTY_MAP (ty1, ty2) -> prim "EMPTY_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
+      | SIZE -> prim "SIZE" []
+      | MEM -> prim "MEM" []
+      | UPDATE -> prim "UPDATE" []
+      | ITER code -> prim "ITER" [ seq & List.map f code ]
+      | MAP code -> prim "MAP" [ seq & List.map f code ]
+      | LOOP code -> prim "LOOP" [ seq & List.map f code ]
+      | LOOP_LEFT code -> prim "LOOP_LEFT" [ seq & List.map f code ]
+      | CONCAT -> prim "CONCAT" []
+      | SELF -> prim "SELF" []
+      | GET -> prim "GET" []
+      | RENAME s -> prim "RENAME" [string s]
+      | PACK -> prim "PACK" []
+      | UNPACK ty -> prim "UNPACK" [Type.to_micheline ty]
+      | SLICE -> prim "SLICE" []
+      | CAST -> prim "CAST" []
+      | CONTRACT ty -> prim "CONTRACT" [Type.to_micheline ty]
+      | TRANSFER_TOKENS -> prim "TRANSFER_TOKENS" []
+      | SET_DELEGATE -> prim "SET_DELEGATE" []
+      | CREATE_ACCOUNT -> prim "CREATE_ACCOUNT" []
+      | IMPLICIT_ACCOUNT -> prim "IMPLICIT_ACCOUNT" []
+      | NOW -> prim "NOW" []
+      | AMOUNT -> prim "AMOUNT" []
+      | BALANCE -> prim "BALANCE" []
+      | CHECK_SIGNATURE -> prim "CHECK_SIGNATURE" []
+      | BLAKE2B         -> prim "BLAKE2B" []
+      | SHA256          -> prim "SHA256" []
+      | SHA512          -> prim "SHA512" []
+      | HASH_KEY        -> prim "HASH_KEY" []
+      | STEPS_TO_QUOTA  -> prim "STEPS_TO_QUOTA" []
+      | SOURCE          -> prim "SOURCE" []
+      | SENDER          -> prim "SENDER" []
+      | ADDRESS         -> prim "ADDRESS" []
+    in
+    f t
+
+  let pp fmt t = Mline.pp fmt & to_micheline t
 
   let rec clean_failwith = function
     | [] -> []
@@ -512,9 +482,11 @@ end
 module Module = struct
   type t = { parameter : Type.t ; storage : Type.t ; code : Opcode.t list }
            
-  let pp ppf { parameter ; storage ; code } =
-    Format.fprintf ppf "@[<2>{ parameter (%a) ;@ storage (%a) ;@ code @[<2>{ %a }@] }@]"
-      Type.pp parameter 
-      Type.pp storage
-      (Format.list ";@ " Opcode.pp ) code
+  let to_micheline { parameter ; storage ; code } =
+    let open Mline in
+    seq ( prim "parameter" [ Type.to_micheline parameter ]
+          ::  prim "storage" [ Type.to_micheline storage ]
+          :: List.map Opcode.to_micheline code )
+      
+  let pp ppf t = Mline.pp ppf & to_micheline t
 end

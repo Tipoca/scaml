@@ -1,3 +1,10 @@
+open Spotlib.Spot
+
+module Mline : sig
+  type t
+  val pp : Format.t -> t -> unit
+end
+
 module Type : sig
   type t = { desc : desc }
   and desc = 
@@ -59,8 +66,7 @@ module Type : sig
   val repr_closure_info : closure_info -> closure_info
 
   val pp : Format.formatter -> t -> unit
-    val to_micheline : t -> 
-      (Tezos_micheline.Micheline_printer.location, string) Tezos_micheline.Micheline.node
+  val to_micheline : t -> Mline.t
 
   exception Unification_error of t * t
   val unify : t -> t -> t
@@ -86,6 +92,7 @@ module Constant : sig
     | Timestamp of Z.t
 
   val pp : Format.formatter -> t -> unit
+  val to_micheline : t -> Mline.t
 end
   
 module Opcode : sig
@@ -164,10 +171,12 @@ module Opcode : sig
 *)
 
   val pp : Format.formatter -> t -> unit
+  val to_micheline : t -> Mline.t
   val clean_failwith : t list -> t list
 end
 
 module Module : sig
   type t = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
+  val to_micheline : t -> Mline.t
   val pp : Format.formatter -> t -> unit
 end
