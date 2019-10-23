@@ -29,14 +29,7 @@ module Type : sig
     | TySignature
     | TyOperation
     | TyContract of t
-    | TyLambda of t * t * closure_info
-
-  and closure_info = { mutable closure_desc : closure_desc; }
-
-  and closure_desc =
-    | CLEmpty (* never unified with a proper closure info! *)
-    | CLList of (Ident.t * t) list
-    | CLLink of closure_info
+    | TyLambda of t * t
 
   val mk : desc -> t
 
@@ -61,15 +54,10 @@ module Type : sig
   val tySignature : t
   val tyOperation : t
   val tyContract : t -> t
-  val tyLambda : (t * t * closure_info) -> t
-
-  val repr_closure_info : closure_info -> closure_info
+  val tyLambda : (t * t) -> t
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
-
-  exception Unification_error of t * t
-  val unify : t -> t -> t
 end
 
 module Constant : sig
@@ -180,6 +168,8 @@ end
 
 module Module : sig
   type t = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
+(*
   val to_micheline : t -> Mline.t
+*)
   val pp : Format.formatter -> t -> unit
 end

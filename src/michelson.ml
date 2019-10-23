@@ -28,12 +28,13 @@ module Mline = struct
         Seq ({comment= Some (s1 ^ ", " ^ s2)}, x)
 
   let string s = String (no_comment, s)
-  let bytes s = String (no_comment, s)
+  let bytes s = 
+    Bytes (no_comment, Tezos_stdlib.MBytes.of_string & Hex.to_string (`Hex s))
   let int n = Int (no_comment, n)
   let prim s ts = Prim (no_comment, s, ts, [])
   let seq ts = Seq (no_comment, ts)
       
-  let pp = print_expr
+  let pp = print_expr_unwrapped
 end
 
 module Type = struct
@@ -63,16 +64,8 @@ module Type = struct
     | TySignature
     | TyOperation
     | TyContract of t
-    | TyLambda of t * t * closure_info
-                  (* If closure_info is non nil, the real Michelson type 
-                     is not the lambda, but (lambda * env) *)
+    | TyLambda of t * t
   
-  and closure_info = { mutable closure_desc : closure_desc }
-  and closure_desc = 
-    | CLEmpty (* never unified with a proper closure info! *)
-    | CLList of (Ident.t * t) list
-    | CLLink of closure_info
-
   let mk desc = { desc }
 
   let tyString              = mk TyString
@@ -96,104 +89,39 @@ module Type = struct
   let tySignature           = mk TySignature
   let tyOperation           = mk TyOperation
   let tyContract t          = mk & TyContract t
-  let tyLambda (t1, t2, ci) = mk & TyLambda (t1, t2, ci)
-
-  let rec repr_closure_info ({ closure_desc } as i) = 
-    match closure_desc with
-    | CLEmpty -> i
-    | CLList _ -> i
-    | CLLink cl -> repr_closure_info cl
+  let tyLambda (t1, t2)     = mk & TyLambda (t1, t2)
 
   let rec to_micheline t = 
     let prim = Mline.prim in
+    let (!) x = prim x [] in
     match t.desc with
-    | TyString -> prim "string" []
-    | TyNat    -> prim "nat" []
-    | TyInt    -> prim "int" []
-    | TyBytes  -> prim "bytes" []
-    | TyBool   -> prim "bool" []
-    | TyUnit   -> prim "unit" []
+    | TyString -> !"string"
+    | TyNat    -> !"nat"
+    | TyInt    -> !"int"
+    | TyBytes  -> !"bytes"
+    | TyBool   -> !"bool"
+    | TyUnit   -> !"unit"
     | TyList t -> prim "list" [to_micheline t]
-    | TyPair (t1, t2) -> prim "pair" [to_micheline t1; to_micheline t2]
-    | TyOption t -> prim "option" [to_micheline t]
-    | TyOr (t1, t2) -> prim "or" [to_micheline t1; to_micheline t2]
-    | TySet t -> prim "set" [to_micheline t]
-    | TyMap (t1, t2) -> prim "map" [to_micheline t1; to_micheline t2]
+    | TyPair (t1, t2)   -> prim "pair" [to_micheline t1; to_micheline t2]
+    | TyOption t        -> prim "option" [to_micheline t]
+    | TyOr (t1, t2)     -> prim "or" [to_micheline t1; to_micheline t2]
+    | TySet t           -> prim "set" [to_micheline t]
+    | TyMap (t1, t2)    -> prim "map" [to_micheline t1; to_micheline t2]
     | TyBigMap (t1, t2) -> prim "bigmap" [to_micheline t1; to_micheline t2]
   
-    | TyMutez     -> prim "mutez" []
-    | TyKeyHash   -> prim "key_hash" []
-    | TyTimestamp -> prim "timestamp" []
-    | TyAddress   -> prim "address" []
+    | TyMutez     -> !"mutez"
+    | TyKeyHash   -> !"key_hash"
+    | TyTimestamp -> !"timestamp"
+    | TyAddress   -> !"address"
   
-    | TyKey       -> prim "key" []
-    | TySignature -> prim "signature" []
-    | TyOperation -> prim "operation" []
+    | TyKey       -> !"key"
+    | TySignature -> !"signature"
+    | TyOperation -> !"operation"
     | TyContract t -> prim "contract" [to_micheline t]
-    | TyLambda (t1, t2, cli) -> 
-        let comment =
-          match (repr_closure_info cli).closure_desc with
-          | CLLink _ -> assert false
-          | CLEmpty -> Some "EMPTY!"
-          | CLList [] -> None
-          | CLList xs -> 
-              Some (Format.sprintf "%a" 
-                      Format.(list ";@ " (fun ppf (id, ty) ->
-                          fprintf ppf "%s : %a" (Ident.name id) pp ty)) xs)
-        in
-        Mline.add_comment comment
-        & prim "lambda" [to_micheline t1; to_micheline t2]
+    | TyLambda (t1, t2) -> prim "lambda" [to_micheline t1; to_micheline t2]
 
   and pp fmt t = Mline.pp fmt & to_micheline t
 
-  exception Unification_error of t * t
-
-  let rec merge env1 env2 =
-    let ids = List.map fst env1 @ List.map fst env2 in
-    let ids = List.sort_uniq compare ids in
-    List.map (fun id ->
-        (id,
-         match List.assoc_opt id env1, List.assoc_opt id env2 with
-         | None, None -> assert false
-         | Some ty, None -> ty
-         | None, Some ty -> ty
-         | Some ty1, Some ty2 -> unify ty1 ty2)) ids
-  
-  and unify t1 t2 = 
-    if t1.desc == t2.desc then t1
-    else match t1.desc, t2.desc with
-      | TyList t1, TyList t2 -> tyList (unify t1 t2)
-      | TyPair (t11, t12), TyPair (t21, t22) ->
-          tyPair (unify t11 t21, unify t12 t22)
-      | TyOption t1, TyOption t2 -> tyOption (unify t1 t2)
-      | TyOr (t11, t12), TyOr (t21, t22) ->
-          tyOr (unify t11 t21, unify t12 t22)
-      | TySet t1, TySet t2 -> tySet (unify t1 t2)
-      | TyMap (t11, t12), TyMap (t21, t22) ->
-          tyMap (unify t11 t21, unify t12 t22)
-      | TyBigMap (t11, t12), TyBigMap (t21, t22) ->
-          tyBigMap (unify t11 t21, unify t12 t22)
-      | TyContract t1, TyContract t2 ->  tyContract (unify t1 t2)
-      | TyLambda (t11, t12, cli1), TyLambda (t21, t22, cli2) ->
-          let cli1 = repr_closure_info cli1 in
-          let cli2 = repr_closure_info cli2 in
-          begin match cli1.closure_desc, cli2.closure_desc with
-            | CLLink _, _ | _, CLLink _ -> assert false
-            | CLEmpty, CLEmpty -> 
-                cli2.closure_desc <- CLLink cli1
-            | CLEmpty, _ ->
-                cli1.closure_desc <- CLLink cli2
-            | _, CLEmpty ->
-                cli2.closure_desc <- CLLink cli1
-            | CLList env1, CLList env2 ->
-                let env = merge env1 env2 in
-                let newcli = { closure_desc= CLList env } in
-                cli1.closure_desc <- CLLink newcli;
-                cli2.closure_desc <- CLLink newcli
-          end;
-          tyLambda (unify t11 t21, unify t12 t22, cli1)
-      | _ -> 
-          raise (Unification_error (t1,t2))
 end
 
 module Constant = struct
@@ -322,37 +250,39 @@ module Opcode = struct
     
   let to_micheline t =
     let open Mline in
+    let (!) x = prim x [] in
     let rec f = function
-      | DUP -> prim "DUP" []
+      | DUP -> !"DUP"
       | DIP (1, code) -> prim "DIP" [seq (List.map f code)]
       | DIP (n, code) -> prim "DIP" [int & Z.of_int n; seq (List.map f code)]
       | DIG n -> prim "DIG" [int & Z.of_int n]
       | DUG n -> prim "DUG" [int & Z.of_int n]
-      | SWAP -> prim "SWAP" []
-      | PAIR -> prim "PAIR" []
+      | SWAP -> !"SWAP"
+      | PAIR -> !"PAIR"
       | PUSH (ty, const) -> prim "PUSH" [Type.to_micheline ty; Constant.to_micheline const]
-      | ASSERT -> prim "ASSERT" []
-      | CAR -> prim "CAR" []
-      | CDR -> prim "CDR" [] 
+      | ASSERT -> !"ASSERT"
+      | CAR -> !"CAR"
+      | CDR -> !"CDR" 
       | LEFT ty -> prim "LEFT" [Type.to_micheline ty]
       | RIGHT ty -> prim "RIGHT" [Type.to_micheline ty]
       | LAMBDA (ty1, ty2, code) -> 
-          prim "LAMBDA" [Type.to_micheline (Type.tyLambda (ty1, ty2, { Type.closure_desc= Type.CLEmpty })); (* XXX clist? *)
+          prim "LAMBDA" [Type.to_micheline ty1;
+                         Type.to_micheline ty2;
                          seq (List.map f code)]
-      | APPLY -> prim "APPLY" []
-      | CONS -> prim "CONS" []
+      | APPLY -> !"APPLY"
+      | CONS -> !"CONS"
       | NIL ty -> prim "NIL" [ Type.to_micheline ty ]
-      | SOME -> prim "SOME" []
+      | SOME -> !"SOME"
       | NONE ty -> prim "NONE" [ Type.to_micheline ty ]
-      | DROP 1 -> prim "DROP" []
+      | DROP 1 -> !"DROP"
       | DROP n -> prim "DROP" [int & Z.of_int n]
-      | COMPARE -> prim "COMPARE" []
-      | EQ -> prim "EQ" []
-      | LT -> prim "LT" []
-      | LE -> prim "LE" []
-      | GT -> prim "GT" []
-      | GE -> prim "GE" []
-      | NEQ -> prim "NEQ" []
+      | COMPARE -> !"COMPARE"
+      | EQ  -> !"EQ"
+      | LT  -> !"LT"
+      | LE  -> !"LE"
+      | GT  -> !"GT"
+      | GE  -> !"GE"
+      | NEQ -> !"NEQ"
       | IF (t,e) -> 
           prim "IF" [ seq & List.map f t;
                       seq & List.map f e ]
@@ -360,21 +290,21 @@ module Opcode = struct
       | IF_NONE (t,e) -> 
           prim "IF_NONE" [ seq & List.map f t;
                            seq & List.map f e ]
-      | ADD  -> prim "ADD" []
-      | SUB  -> prim "SUB" []
-      | MUL  -> prim "MUL" []
-      | EDIV -> prim "EDIV" []
-      | ABS  -> prim "ABS" []
-      | NEG  -> prim "NEG" []
-      | LSL  -> prim "LSL" []
-      | LSR  -> prim "LSR" []
-      | AND  -> prim "AND" []
-      | OR   -> prim "OR"  []
-      | XOR  -> prim "XOR" []
-      | NOT  -> prim "NOT" []
+      | ADD  -> !"ADD"
+      | SUB  -> !"SUB"
+      | MUL  -> !"MUL"
+      | EDIV -> !"EDIV"
+      | ABS  -> !"ABS"
+      | NEG  -> !"NEG"
+      | LSL  -> !"LSL"
+      | LSR  -> !"LSR"
+      | AND  -> !"AND"
+      | OR   -> !"OR" 
+      | XOR  -> !"XOR"
+      | NOT  -> !"NOT"
 
-      | EXEC -> prim "EXEC" []
-      | FAILWITH -> prim "FAILWITH" []
+      | EXEC -> !"EXEC"
+      | FAILWITH -> !"FAILWITH"
       | COMMENT (s, ts) ->
           add_comment (Some s) & seq (List.map f ts)
       | IF_LEFT (t1, t2) ->
@@ -383,41 +313,43 @@ module Opcode = struct
       | IF_CONS (t1, t2) ->
           prim "IF_CONS" [ seq & List.map f t1;
                            seq & List.map f t2 ]
-      | UNIT -> prim "UNIT" []
+      | UNIT -> !"UNIT"
       | EMPTY_SET ty -> prim "EMPTY_SET" [ Type.to_micheline ty ]
       | EMPTY_MAP (ty1, ty2) -> prim "EMPTY_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
-      | SIZE -> prim "SIZE" []
-      | MEM -> prim "MEM" []
-      | UPDATE -> prim "UPDATE" []
+      | SIZE   -> !"SIZE"
+      | MEM    -> !"MEM"
+      | UPDATE -> !"UPDATE"
       | ITER code -> prim "ITER" [ seq & List.map f code ]
       | MAP code -> prim "MAP" [ seq & List.map f code ]
       | LOOP code -> prim "LOOP" [ seq & List.map f code ]
       | LOOP_LEFT code -> prim "LOOP_LEFT" [ seq & List.map f code ]
-      | CONCAT -> prim "CONCAT" []
-      | SELF -> prim "SELF" []
-      | GET -> prim "GET" []
+      | CONCAT -> !"CONCAT"
+      | SELF   -> !"SELF"
+      | GET    -> !"GET"
       | RENAME s -> prim "RENAME" [string s]
-      | PACK -> prim "PACK" []
+      | PACK -> !"PACK"
       | UNPACK ty -> prim "UNPACK" [Type.to_micheline ty]
-      | SLICE -> prim "SLICE" []
-      | CAST -> prim "CAST" []
+      | SLICE -> !"SLICE"
+      | CAST  -> !"CAST"
       | CONTRACT ty -> prim "CONTRACT" [Type.to_micheline ty]
-      | TRANSFER_TOKENS -> prim "TRANSFER_TOKENS" []
-      | SET_DELEGATE -> prim "SET_DELEGATE" []
-      | CREATE_ACCOUNT -> prim "CREATE_ACCOUNT" []
-      | IMPLICIT_ACCOUNT -> prim "IMPLICIT_ACCOUNT" []
-      | NOW -> prim "NOW" []
-      | AMOUNT -> prim "AMOUNT" []
-      | BALANCE -> prim "BALANCE" []
-      | CHECK_SIGNATURE -> prim "CHECK_SIGNATURE" []
-      | BLAKE2B         -> prim "BLAKE2B" []
-      | SHA256          -> prim "SHA256" []
-      | SHA512          -> prim "SHA512" []
-      | HASH_KEY        -> prim "HASH_KEY" []
-      | STEPS_TO_QUOTA  -> prim "STEPS_TO_QUOTA" []
-      | SOURCE          -> prim "SOURCE" []
-      | SENDER          -> prim "SENDER" []
-      | ADDRESS         -> prim "ADDRESS" []
+      | TRANSFER_TOKENS  -> !"TRANSFER_TOKENS"
+      | SET_DELEGATE     -> !"SET_DELEGATE"
+      | CREATE_ACCOUNT   -> !"CREATE_ACCOUNT"
+      | IMPLICIT_ACCOUNT -> !"IMPLICIT_ACCOUNT"
+      | NOW              -> !"NOW"
+      | AMOUNT           -> !"AMOUNT"
+      | BALANCE          -> !"BALANCE"
+
+      | CHECK_SIGNATURE -> !"CHECK_SIGNATURE"
+      | BLAKE2B         -> !"BLAKE2B"
+      | SHA256          -> !"SHA256"
+      | SHA512          -> !"SHA512"
+      | HASH_KEY        -> !"HASH_KEY"
+
+      | STEPS_TO_QUOTA  -> !"STEPS_TO_QUOTA"
+      | SOURCE          -> !"SOURCE"
+      | SENDER          -> !"SENDER"
+      | ADDRESS         -> !"ADDRESS"
     in
     f t
 
@@ -494,11 +426,18 @@ end
 module Module = struct
   type t = { parameter : Type.t ; storage : Type.t ; code : Opcode.t list }
            
+(*
   let to_micheline { parameter ; storage ; code } =
     let open Mline in
-    seq ( prim "parameter" [ Type.to_micheline parameter ]
-          ::  prim "storage" [ Type.to_micheline storage ]
-          :: List.map Opcode.to_micheline code )
+    seq [ prim "parameter" [ Type.to_micheline parameter ]
+        ; prim "storage" [ Type.to_micheline storage ]
+        ; prim "code" (List.map Opcode.to_micheline code) 
+        ] 
+*)
       
-  let pp ppf t = Mline.pp ppf & to_micheline t
+  let pp ppf { parameter ; storage ; code } = 
+    let open Mline in
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "parameter" [ Type.to_micheline parameter ];
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "storage" [ Type.to_micheline storage ];
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "code" [ seq (List.map Opcode.to_micheline code) ]
 end

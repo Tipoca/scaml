@@ -4,14 +4,7 @@ module M = Michelson
 
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   (* Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename; *)
-  let parameter, storage = IML.fix_entrypoint_type sourcefile str in
-  let t = 
-    try IML.structure ~parameter [] str with 
-    | e -> 
-        Printexc.print_backtrace stderr;
-        Format.eprintf "IML.structure: %s@." (Printexc.to_string e);
-        raise e
-  in
+  let parameter, storage, t = IML.implementation sourcefile str in
 
   let oc = open_out (outputprefix ^ ".iml") in
   let ppf = Format.of_out_channel oc in

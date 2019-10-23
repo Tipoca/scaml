@@ -17,6 +17,7 @@ type 'desc with_loc_and_type =
 type pat = Ident.t with_loc_and_type
 
 type t = desc with_loc_and_type
+
 and desc =
   | Const of M.Opcode.constant
   | Nil of M.Type.t
@@ -52,7 +53,6 @@ let almost_constant t =
 
 let make_constant t = 
   match
-    let module C = C in
     let (>>=) o f = match o with
       | None -> None
       | Some x -> f x
@@ -149,17 +149,9 @@ module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (
 let rec freevars t = 
   let open IdTys in
   match t.desc with
-  | Const _
-  | Nil _ 
-  | IML_None _
-  | Unit -> empty
-  | Cons (t1,t2) 
-  | Tuple (t1,t2)
-         -> union (freevars t1) (freevars t2)
-  | Left (_,t) 
-  | Right (_,t)
-  | IML_Some t
-  | Assert t -> freevars t
+  | Const _ | Nil _  | IML_None _ | Unit -> empty
+  | Cons (t1,t2) | Tuple (t1,t2) -> union (freevars t1) (freevars t2)
+  | Left (_,t) | Right (_,t) | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
   | Var (id,ty) -> singleton (id,ty)
   | IfThenElse (t1,t2,t3) -> union (freevars t1) (union (freevars t2) (freevars t3))
@@ -179,7 +171,7 @@ let rec freevars t =
   | Switch_cons (t, p1, p2, t1, t2) ->
       union (freevars t)
         (union 
-           (remove (p2.desc, p2.typ) ((remove (p1.desc, p1.typ) (freevars t1))))
+           (remove (p1.desc, p1.typ) (remove (p2.desc, p2.typ) (freevars t1)))
            (freevars t2))
   | Switch_none (t, t1, p2, t2) ->
       union (freevars t)
@@ -199,18 +191,19 @@ let rec type_expr tenv ty =
   | Tvar _ -> Error (Type_variable ty)
   | Tarrow (Nolabel, f, t, _) -> 
       type_expr tenv f >>= fun f ->
-      type_expr tenv t >>= fun t -> Ok (tyLambda (f, t, { closure_desc= CLEmpty }))
+      type_expr tenv t >>= fun t -> 
+      Ok (tyLambda (f, t))
   | Ttuple [t1; t2] -> 
       type_expr tenv t1 >>= fun t1 ->
       type_expr tenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
-  | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (mk TyBool)
+  | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
   | Tconstr (p, [t], _) when p = Predef.path_list -> 
       type_expr tenv t >>= fun t -> Ok (tyList t)
   | Tconstr (p, [t], _) when p = Predef.path_option -> 
       type_expr tenv t >>= fun t -> Ok (tyOption t)
-  | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (mk TyUnit)
-  | Tconstr (p, [], _) when p = Predef.path_string -> Ok (mk TyString)
-  | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (mk TyBytes)
+  | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
+  | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
+  | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes)
   | Tconstr (p, tys, _) ->
       let rec f res = function
         | [] -> Ok (List.rev res)
@@ -221,44 +214,39 @@ let rec type_expr tenv ty =
       f [] tys >>= fun tys ->
       begin match Path.is_scaml p, tys with
         | Some "sum", [t1; t2] -> Ok (tyOr (t1, t2))
-        | Some "int", [] -> Ok (mk TyInt)
-        | Some "nat", [] -> Ok (mk TyNat)
-        | Some "tz", [] -> Ok (mk TyMutez)
+        | Some "int", [] -> Ok (tyInt)
+        | Some "nat", [] -> Ok (tyNat)
+        | Some "tz", [] -> Ok (tyMutez)
         | Some "Set.t", [ty] -> Ok (tySet ty)
-        | Some "Map.t", [ty1; ty2] -> Ok (mk &TyMap (ty1, ty2))
-        | Some "Operation.t", [] -> Ok (mk TyOperation)
+        | Some "Map.t", [ty1; ty2] -> Ok (tyMap (ty1, ty2))
+        | Some "Operation.t", [] -> Ok (tyOperation)
         | Some "Contract.t", [ty] -> Ok (tyContract ty)
-        | Some "Timestamp.t", [] -> Ok (mk TyTimestamp)
-        | Some "Address.t", [] -> Ok (mk TyAddress)
-        | Some "Key.t", [] -> Ok (mk TyKey)
-        | Some "Signature.t", [] -> Ok (mk TySignature)
-        | Some "Key_hash.t", [] -> Ok (mk TyKeyHash)
-        | Some "Bytes.t", [] -> Ok (mk TyBytes)
+        | Some "Timestamp.t", [] -> Ok (tyTimestamp)
+        | Some "Address.t", [] -> Ok (tyAddress)
+        | Some "Key.t", [] -> Ok (tyKey)
+        | Some "Signature.t", [] -> Ok (tySignature)
+        | Some "Key_hash.t", [] -> Ok (tyKeyHash)
+        | Some "Bytes.t", [] -> Ok (tyBytes)
         | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_data_type p)
         | None, _ -> prerr_endline "GAGA"; Error (Unsupported_data_type p)
       end
 
   | Tpoly (ty, []) -> type_expr tenv ty
-  | _ -> 
-      Format.eprintf "YYY %a@." Printtyp.type_expr ty;
-      prerr_endline "YYY"; Error (Unsupported_type ty)
+  | _ -> Error (Unsupported_type ty)
 
 let type_expr ~loc tenv ty = 
   match type_expr tenv ty with
   | Ok x -> x
   | Error (Type_variable ty') -> 
-      (* XXX sometimes it is a pattern *)
-      errorf ~loc "This expression has type %a, which has too generic type %a for SCaml."
+      errorf ~loc "This has type %a, which has too generic type %a for SCaml."
         Printtyp.type_expr ty
         Printtyp.type_expr ty'
   | Error (Unsupported_type ty') ->
-      (* XXX sometimes it is a pattern *)
-      errorf ~loc "This expression has type %a, which has unsupported type %a in SCaml"
+      errorf ~loc "This has type %a, which has unsupported type %a in SCaml"
         Printtyp.type_expr ty
         Printtyp.type_expr ty'
   | Error (Unsupported_data_type p) ->
-      (* XXX sometimes it is a pattern *)
-      errorf ~loc "This expression has type %a, which has unsupported data type %s in SCaml"
+      errorf ~loc "This has type %a, which has unsupported data type %s in SCaml"
         Printtyp.type_expr ty
         (Path.name p)
 
@@ -313,28 +301,33 @@ let parse_bytes s =
   | _ -> Error "Bytes must take hex representation of bytes"
 
 let constructions_by_string =
-  [ ("Signature.t" , ("signature", "Signature", mk TySignature, 
+  [ ("Signature.t" , ("signature", "Signature", tySignature, 
                       fun x -> Ok (C.String x)));
-    ("Key_hash.t"  , ("key_hash", "Key_hash", mk TyKeyHash, 
+    ("Key_hash.t"  , ("key_hash", "Key_hash", tyKeyHash, 
                       fun x -> Ok (C.String x)));
-    ("Key.t"       , ("key", "Key", mk TyKey, 
+    ("Key.t"       , ("key", "Key", tyKey, 
                       fun x -> Ok (C.String x)));
-    ("Address.t"   , ("address", "Address", mk TyAddress, 
+    ("Address.t"   , ("address", "Address", tyAddress, 
                       fun x -> Ok (C.String x)));
-    ("Timestamp.t" , ("timestamp", "Timestamp", mk TyTimestamp, 
+    ("Timestamp.t" , ("timestamp", "Timestamp", tyTimestamp, 
                       parse_timestamp));
-    ("Bytes.t"     , ("bytes", "Bytes", mk TyBytes, 
+    ("Bytes.t"     , ("bytes", "Bytes", tyBytes, 
                       parse_bytes))
   ]
 
-let structure ~parameter:_ env str =
+let attr_has_entry_point = 
+  List.find_map_opt (function
+      | ({ txt = "entry"; loc }, Parsetree.PStr []) -> Some loc
+      | _ -> None)
+  
+let structure env str final =
 
   let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
     let make typ desc = { loc; typ; desc } in
     match (Ctype.expand_head exp_env exp_type).Types.desc with
     (* bool *)
     | Tconstr (p, [], _) when p = Predef.path_bool ->
-        make (mk TyBool) (match cstr_name with
+        make (tyBool) (match cstr_name with
             | "true" -> Const (C.Bool true)
             | "false" -> Const (C.Bool false)
             | s -> internal_error ~loc "strange bool constructor %s" s)
@@ -350,8 +343,8 @@ let structure ~parameter:_ env str =
                   | [e1; e2] ->
                       let e1 = expression env e1 in
                       let e2 = expression env e2 in
-                      let typ = unify (tyList e1.typ) e2.typ in
-                      make_constant @@ make typ @@ Cons (e1, e2)
+                      (* tyList e1.typ = e2.typ *)
+                      make_constant @@ make e2.typ @@ Cons (e1, e2)
                   | _ -> internal_error ~loc "strange cons"
                 end
             | s -> internal_error ~loc "strange list constructor %s" s
@@ -384,20 +377,20 @@ let structure ~parameter:_ env str =
         begin match cstr_name with
         | "Left" -> 
             let e = expression env arg in
-            ignore (unify e.typ ty1);
-            make_constant @@ make typ @@ Left (ty2, e)
+            (* e.typ = ty1 *)
+            make_constant @@ make e.typ @@ Left (ty2, e)
         | "Right" ->
             let e = expression env arg in
-            ignore (unify e.typ ty2);
-            make_constant @@ make typ @@ Right (ty1, e)
+            (* e.typ = ty2 *)
+            make_constant @@ make e.typ @@ Right (ty1, e)
         | s -> internal_error ~loc "strange sum constructor %s" s
         end
 
     | Tconstr (p, _, _) when p = Predef.path_unit -> 
-        make (mk TyUnit) Unit
+        make (tyUnit) Unit
   
     | Tconstr (p, [], _) when Path.is_scaml_dot "int" p ->
-        make (mk TyInt) begin
+        make (tyInt) begin
           let arg = match args with
               | [arg] -> arg
               | _ -> internal_error ~loc "strange Int arguments"
@@ -408,7 +401,7 @@ let structure ~parameter:_ env str =
           end
   
     | Tconstr (p, [], _) when Path.is_scaml_dot "nat" p ->
-        make (mk TyNat) begin 
+        make (tyNat) begin 
           let arg = match args with
             | [arg] -> arg
             | _ -> internal_error ~loc "strange Nat arguments"
@@ -422,7 +415,7 @@ let structure ~parameter:_ env str =
         end
   
     | Tconstr (p, [], _) when Path.is_scaml_dot "tz" p ->
-        make (mk TyMutez) begin 
+        make (tyMutez) begin 
           let arg = match args with
             | [arg] -> arg
             | _ -> internal_error ~loc "strange Tz arguments"
@@ -458,7 +451,7 @@ let structure ~parameter:_ env str =
     (* set *)
     | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
-        let ty = match typ.desc with
+        let _ty = match typ.desc with
           | TySet ty-> ty
           | _ -> assert false
         in
@@ -467,7 +460,7 @@ let structure ~parameter:_ env str =
         begin match args with 
           | [arg] -> 
               let e = expression env arg in
-              ignore @@ unify (tyList ty) e.typ;
+              (* tyList ty = e.typ *)
               begin match get_constant e with
               | Ok (List xs) -> 
                   (* XXX Uniqueness and sorting? *)
@@ -481,7 +474,7 @@ let structure ~parameter:_ env str =
     (* map *)
     | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "Map.t" -> true | _ -> false) ->
         let typ = type_expr ~loc exp_env exp_type in
-        let ty1, ty2 = match typ.desc with
+        let _ty1, _ty2 = match typ.desc with
           | TyMap (ty1, ty2) -> ty1, ty2
           | _ -> assert false
         in
@@ -490,7 +483,7 @@ let structure ~parameter:_ env str =
         begin match args with 
           | [arg] -> 
               let e = expression env arg in
-              ignore @@ unify (tyList (tyPair (ty1, ty2))) e.typ;
+              (* tyList (tyPair (ty1, ty2)) = e.typ *)
               begin match get_constant e with
               | Ok (List xs) -> 
                   (* XXX Uniqueness and sorting? *)
@@ -530,17 +523,22 @@ let structure ~parameter:_ env str =
 
     | _ -> prerr_endline cstr_name; assert false
   
-  and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes=_ } =
+  and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes } =
     (* wildly ignores extra *)
     (* if exp_extra <> [] then unsupported ~loc "expression extra"; *)
+    begin match attr_has_entry_point exp_attributes with
+      | None -> ()
+      | Some loc ->
+          errorf ~loc "entry declaration is only allowed for the toplevel definitions";
+    end;
     let typ = type_expr ~loc exp_env exp_type in
     let make desc = { loc; typ; desc } in
     match exp_desc with
     | Texp_ident (Path.Pident id, {loc=_}, _vd) -> 
         begin match List.assoc_opt id env with
           | None -> assert false
-          | Some ty ->
-              ignore @@ unify typ ty;
+          | Some _ty ->
+              (* typ = ty *)
               make @@ Var (id, typ)
         end
     | Texp_ident (p, {loc}, _vd) ->
@@ -554,7 +552,7 @@ let structure ~parameter:_ env str =
     | Texp_tuple [e1; e2] ->
         let e1 = expression env e1 in
         let e2 = expression env e2 in
-        ignore @@ unify (tyPair (e1.typ, e2.typ)) typ;
+        (* tyPair (e1.typ, e2.typ) = typ *) 
         make_constant @@ make @@ Tuple (e1, e2)
     | Texp_tuple _ -> unsupported ~loc "tuple with more than 2 elems"
     | Texp_construct ({loc}, c, args) -> 
@@ -573,7 +571,7 @@ let structure ~parameter:_ env str =
     | Texp_let (Nonrecursive, vbs, e) ->
         let rev_vbs, env =
           List.fold_left (fun (rev_vbs, env) vb -> 
-              let v, e = value_binding env vb in
+              let _, v, e = value_binding env vb in
               (v, e) :: rev_vbs, ((v.desc,v.typ)::env)) ([], env) vbs
         in
         let e = expression env e in
@@ -588,11 +586,11 @@ let structure ~parameter:_ env str =
             | (Nolabel, Some (e: Typedtree.expression)) -> expression env e
             | _ -> unsupported ~loc "labeled arguments") args
         in
-        let fty' = 
-          List.fold_right (fun arg ty -> tyLambda(arg.typ, ty, { closure_desc= CLList [] })) args typ 
+        let _fty' = 
+          List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
         in
         let fty = type_expr ~loc:f.exp_loc f.exp_env f.exp_type in
-        ignore (unify fty fty');
+        (* fty = fty' *)
   
         let name = match f with
           | { exp_desc= Texp_ident (p, _, _) } ->
@@ -606,7 +604,7 @@ let structure ~parameter:_ env str =
         begin match name with
           | None -> 
               let f = expression env f in
-              ignore (unify f.typ fty);
+              (* f.typ = fty *)
               make @@ App (f, args)
           | Some n -> make @@ primitive ~loc:f.exp_loc fty n args
         end
@@ -624,13 +622,14 @@ let structure ~parameter:_ env str =
           | [v] ->
               let ty1 = type_expr ~loc:c_lhs.pat_loc c_lhs.pat_env c_lhs.pat_type in
               let ty2 = type_expr ~loc:c_rhs.exp_loc c_rhs.exp_env c_rhs.exp_type in
-              ignore (unify v.typ ty1);
+              (* v.typ = ty1 *)
               let env = (v.desc,v.typ)::env in
               let e = expression env c_rhs in
               let s = IdTys.(elements @@ remove (v.desc, v.typ) (freevars e)) in
-              let clinfo = { closure_desc= CLList s } in
-              ignore @@ unify typ @@ mk @@ TyLambda (ty1, ty2, clinfo);
-              ignore @@ unify ty2 e.typ;
+(*
+              typ = tyLambda (ty1, ty2)
+              ty2 = e.typ
+*)
               make @@ Fun (ty1, ty2, v, e, s)
           | _ -> assert false
         end
@@ -639,8 +638,8 @@ let structure ~parameter:_ env str =
         let econd = expression env cond in
         let ethen = expression env then_ in
         let eelse = expression env else_ in
-        ignore (unify ethen.typ eelse.typ);
-        ignore (unify typ ethen.typ);
+        (* ignore (unify ethen.typ eelse.typ);
+           ignore (unify typ ethen.typ); *)
         { loc; typ; desc = IfThenElse (econd, ethen, eelse) }
   
     | Texp_match (_, _, e::_, _) -> 
@@ -652,8 +651,30 @@ let structure ~parameter:_ env str =
     | Texp_match (e , cases, [], Total) -> 
         make @@ compile_match ~loc env e cases
         
-    | _ -> unsupported ~loc "this type of expression"
-  
+    | Texp_ifthenelse (_, _, None) ->
+        unsupported ~loc "if-then without else"
+    | Texp_try _ -> unsupported ~loc "try-with"
+    | Texp_variant _ -> unsupported ~loc "polymorphic variant"
+    | Texp_record _ -> unsupported ~loc "record"
+    | Texp_field _ -> unsupported ~loc "record field access"
+    | Texp_setfield _ -> unsupported ~loc "record field set"
+    | Texp_array _ -> unsupported ~loc "array"
+    | Texp_sequence _ -> unsupported ~loc "sequence"
+    | Texp_while _ -> unsupported ~loc "while-do-done"
+    | Texp_for _ -> unsupported ~loc "for-do-done"
+    | Texp_send _ -> unsupported ~loc "method call"
+    | Texp_new _ -> unsupported ~loc "new"
+    | Texp_instvar _ -> unsupported ~loc "class instance variable"
+    | Texp_setinstvar _ -> unsupported ~loc "class instance variable set"
+    | Texp_override _ -> unsupported ~loc "override"
+    | Texp_letmodule _ -> unsupported ~loc "let-module"
+    | Texp_letexception _ -> unsupported ~loc "let-exception"
+    | Texp_lazy _ -> unsupported ~loc "lazy"
+    | Texp_object _ -> unsupported ~loc "object"
+    | Texp_pack _ -> unsupported ~loc "first class module"
+    | Texp_extension_constructor _ -> unsupported ~loc "open variant"
+    | Texp_unreachable -> unsupported ~loc "this type of expression"
+
   and primitive ~loc fty n args =
     match List.assoc_opt n Primitives.primitives with
     | None -> errorf ~loc "Unknown primitive SCaml.%s" n
@@ -674,7 +695,7 @@ let structure ~parameter:_ env str =
                 | [] -> ty
                 | _arg::args ->
                     match ty.M.Type.desc with
-                    | TyLambda (_,ty2,_) -> f ty2 args
+                    | TyLambda (_,ty2) -> f ty2 args
                     | _ -> assert false
               in
               f fty args
@@ -726,8 +747,8 @@ let structure ~parameter:_ env str =
     match pattern vb_pat with
     | [v] ->
         let e = expression env vb_expr in
-        ignore @@ unify v.typ e.typ;
-        v, e
+        (* ignore @@ unify v.typ e.typ; *)
+        vb_pat.pat_type, v, e
     | _ -> assert false
   
   (* The condition of the entry point is a bit too strict.
@@ -752,8 +773,8 @@ let structure ~parameter:_ env str =
     | Tstr_value (Nonrecursive, vbs) ->
         let env, rev_vbs = 
           List.fold_left (fun (env, rev_vbs) vb ->
-              let v,b = value_binding env vb in
-              (v.desc,v.typ)::env, (v,b)::rev_vbs) (env, []) vbs
+              let pat_typ,v,b = value_binding env vb in
+              (v.desc,v.typ)::env, (pat_typ,v,b)::rev_vbs) (env, []) vbs
         in
         env, List.rev rev_vbs
   
@@ -769,34 +790,47 @@ let structure ~parameter:_ env str =
           let env, vbs = structure_item env sitem in
           env, vbs :: rev_vbss) (env, []) sitems 
     in
-    List.fold_right (fun (v,b) x ->
-        { loc=Location.none; typ= mk TyUnit; desc= Let (v, b, x) })
-      (List.flatten (List.rev rev_vbss))
-      { loc=Location.none; typ= mk TyUnit; desc= Unit }
+    (* This is if the entry point is alone and at the end *)
+    let vbs = List.flatten & List.rev rev_vbss in
+    List.fold_right (fun (_,v,b) x ->
+        { loc=Location.none; typ= tyUnit; desc= Let (v, b, x) })
+      vbs
+      final
   in
   structure env str
 
-let selfs = ref []
+(* parameter and storage types *)
 
-let record_self e = selfs := e :: !selfs
-  
-module X = TypedtreeIter.MakeIterator(struct
-    include TypedtreeIter.DefaultIteratorArgument
-    let enter_expression e = match e.exp_desc with
-      | Texp_ident (p, {loc=_}, _vd) ->
-          begin match Path.is_scaml p with
-            | Some "Contract.self" -> record_self e
-            | _ -> ()
-          end
-      | _ -> ()
-  end)
+let toplevel_value_bindings str =
+  let structure_item st { str_desc; _ } =
+  match str_desc with
+    | Tstr_value (Nonrecursive, vbs) ->
+        List.rev_append vbs st
+    | _ -> st
+  in
+  let structure { str_items= sitems } =
+    List.rev & List.fold_left (fun st sitem ->
+        structure_item st sitem) [] sitems
+  in
+  structure str
 
-let fix_entrypoint_type sourcefile str =
+let get_explicit_entries vbs =
+  List.filter (fun vb -> attr_has_entry_point vb.vb_attributes <> None) vbs
 
-  X.iter_structure str;
-
-  let unify ~loc env ty ty' =
+let get_entries vbs =
+  match get_explicit_entries vbs with
+  | [] -> 
+      begin match List.last vbs with
+        | None -> []
+        | Some vb -> [vb]
+      end
+  | ents -> ents
+    
+let type_check_entry templ vb =
+  let unify ty ty' =
     let open Ctype in
+    let env = vb.vb_pat.pat_env in
+    let loc = vb.vb_pat.pat_loc in
     try unify env ty ty' with
     | Unify trace ->
         raise(Typecore.Error(loc, env, Pattern_type_clash(trace)))
@@ -805,85 +839,200 @@ let fix_entrypoint_type sourcefile str =
     | e -> 
         prerr_endline "unify raised something unfamiliar"; raise e
   in
-  let entry_point { vb_pat; vb_expr=_; vb_attributes=_; vb_loc=loc } = 
-    let tenv = vb_pat.pat_env in
-    let ty = vb_pat.pat_type in
+  unify templ vb.vb_pat.pat_type
 
-    let ty_parameter, ty = 
-      try
-        Ctype.filter_arrow tenv ty Nolabel 
-      with
-      | Ctype.Unify _ -> errorf ~loc "Entry point must have 2 arguments"
-      | e -> prerr_endline "filter_arrow raised something unfamiliar"; raise e
+let type_check_entries tenv vbs =
+  let ty_storage = Ctype.newvar () in
+  let ty_operations = 
+    let path =
+      Env.lookup_type (*~loc: *)
+        (Longident.(Ldot (Lident "SCaml", "operations"))) tenv
     in
-
-    (* This tries to instantiate Contract.self's type to ty_parameter contract,
-       but this does not fully work since we have polymorphism:
-         let self = Contract.self
-       
-       Only a good way is to add a type constraint around Contract.self
-       as (Contract.self : ty_parameter contract) and then retype it,
-       which makes the compilation path more complex...
-    *)
-    List.iter (fun self ->
-        match (Ctype.expand_head self.exp_env self.exp_type).Types.desc with
-        | Tconstr (p, [t], _) when Path.is_scaml p =  Some "Contract.t" ->
-            if t.level = Btype.generic_level then
-              errorf ~loc:self.exp_loc "Contract.self cannot have a generic type, but it has type %a.  Please use a type constraint to instantiate its type." Printtyp.type_scheme self.exp_type;
-            unify ~loc:self.exp_loc self.exp_env (* ? *) t ty_parameter
-        | _ -> assert false
-      ) !selfs;
-    
-    let ty_storage, _res_ty = 
-      try
-        Ctype.filter_arrow tenv ty Nolabel
-      with
-      | Ctype.Unify _ -> errorf ~loc "Entry point must have 2 arguments"
-      | e -> prerr_endline "filter_arrow raised something unfamiliar"; raise e
-    in
-    let ty_operations = 
-      let path = 
-        Env.lookup_type ~loc 
-          (Longident.(Ldot (Lident "SCaml", "operations"))) tenv
-      in
-      Ctype.newconstr path []
-    in
+    Ctype.newconstr path []
+  in
+  let mk_entry_type () =
+    let ty_parameter = Ctype.newvar () in
     let ty_fun = 
       Ctype.newty (Tarrow (Nolabel, ty_parameter,
                            Ctype.newty (Tarrow (Nolabel, ty_storage,
-                                                Ctype.newty (Ttuple [ty_operations; ty_storage ]), Cok)), Cok)) in
-    unify ~loc tenv vb_pat.pat_type ty_fun;
-    let ty_parameter = type_expr ~loc tenv ty_parameter in
-    let ty_storage = type_expr ~loc tenv ty_storage in
-    (ty_parameter, ty_storage)
-  in
-
-  (* The condition of the entry point is a bit too strict.
-     Currently: the last sitem must be an entry point.
-     Better: the last value binding must be an entry point.,
-  *)
-  let structure_item { str_desc; str_loc=loc } =
-    let must_be_entry_point () =
-      errorf ~loc "SCaml needs an entry point at the end of module"
+                                                Ctype.newty (Ttuple [ty_operations; ty_storage ]), Cok)), Cok))
     in
-    match str_desc with
-    | Tstr_value (Recursive, _vbs) -> unsupported ~loc "recursive definitions"
-    | Tstr_value (Nonrecursive, vbs) -> 
-        begin match List.last vbs with
-        | None -> 
-            errorf ~loc
-              "SCaml needs an entry point at the end of module"
-        | Some vb ->
-            entry_point vb
-        end
-    | _ -> must_be_entry_point ()
+    (ty_parameter, ty_fun)
   in
-  let structure sourcefile { str_items= sitems } =
-    match List.last sitems with
-    | None -> 
-        errorf ~loc:(Location.in_file sourcefile)
-          "SCaml needs an entry point at the end of module"
-    | Some sitem -> structure_item sitem
-  in
-  structure sourcefile str
+  List.map (fun vb ->
+      let ty_param, templ = mk_entry_type () in
+      type_check_entry templ vb;
+      (ty_param, vb)
+    ) vbs, 
+  ty_storage
 
+let unite_entries pvbs =
+  (* simple balanced binary tree *)
+  let rec split vbs = match vbs with
+    | [] -> assert false                                                       
+    | [ty_param, vb] -> `Leaf (ty_param, vb)
+    | vbs ->                    
+        let len = List.length vbs in
+        let len' = len / 2 in
+        let rec take rev_st n xs = match n, xs with
+          | 0, _ 
+          | _, [] -> List.rev rev_st, xs
+          | n, x::xs -> take (x::rev_st) (n-1) xs
+        in
+        let vbs_l, vbs_r = take [] len' vbs in
+        let node_l = split vbs_l in
+        let node_r = split vbs_r in
+        `Node (node_l, node_r)
+  in
+  split pvbs
+
+let global_parameter_type node =
+  let rec f = function
+    | `Leaf (param_ty, _) -> param_ty
+    | `Node (n1, n2) ->
+        let ty1 = f n1 in
+        let ty2 = f n2 in
+        Ctype.newty & Ttuple [ty1; ty2]
+  in
+  f node
+
+
+let check_self ty_self str =
+  let selfs = ref [] in
+  let record_self e = selfs := e :: !selfs in
+  let module X = TypedtreeIter.MakeIterator(struct
+      include TypedtreeIter.DefaultIteratorArgument
+      let enter_expression e = match e.exp_desc with
+        | Texp_ident (p, {loc=_}, _vd) ->
+            begin match Path.is_scaml p with
+              | Some "Contract.self" -> record_self e
+              | _ -> ()
+            end
+        | _ -> ()
+    end)
+  in
+  X.iter_structure str;
+
+  (* This tries to instantiate Contract.self's type to ty_parameter contract,
+     but this does not fully work since we have polymorphism:
+       let self = Contract.self
+
+     Only a good way is to add a type constraint around Contract.self
+     as (Contract.self : ty_parameter contract) and then retype it,
+     which makes the compilation path more complex...
+  *)
+
+  List.iter (fun self ->
+    let unify ty ty' =
+      let open Ctype in
+      let env = self.exp_env in
+      let loc = self.exp_loc in
+      try unify env ty ty' with
+      | Unify trace ->
+          raise(Typecore.Error(loc, env, Expr_type_clash(trace, None)))
+      | Tags(l1,l2) ->
+          raise(Typetexp.Error(loc, env, Typetexp.Variant_tags (l1, l2)))
+      | e -> 
+          prerr_endline "unify raised something unfamiliar"; raise e
+    in
+    match (Ctype.expand_head self.exp_env self.exp_type).Types.desc with
+    | Tconstr (p, [t], _) when Path.is_scaml p =  Some "Contract.t" ->
+        if t.level = Btype.generic_level then
+          errorf ~loc:self.exp_loc "Contract.self cannot have a generic type, but it has type %a.  Please use a type constraint to instantiate its type." Printtyp.type_scheme self.exp_type;
+        unify self.exp_type ty_self
+    | _ -> assert false
+    ) !selfs
+
+
+let dummy_loc = 
+  { Location.loc_start= Lexing.dummy_pos; loc_end= Lexing.dummy_pos; loc_ghost= true }   
+
+let compile_global_entry ty_storage ty_return node =
+
+  let id_storage = Ident.create "storage" in
+  let mk desc typ = { desc; typ; loc= dummy_loc } in
+  let mk_var id typ =  mk (Var (id, typ)) typ in
+  let mk_pat = mk in
+
+  let pat_storage = mk_pat id_storage ty_storage in
+  let e_storage = mk_var id_storage ty_storage in
+
+  let rec f param_id node = match node with
+    | `Leaf (_,vb) ->
+        let var = match pattern vb.vb_pat with
+          | [p] -> mk_var p.desc p.typ
+          | _ -> assert false
+        in
+        let param_type = match var.typ with
+          | { desc= TyLambda (t1, _); _ } -> t1
+          | _ -> assert false
+        in
+        let param_var = mk_var param_id param_type in
+(*
+        ignore & unify var.typ (tyLambda (param_type, 
+                                 tyLambda (ty_storage, ty_return, { closure_desc= CLEmpty }),
+                                 { closure_desc= CLEmpty }));
+*)
+        mk (App (var, [param_var; e_storage])) ty_return,
+        param_type
+
+    | `Node (n1, n2) ->
+        let id_l = Ident.create "l" in
+        let id_r = Ident.create "r" in
+        let e_l, param_typ_l = f id_l n1 in
+        let e_r, param_typ_r = f id_r n2 in
+        let pat_l = mk_pat id_l param_typ_l  in
+        let pat_r = mk_pat id_r param_typ_r  in
+        let param_typ = tyOr (param_typ_l, param_typ_r) in
+        let param_var = mk_var param_id param_typ in
+        mk (Switch_or (param_var, pat_l, e_l, pat_r, e_r)) ty_return,
+        param_typ
+  in
+  let param_id = Ident.create "global_param" in
+  let e, param_typ = f param_id node in
+  let param_pat = mk_pat param_id param_typ in
+  let f1 = 
+    mk (Fun (ty_storage, ty_return, pat_storage, e, []))
+      (tyLambda (ty_storage, ty_return))
+  in
+  mk (Fun (param_typ, ty_return, param_pat, f1, []))
+    (tyLambda (param_typ, f1.typ))
+
+let implementation sourcefile str = 
+  let vbs = toplevel_value_bindings str in
+  match get_entries vbs with
+  | [] -> 
+      errorf ~loc:(Location.in_file sourcefile)
+        "SCaml needs at least one value definition for an entry piont"
+  | vbs ->
+      let tenv = str.str_final_env in
+      let pvbs, ty_storage = type_check_entries str.str_final_env vbs in
+      let node = unite_entries pvbs in
+
+      (* self *)
+      let ty_param = global_parameter_type node in
+      let self_type = 
+        let path =
+          Env.lookup_type (*~loc: *)
+            (Longident.(Ldot (Lident "SCaml", "contract"))) tenv
+        in
+        Ctype.newconstr path [ty_param]
+      in
+      check_self self_type str;
+
+      let ty_operations = 
+        let ty_operations = 
+          let path =
+            Env.lookup_type (*~loc: *)
+              (Longident.(Ldot (Lident "SCaml", "operations"))) str.str_final_env
+          in
+          Ctype.newconstr path []
+        in
+        type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_operations
+      in
+
+      let ty_storage = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_storage in
+      let ty_return = tyPair (ty_operations, ty_storage) in
+      let final = compile_global_entry ty_storage ty_return node in
+      let ty_param = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_param in
+      ty_param, ty_storage, structure [] str final

@@ -33,8 +33,4 @@ and desc =
 
 val pp : Format.formatter -> t -> unit
 
-val structure : parameter: Michelson.Type.t ->
-  (Tools.Ident.t * Michelson.Type.t) list -> Typedtree.structure -> t
-
-val fix_entrypoint_type :
-  string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t
+val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t

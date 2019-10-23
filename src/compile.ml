@@ -40,6 +40,7 @@ let closure_env_type xtys =
       List.fold_left (fun acc (_,ty) ->
           tyPair (tyOption ty, acc)) (tyOption tylast) xs
 
+(*
 (* Convert closure type represented in TyLambda (ty1, ty2, cinfo)
    to the real type in Michelson: 
      (TyLambda (ty1, ty2, empty), closure_env_type (env of cinfo))
@@ -66,7 +67,7 @@ let rec closure_type t = match t.desc with
   | TyMap (t1,t2) -> tyMap (closure_type t1, closure_type t2)
   | TyBigMap (t1,t2) -> tyBigMap (closure_type t1, closure_type t2)
   | TyContract t -> tyContract (closure_type t)
-  | TyLambda (t1, t2, closure_info) ->
+  | TyLambda (t1, t2) ->
       match (repr_closure_info closure_info).closure_desc with
       | CLLink _ -> assert false
       | CLEmpty -> assert false
@@ -77,6 +78,7 @@ let rec closure_type t = match t.desc with
                                        closure_type t2,
                                        { closure_desc = CLList [] } ),
                        env_type)
+*)
 
 (* Copy a value of the identifier from the deep of the stack to its top. *)
 let compile_var ~loc env id = match MEnv.find id env with
@@ -91,27 +93,27 @@ let compile_var ~loc env id = match MEnv.find id env with
             assert (n > 0);
             [ DIP (1, f (n-1)); SWAP ]
       in
-      [ COMMENT( Ident.name id, f n ) ]
+      [ COMMENT( "var " ^ Ident.name id, f n ) ]
 
 let rec compile env t = 
   let loc = t.IML.loc in
   match t.IML.desc with
   | IML.Const op -> [ PUSH (t.typ, op) ]
-  | Nil ty -> [ NIL (closure_type ty) ]
+  | Nil ty -> [ NIL ty ]
   | Cons (t1, t2) -> 
       let os2 = compile env t2 in
       let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
       os2 @ os1 @ [ CONS ]
-  | IML_None ty -> [ NONE (closure_type ty) ]
+  | IML_None ty -> [ NONE ty ]
   | IML_Some t1 -> 
       let os1 = compile env t1 in
       os1 @ [ SOME ]
   | Left (ty, t) ->
       let os = compile env t in
-      os @ [ LEFT (closure_type ty) ]
+      os @ [ LEFT ty ]
   | Right (ty, t) -> 
       let os = compile env t in
-      os @ [ RIGHT (closure_type ty) ]
+      os @ [ RIGHT ty ]
   | Unit -> [ UNIT ]
 
   | Var (id, _) -> compile_var ~loc env id
@@ -169,103 +171,55 @@ let rec compile env t =
              Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) env;
       *)
       begin match t.typ.desc with
-        | TyLambda (ty1, ty2, cli) ->
-            begin match (repr_closure_info cli).closure_desc with
-              | CLLink _ -> assert false
-              | CLEmpty -> assert false
-              | CLList [] ->
-                  let env = (p.desc,p.typ)::env in
+        | TyLambda (ty1, ty2) ->
+            begin match fvars with
+              | [] ->
+                  let env = [p.desc,p.typ] in
                   let o = compile env body in
-                  let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP 1]) ]) ] in
-                  [ LAMBDA (closure_type ty1, closure_type ty2, o @ clean) ]
-              | CLList xtys -> 
-                  (* (x1:xty1),(x2:xty2),...,(xn:xtyn)
-                     => (ty1 * (xty1 option * (xty2 option * ... * xtyn option)))
+                  let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP 1 ]) ]) ] in
+                  [ LAMBDA (ty1, ty2, o @ clean) ]
+              | _ -> 
+                  (* fvars: x1:ty1 :: x2:ty2 :: .. :: xn:tyn 
+                  
+                     inside lambda:  p :: x1:ty1 :: x2:ty2 :: .. :: xn:tyn
+                     
+                     lambda's parameter:  tyn * (ty(n-1) * ( .. (ty1 * p.typ) .. ))
                   *)
                   let lambda =
-                    let ity = tyPair (ty1, closure_env_type xtys) in
-                    (* This conversion is not required,
-                       if we have a way to access variables deep
-                       inside the tuple:
-
-                       (a,(x1,(x2,..xn))) :: s
-                       => (x1,(x2,..xn)) :: a :: s
-                       => (x2,..xn) :: x1 :: a :: s
-                       => xn :: .. x2 :: x1 :: a :: s
-
-                       repeat List.length xs times.
-
-                       if xi is None, it must be removed.
-                       if xi is Some vi, it must be replaced by vi
+                    let env = (p.desc,p.typ) :: fvars in
+                    let ity = 
+                      (* (tyn * (ty(n-1) * .. * (ty1 * p.typ) .. )) *)
+                      List.fold_left (fun st (_x,ty) ->
+                          tyPair (ty,st)) p.typ fvars
+                    in
+                    (* 
+                       -   (xn, (xn-1, .., (x1, p1) ..))  :: 0
+                       
+                       DUP (xn, (xn-1, .., (x1, p1) ..)) :: (xn, (xn-1, .., (x1, p) ..)) :: 0
+                       DIP { CAR }  (vn, (vn-1, .., (v1, p1) ..)) :: vn :: 0
+                       CDR   (vn-1, .., (v1, p1) ..) :: vn :: 0
+                       
+                       DUP
+                       DIP { CAR }
+                       CDR
+                       
+                       ..  p1 :: x1 :: .. :: xn :: 0
                     *)
-                    (* XXX we should use LOOP?  Maybe not since the types are different *)
-
-                    let init_ops = [ COMMENT( "get arg", [ DUP; DIP (1, [ CAR ]); CDR ]) ] in (* to get a *)
-                      (* (a,(x1,(x2,..xn))) ::s 
-                         (x1o,(x2o,..xno)) :: a :: s 
-                      *)
-                    (* inside LAMBDA, the env is reset *)
-                    let env = [(p.desc,p.typ)] in
-                    let rec f ops env = function
-                      | [] -> assert false
-                      | [(x,ty)] -> 
-                          if List.mem_assoc x fvars then 
-                            ops @ [ COMMENT ("get " ^ Ident.name x, [IF_NONE ([ UNIT ; FAILWITH ], []) ]) ],
-                            (x,ty)::env
-                          else
-                            ops @ [ COMMENT ("drop " ^ Ident.name x, [ DROP 1 ] ) ],
-                            env
-
-                      | (x,ty)::xtys ->
-                          let ops, env =
-                            if List.mem_assoc x fvars then 
-                              ops @ [ DUP ; DIP (1, [ CAR; COMMENT ("get " ^ Ident.name x, [IF_NONE ([ UNIT ; FAILWITH ], [])]) ]); CDR ],
-                              (x,ty)::env
-                            else
-                              ops @ [ COMMENT ("drop " ^ Ident.name x, []); CDR  ],
-                              env
-                          in
-                          f ops env xtys
+                    let extractor = 
+                      List.rev_map (fun (v,_ty) ->
+                          COMMENT ("fvar " ^ Ident.name v, [ DUP ; DIP (1, [ CAR ]); CDR ])) fvars
                     in
-                    let ops, env = f init_ops env xtys in
-                    (* Format.eprintf "Compiling body with %a (fvars %a)@." MEnv.pp env MEnv.pp xtys; *)
-                    let o = compile env body in
-                    let clean = COMMENT ( "lambda clean up", [DIP (1, List.map (fun _ -> DROP 1) env)]) in
-                    LAMBDA (closure_type ity, closure_type ty2, ops @ o @ [clean])
+                    let len = List.length fvars in
+                    let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP (len + 1) ]) ]) ] in
+                    LAMBDA (ity, ty2, extractor @ compile env body @ clean)
                   in
-
-                  (* (v1,(v2,...vn)) 
-
-                     vn :: S         by get_var
-
-                     vn-1 :: vn :: S by get_var
-                     (vn-1,vn) :: S  by pair
-
-                     vn-2 :: (vn-1,vn) :: S by get_var
-                     (vn-2, (vn-1,vn) ) :: S by pair
-
-                     (v1,(v2,...vn)) :: S by pair
-                  *)
-                  let bindings = 
-                    let compile_var_or_default env x ty = 
-                      if List.mem_assoc x fvars then
-                        compile_var ~loc env x @ [ SOME ]
-                      else
-                        [ NONE (closure_type ty) ]
-                    in
-                    let rec f env = function
-                      | [] -> assert false
-                      | [(x,ty)] -> 
-                          compile_var_or_default env x ty
-                      | (x,ty)::xtys ->
-                          let os = f env xtys in
-                          let env = (Ident.dummy, tyUnit)::env in
-                          let os' = compile_var_or_default env x ty in
-                          os @ os' @ [ PAIR ]
-                    in
-                    f env xtys
+                  let partial_apply =
+                    (* Apply fvars from xn to x1 *)
+                    List.fold_left (fun st (x,_ty) ->
+                        let o = compile_var ~loc ((Ident.dummy,tyUnit (* for lambda *))::env) x in
+                        COMMENT ("partial app " ^ Ident.name x, o @ [APPLY]) :: st) [] fvars
                   in
-                  [ COMMENT ("clos", bindings); lambda; PAIR]
+                  lambda :: partial_apply
             end
         | _ -> assert false
       end
@@ -273,68 +227,29 @@ let rec compile env t =
   | App (f, args) ->
       let ofun = compile env f in
       let env = (Ident.dummy, tyUnit)::env in
-      fst @@ List.fold_left (fun (ofun, ftyp) arg ->
+      List.fold_left (fun ofun arg ->
           let oarg = compile env arg in
-          let ofun = ofun @ oarg @ mk_application ftyp in
-          let ftyp = match ftyp.desc with
-            | TyLambda (_, ty2, _) -> ty2
-            | _ -> assert false
-          in
-        (ofun, ftyp)) (ofun, f.typ) args
+          ofun @ oarg @ [ EXEC ]) ofun args
 
-and mk_application fty =
-  (* arg :: <lambda/closure> :: s 
-     
-     arg :: <lambda> :: s   EXEC
-     res :: s                
-     
-     arg :: <closure> :: s           DIP [ DUP; CDR ; DIP [CAR ] ]
-     arg :: <env> :: <lambda> :: s   PAIR
-     (arg,<env>) :: <lambda> :: s    EXEC
-     res :: s
-     
-  *)
-  match fty.desc with
-  | TyLambda (_ty1, _ty2, cinfo) ->
-      begin match (repr_closure_info cinfo).closure_desc with
-        | CLLink _ -> assert false
-        | CLEmpty -> assert false
-        | CLList [] ->
-            (* it is not a closure *)
-            [ EXEC ]
-        | CLList _xs -> 
-            (* it is a closure 
-               arg :: (lambda, env) :: s  
-               arg :: env :: lambda :: s  <-  DIP [ DUP; CDR; DIP [ CAR ] ]
-               (arg,env) :: lambda ::s    <- PAIR
-               EXEC!
-            *)
-            [ DIP (1, [ DUP; CDR; DIP (1, [ CAR ]) ]); PAIR ; EXEC ]
-      end
-  | _ -> assert false
 
 let split_entry_point t =
   let rec f st t = match t.IML.desc with
-    | IML.Let (p, t1, { IML.desc= Unit }) ->
-        (List.rev st, (p, t1))
-    | Let (p, t1, t2) ->
-        f ((p,t1)::st) t2
-    | _ -> assert false
+    | IML.Let (p, t1, t2) -> f ((p,t1)::st) t2
+    | _ -> (List.rev st, t)
   in
   f [] t
 
 let compile_structure t =
-  let defs, entry_point = split_entry_point t in
+  let defs, t = split_entry_point t in
   let ops, env = 
     List.fold_left (fun (ops, env) (p,t) ->
         let os1 = compile env t in
-        ops @ [ COMMENT (Ident.name p.IML.desc, os1) ], 
+        ops @ [ COMMENT ("let " ^ Ident.name p.IML.desc, os1) ], 
         ((p.desc, p.typ)::env)) ([], []) defs
   in
   (* (parameter, storage) :: []
      -> parameter :: storage :: values
   *)
-  let (_p,t) = entry_point in
 
   (* replace fun by let *)
   let rec get_abst t = match t.IML.desc with
