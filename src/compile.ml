@@ -151,12 +151,12 @@ let rec compile env t =
       let os = compile env t in
       let os1 = compile ((p1.desc,p1.typ)::env) t1 in
       let os2 = compile ((p2.desc,p2.typ)::env) t2 in
-      os @ [IF_LEFT (os1 @ [DIP (1, [DROP 1])], os2 @ [DIP (1, [DROP 1])])]
+      os @ [IF_LEFT (os1, os2); DIP (1, [DROP 1])]
   | Switch_cons (t, p1, p2, t1, t2) ->
       let os = compile env t in
       let os1 = compile ((p1.desc,p1.typ)::(p2.desc,p2.typ)::env) t1 in
       let os2 = compile env t2 in
-      os @ [IF_CONS (os1 @ [DIP (1, [DROP 1; DROP 1])], os2)]
+      os @ [IF_CONS (os1 @ [DIP (1, [DROP 2])], os2)]
   | Switch_none (t, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile env t1 in
@@ -266,6 +266,5 @@ let compile_structure t =
   [ COMMENT ("defs", [DIP (1, ops)]) 
   ; COMMENT ("entry point init", [DUP ; CDR; DIP (1, [CAR])])
   ; COMMENT ("entry point", os )
-  ; COMMENT ("final clean up",
-             [ DIP (1, List.init (List.length env) (fun _ -> DROP 1)) ]) ]
+  ; COMMENT ("final clean up", [ DIP (1, [ DROP (List.length env) ]) ])]
   |> clean_failwith
