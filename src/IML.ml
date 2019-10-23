@@ -31,7 +31,7 @@ and desc =
   | Tuple of t * t
   | Assert of t
   | AssertFalse
-  | Fun of M.Type.t * M.Type.t * pat * t * (Ident.t * M.Type.t) list (* freevars *)
+  | Fun of M.Type.t * M.Type.t * pat * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (M.Opcode.t list -> M.Opcode.t list) * t list
@@ -111,7 +111,7 @@ let rec pp ppf =
   | Tuple (t1, t2) -> f "(%a, %a)" pp t1 pp t2
   | Assert t -> f "assert (%a)" pp t
   | AssertFalse -> p "assert false"
-  | Fun (_ty1, _ty2, pat, body, _fvars) ->
+  | Fun (_ty1, _ty2, pat, body) ->
       f "@[<2>(fun %s ->@ %a@ : %a)@]"
         (Ident.name pat.desc) pp body M.Type.pp t.typ
   | IfThenElse (t1, t2, t3) -> 
@@ -159,7 +159,7 @@ let rec freevars t =
       List.fold_left (fun acc t -> union acc (freevars t)) empty (t::ts)
   | Prim (_,_,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty ts
-  | Fun (_,_,pat,t,_fvs) -> 
+  | Fun (_,_,pat,t) -> 
       diff (freevars t) (singleton (pat.desc, pat.typ))
   | Let (pat, t1, t2) ->
       diff (union (freevars t1) (freevars t2)) (singleton (pat.desc, pat.typ))
@@ -625,12 +625,14 @@ let structure env str final =
               (* v.typ = ty1 *)
               let env = (v.desc,v.typ)::env in
               let e = expression env c_rhs in
+(* freevars can be changed because of optimizatios
               let s = IdTys.(elements @@ remove (v.desc, v.typ) (freevars e)) in
+*)
 (*
               typ = tyLambda (ty1, ty2)
               ty2 = e.typ
 *)
-              make @@ Fun (ty1, ty2, v, e, s)
+              make @@ Fun (ty1, ty2, v, e)
           | _ -> assert false
         end
   
@@ -992,11 +994,86 @@ let compile_global_entry ty_storage ty_return node =
   let e, param_typ = f param_id node in
   let param_pat = mk_pat param_id param_typ in
   let f1 = 
-    mk (Fun (ty_storage, ty_return, pat_storage, e, []))
+    mk (Fun (ty_storage, ty_return, pat_storage, e))
       (tyLambda (ty_storage, ty_return))
   in
-  mk (Fun (param_typ, ty_return, param_pat, f1, []))
+  mk (Fun (param_typ, ty_return, param_pat, f1))
     (tyLambda (param_typ, f1.typ))
+
+(* If a let bound variable is used only once, evaluate it. 
+   If none, remove it. 
+*)
+let optimize t = 
+  let module M = Map.Make(struct type t = Ident.t let compare = compare end) in
+  let incr v (st,defs) = match M.find_opt v st with
+    | None -> M.add v 1 st, defs
+    | Some n -> M.add v (n+1) st, defs
+  in
+  let add_def v def (st,defs) = st, M.add v def defs in
+  let rec f t st = match t.desc with
+    | Var (id, _) -> incr id st
+
+    | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> st
+
+    | IML_Some t | Left (_, t) | Right (_, t) | Assert t
+    | Fun (_, _, _, t) -> f t st
+
+    | Let ({desc=id}, t1, t2) -> add_def id t1 & f t1 & f t2 st
+
+    | Cons (t1, t2)
+    | Tuple (t1, t2) -> f t1 & f t2 st
+
+    | IfThenElse (t1, t2, t3) 
+    | Switch_or (t1, _, t2, _, t3)
+    | Switch_cons (t1, _, _, t2, t3)
+    | Switch_none (t1, t2, _, t3) -> f t1 & f t2 & f t3 st
+
+    | App (t, ts) -> List.fold_right f (t::ts) st
+    | Prim (_, _, ts) -> List.fold_right f ts st
+  in
+  let vars, defs = f t (M.empty, M.empty) in
+
+  let rec g t = 
+    let mk desc = { t with desc } in
+    match t.desc with
+    | Var (id, _) ->
+        begin match M.find_opt id vars with
+          | None -> assert false
+          | Some 1 -> 
+              begin match M.find_opt id defs with
+                | None -> (* primitive, I guess *) t
+                | Some def -> g def
+              end
+          | _ -> t
+        end
+    | Let (({desc=id} as pat), t1, t2) -> 
+        begin match M.find_opt id vars with
+          | None -> g t2
+          | Some 1 -> g t2
+          | _ -> mk & Let (pat, g t1, g t2)
+        end
+    | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
+    | IML_Some t -> mk & IML_Some (g t)
+    | Left (ty, t) -> mk & Left (ty, g t)
+    | Right (ty, t) -> mk & Right (ty, g t)
+    | Assert t -> mk & Assert (g t)
+    | Fun (a, b, c, t) -> mk & Fun(a, b, c, g t)
+    | Cons (t1, t2) -> mk & Cons (g t1, g t2)
+    | Tuple (t1, t2) -> mk & Tuple (g t1, g t2)
+    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (g t1, g t2, g t3)
+    | Switch_or (t1, a, t2, b, t3) -> mk & Switch_or (g t1, a, g t2, b, g t3)
+    | Switch_cons (t1, a, b, t2, t3) -> mk & Switch_cons (g t1, a, b, g t2, g t3)
+    | Switch_none (t1, t2, a, t3) -> mk & Switch_none (g t1, g t2, a, g t3)
+
+    | App (t, ts) -> 
+        begin match List.map g (t::ts) with
+          | t :: ts -> mk & App (t, ts)
+          | _ -> assert false
+        end
+                       
+    | Prim (a, b, ts) -> mk & Prim (a, b, List.map g ts)
+  in
+  g t
 
 let implementation sourcefile str = 
   let vbs = toplevel_value_bindings str in
@@ -1035,4 +1112,5 @@ let implementation sourcefile str =
       let ty_return = tyPair (ty_operations, ty_storage) in
       let final = compile_global_entry ty_storage ty_return node in
       let ty_param = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_param in
-      ty_param, ty_storage, structure [] str final
+      ty_param, ty_storage, optimize & structure [] str final
+

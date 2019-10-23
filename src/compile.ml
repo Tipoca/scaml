@@ -33,12 +33,14 @@ end
 (* The Michelson type of the environment part of a closure:
    (ty1 option * (ty2 option * (ty(n-1) option * tyn option)..))
 *)
+(*
 let closure_env_type xtys =
   match List.rev xtys with
   | [] -> assert false
   | (_,tylast)::xs ->
       List.fold_left (fun acc (_,ty) ->
           tyPair (tyOption ty, acc)) (tyOption tylast) xs
+*)
 
 (*
 (* Convert closure type represented in TyLambda (ty1, ty2, cinfo)
@@ -162,7 +164,8 @@ let rec compile env t =
       let os1 = compile env t1 in
       let os2 = compile ((p2.desc,p2.typ)::env) t2 in
       os @ [IF_NONE (os1, os2 @ [DIP (1, [DROP 1])])]
-  | Fun (_ty1, _ty2, p, body, fvars) ->
+  | Fun (_ty1, _ty2, p, body) ->
+      let fvars = IML.IdTys.elements & IML.freevars t in
       (*
       Format.eprintf "fvars: @[%a@] env: @[%a@]@." 
         (Format.list ";@ " (fun ppf (id,ty) ->
@@ -253,7 +256,7 @@ let compile_structure t =
 
   (* replace fun by let *)
   let rec get_abst t = match t.IML.desc with
-    | IML.Fun (_, _, p, t, _) -> p, t
+    | IML.Fun (_, _, p, t) -> p, t
     | Let (p, t1, t2) -> 
         let p', t2 = get_abst t2 in
         p', { t with desc= Let (p, t1, t2) }

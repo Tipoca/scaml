@@ -21,8 +21,7 @@ and desc =
   | Tuple of t * t
   | Assert of t
   | AssertFalse
-  | Fun of Michelson.Type.t * Michelson.Type.t * pat * t *
-      (Tools.Ident.t * Michelson.Type.t) list
+  | Fun of Michelson.Type.t * Michelson.Type.t * pat * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
@@ -34,3 +33,7 @@ and desc =
 val pp : Format.formatter -> t -> unit
 
 val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
+
+module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
+
+val freevars : t -> IdTys.t
