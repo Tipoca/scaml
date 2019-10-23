@@ -1000,16 +1000,13 @@ let compile_global_entry ty_storage ty_return node =
   mk (Fun (param_typ, ty_return, param_pat, f1))
     (tyLambda (param_typ, f1.typ))
 
-(* If a let bound variable is used only once, evaluate it. 
-   If none, remove it. 
-*)
-let optimize t = 
-  let module M = Map.Make(struct type t = Ident.t let compare = compare end) in
-  let incr v (st,defs) = match M.find_opt v st with
-    | None -> M.add v 1 st, defs
-    | Some n -> M.add v (n+1) st, defs
+module VMap = Map.Make(struct type t = Ident.t let compare = compare end)
+
+let count_variables t = 
+  let incr v st = match VMap.find_opt v st with
+    | None -> VMap.add v 1 st
+    | Some n -> VMap.add v (n+1) st
   in
-  let add_def v def (st,defs) = st, M.add v def defs in
   let rec f t st = match t.desc with
     | Var (id, _) -> incr id st
 
@@ -1018,10 +1015,7 @@ let optimize t =
     | IML_Some t | Left (_, t) | Right (_, t) | Assert t
     | Fun (_, _, _, t) -> f t st
 
-    | Let ({desc=id}, t1, t2) -> add_def id t1 & f t1 & f t2 st
-
-    | Cons (t1, t2)
-    | Tuple (t1, t2) -> f t1 & f t2 st
+    | Let (_, t1, t2) | Cons (t1, t2) | Tuple (t1, t2) -> f t1 & f t2 st
 
     | IfThenElse (t1, t2, t3) 
     | Switch_or (t1, _, t2, _, t3)
@@ -1031,49 +1025,74 @@ let optimize t =
     | App (t, ts) -> List.fold_right f (t::ts) st
     | Prim (_, _, ts) -> List.fold_right f ts st
   in
-  let vars, defs = f t (M.empty, M.empty) in
+  f t VMap.empty
 
-  let rec g t = 
+(* t2[t1/id] *)
+let subst id t1 t2 =
+  let rec f t = 
     let mk desc = { t with desc } in
     match t.desc with
-    | Var (id, _) ->
-        begin match M.find_opt id vars with
-          | None -> assert false
-          | Some 1 -> 
-              begin match M.find_opt id defs with
-                | None -> (* primitive, I guess *) t
-                | Some def -> g def
-              end
-          | _ -> t
-        end
-    | Let (({desc=id} as pat), t1, t2) -> 
-        begin match M.find_opt id vars with
-          | None -> g t2
-          | Some 1 -> g t2
-          | _ -> mk & Let (pat, g t1, g t2)
-        end
-    | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
-    | IML_Some t -> mk & IML_Some (g t)
-    | Left (ty, t) -> mk & Left (ty, g t)
-    | Right (ty, t) -> mk & Right (ty, g t)
-    | Assert t -> mk & Assert (g t)
-    | Fun (a, b, c, t) -> mk & Fun(a, b, c, g t)
-    | Cons (t1, t2) -> mk & Cons (g t1, g t2)
-    | Tuple (t1, t2) -> mk & Tuple (g t1, g t2)
-    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (g t1, g t2, g t3)
-    | Switch_or (t1, a, t2, b, t3) -> mk & Switch_or (g t1, a, g t2, b, g t3)
-    | Switch_cons (t1, a, b, t2, t3) -> mk & Switch_cons (g t1, a, b, g t2, g t3)
-    | Switch_none (t1, t2, a, t3) -> mk & Switch_none (g t1, g t2, a, g t3)
+    | Var (id', _) when id = id' -> t1 (* t1 never contains id *)
+    | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
 
-    | App (t, ts) -> 
-        begin match List.map g (t::ts) with
-          | t :: ts -> mk & App (t, ts)
-          | _ -> assert false
-        end
-                       
-    | Prim (a, b, ts) -> mk & Prim (a, b, List.map g ts)
+    | IML_Some t -> mk & IML_Some (f t)
+    | Left (a, t) -> mk & Left (a, f t)
+    | Right (a, t) -> mk & Right (a, f t)
+    | Assert t -> mk & Assert (f t)
+    | Fun (a, b, pat, t) -> mk & Fun (a, b, pat, f t)
+    | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
+    | Cons (t1, t2) -> mk & Cons (f t1, f t2)
+    | Tuple (t1, t2) -> mk & Tuple (f t1, f t2)
+    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
+    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
+    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
+    | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
+    | App (t, ts) -> mk & App (f t, List.map f ts)
+    | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
   in
-  g t
+  f t2
+
+(* 
+   (fun x -> e1) e2  =>  let x = e2 in e1 
+   let x = e2 in e1  =>  e1[e2/x]  when x appears only once in e1
+   
+   Free variables are counted for each let (and fun).  Very inefficient.
+*)
+let optimize t = 
+  let rec f t = 
+    let mk desc = { t with desc } in
+    match t.desc with
+    | App (t, []) -> f t
+    | App (u, t::ts) -> 
+        let t = f t in
+        let ts = List.map f ts in
+        begin match f u with
+        | {desc= Fun (_ty1, _ty2, pat, body)} ->
+            f & mk & App (mk & Let (pat, t, body), ts)
+        | u -> mk & App (u, t::ts)
+        end
+    | Let (p, t1, t2) -> 
+        let vmap = count_variables t2 in
+        begin match VMap.find_opt p.desc vmap with
+          | None -> f t2
+          | Some 1 -> f & subst p.desc t1 t2
+          | _ -> mk & Let (p, f t1, f t2)
+        end
+    | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
+    | IML_Some t -> mk & IML_Some (f t)
+    | Left (a, t) -> mk & Left (a, f t)
+    | Right (a, t) -> mk & Right (a, f t)
+    | Assert t -> mk & Assert (f t)
+    | Fun (a, b, c, t) -> mk & Fun (a, b, c, f t)
+    | Cons (t1, t2) -> mk & Cons (f t1, f t2)
+    | Tuple (t1, t2) -> mk & Tuple (f t1, f t2)
+    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
+    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
+    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
+    | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
+    | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+  in
+  f t
 
 let implementation sourcefile str = 
   let vbs = toplevel_value_bindings str in
@@ -1112,5 +1131,4 @@ let implementation sourcefile str =
       let ty_return = tyPair (ty_operations, ty_storage) in
       let final = compile_global_entry ty_storage ty_return node in
       let ty_param = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_param in
-      ty_param, ty_storage, optimize & structure [] str final
-
+      ty_param, ty_storage, structure [] str final

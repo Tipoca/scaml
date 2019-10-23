@@ -37,3 +37,5 @@ val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michels
 module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
 
 val freevars : t -> IdTys.t
+
+val optimize : t -> t

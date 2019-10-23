@@ -6,6 +6,8 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
   (* Format.eprintf "sourcefile=%s outputprefix=%s modulename=%s@." sourcefile outputprefix modulename; *)
   let parameter, storage, t = IML.implementation sourcefile str in
 
+  let t = IML.optimize t in
+
   let oc = open_out (outputprefix ^ ".iml") in
   let ppf = Format.of_out_channel oc in
   Format.fprintf ppf "%a@." IML.pp t;
