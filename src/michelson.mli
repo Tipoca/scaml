@@ -148,6 +148,7 @@ module Opcode : sig
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT
+    | CREATE_CONTRACT of module_
     | IMPLICIT_ACCOUNT
     | NOW
     | AMOUNT
@@ -162,9 +163,8 @@ module Opcode : sig
     | SENDER
     | ADDRESS
     | CHAIN_ID
-(*
-    | CREATE_CONTRACT of t list
-*)
+
+  and module_ = { parameter : Type.t ; storage : Type.t ; code : t list }
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
@@ -172,7 +172,7 @@ module Opcode : sig
 end
 
 module Module : sig
-  type t = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
+  type t = Opcode.module_ = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
 (*
   val to_micheline : t -> Mline.t
 *)
