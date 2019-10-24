@@ -6,7 +6,9 @@ module Mline : sig
 end
 
 module Type : sig
-  type t = { desc : desc }
+  type t = { desc : desc 
+           ; attrs : string list
+           }
   and desc = 
     | TyString
     | TyNat

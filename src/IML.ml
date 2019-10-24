@@ -906,13 +906,17 @@ let unite_entries pvbs =
   in
   split pvbs
 
-let global_parameter_type node =
+let global_parameter_type tenv node =
+  let path =
+    Env.lookup_type (*~loc: *)
+      (Longident.(Ldot (Lident "SCaml", "sum"))) tenv
+  in
   let rec f = function
     | `Leaf (param_ty, _) -> param_ty
     | `Node (n1, n2) ->
         let ty1 = f n1 in
         let ty2 = f n2 in
-        Ctype.newty & Ttuple [ty1; ty2]
+        Ctype.newconstr path [ty1; ty2]
   in
   f node
 
@@ -1149,7 +1153,7 @@ let implementation sourcefile str =
       let node = unite_entries pvbs in
 
       (* self *)
-      let ty_param = global_parameter_type node in
+      let ty_param = global_parameter_type tenv node in
       let self_type = 
         let path =
           Env.lookup_type (*~loc: *)
@@ -1174,4 +1178,32 @@ let implementation sourcefile str =
       let ty_return = tyPair (ty_operations, ty_storage) in
       let final = compile_global_entry ty_storage ty_return node in
       let ty_param = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_param in
+      let ty_param = 
+        let open M.Type in
+        let rec add_annot ty node = match ty.desc, node with
+          | _, `Leaf (_,vb) -> 
+              (* XXX dup *)
+              let id = match pattern vb.vb_pat with
+                | [p] -> p.desc
+                | _ -> assert false
+              in
+              let fix_name s = match s with
+                | "" -> assert false
+                | _ ->
+                    if String.unsafe_get s (String.length s - 1) = '_' then
+                      String.sub s 0 (String.length s - 1)
+                    else
+                      s
+              in
+              { ty with attrs= [ "@" ^ fix_name (Ident.name id) ] }
+          | TyOr (ty1, ty2), `Node (n1, n2) ->
+              let ty1 = add_annot ty1 n1 in
+              let ty2 = add_annot ty2 n2 in
+              { ty with desc= TyOr (ty1, ty2) }
+          | _, `Node _ -> 
+              Format.eprintf "Entry point type: %a@." M.Type.pp ty;
+              assert false
+        in
+        add_annot ty_param node
+      in
       ty_param, ty_storage, structure [] str final

@@ -31,7 +31,7 @@ module Mline = struct
   let bytes s = 
     Bytes (no_comment, Tezos_stdlib.MBytes.of_string & Hex.to_string (`Hex s))
   let int n = Int (no_comment, n)
-  let prim s ts = Prim (no_comment, s, ts, [])
+  let prim s ts annots = Prim (no_comment, s, ts, annots)
   let seq ts = Seq (no_comment, ts)
       
   let pp = print_expr_unwrapped
@@ -39,7 +39,9 @@ end
 
 module Type = struct
   (* Michelson type.  This is shamelessly used as types for IML, too. *)
-  type t = { desc : desc } 
+  type t = { desc : desc 
+           ; attrs : string list
+           } 
   and desc = 
     | TyString
     | TyNat
@@ -66,7 +68,7 @@ module Type = struct
     | TyContract of t
     | TyLambda of t * t
   
-  let mk desc = { desc }
+  let mk desc = { desc ; attrs= [] }
 
   let tyString              = mk TyString
   let tyNat                 = mk TyNat
@@ -92,7 +94,7 @@ module Type = struct
   let tyLambda (t1, t2)     = mk & TyLambda (t1, t2)
 
   let rec to_micheline t = 
-    let prim = Mline.prim in
+    let prim n args = Mline.prim n args t.attrs in
     let (!) x = prim x [] in
     match t.desc with
     | TyString -> !"string"
@@ -145,27 +147,27 @@ module Constant = struct
   let rec to_micheline = 
     let open Mline in
     function
-    | Bool true  -> prim "True" []
-    | Bool false -> prim "False" []
-    | Unit     -> prim "Unit" []
+    | Bool true  -> prim "True" [] []
+    | Bool false -> prim "False" [] []
+    | Unit     -> prim "Unit" [] []
     | Int n    -> int n
     | Nat n    -> int n
     (*    | Mutez n  -> f "%d" n *)
     | String s -> string s
     | Bytes s (* in hex *) ->  bytes s
-    | Option None -> prim "None" []
-    | Option (Some t) -> prim "Some" [to_micheline t]
-    | Pair (t1, t2) -> prim "Pair" [to_micheline t1; to_micheline t2]
-    | Left t -> prim "Left" [to_micheline t]
-    | Right t -> prim "Right" [to_micheline t]
+    | Option None -> prim "None" [] []
+    | Option (Some t) -> prim "Some" [to_micheline t] []
+    | Pair (t1, t2) -> prim "Pair" [to_micheline t1; to_micheline t2] []
+    | Left t -> prim "Left" [to_micheline t] []
+    | Right t -> prim "Right" [to_micheline t] []
     | List ts -> seq (List.map to_micheline ts)
     | Set ts -> seq (List.map to_micheline & List.sort compare ts)
     | Map xs -> 
         seq (List.map (fun (k,v) ->
-            prim "Elt" [to_micheline k; to_micheline v]) xs)
+            prim "Elt" [to_micheline k; to_micheline v] []) xs)
     | Big_map xs -> 
         seq (List.map (fun (k,v) ->
-            prim "Elt" [to_micheline k; to_micheline v]) xs)
+            prim "Elt" [to_micheline k; to_micheline v] []) xs)
     | Timestamp z -> 
         begin match Ptime.of_float_s @@ Z.to_float z with
           | None -> assert false
@@ -250,6 +252,7 @@ module Opcode = struct
     
   let to_micheline t =
     let open Mline in
+    let prim x args = Mline.prim x args [] in
     let (!) x = prim x [] in
     let rec f = function
       | DUP -> !"DUP"
@@ -437,7 +440,7 @@ module Module = struct
       
   let pp ppf { parameter ; storage ; code } = 
     let open Mline in
-    Format.fprintf ppf "%a ;@." Mline.pp & prim "parameter" [ Type.to_micheline parameter ];
-    Format.fprintf ppf "%a ;@." Mline.pp & prim "storage" [ Type.to_micheline storage ];
-    Format.fprintf ppf "%a ;@." Mline.pp & prim "code" [ seq (List.map Opcode.to_micheline code) ]
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "parameter" [ Type.to_micheline parameter ] [];
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "storage" [ Type.to_micheline storage ] [];
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "code" [ seq (List.map Opcode.to_micheline code) ] []
 end
