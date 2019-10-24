@@ -10,8 +10,8 @@ SCaml is a **strict** subset of OCaml programming language.
 All the valid SCaml programs are also valid as OCaml programs.
 This immediately leads to the following benefits:
 
-* Many OCaml programming tools can be used for SCaml for free.
-* SCaml programs are also compilable as OCaml code, which can simulate the behaviour.
+* Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
+* SCaml programs are also compilable as OCaml programs, which can simulate their behaviour.
 * Users can use the existing OCaml programming language tutorials and references to learn SCaml.
 
 ## Restrictions
@@ -98,9 +98,9 @@ In future,
 
 ## Examples
 
-Under `ppx/tests/`
+Under `src/tests/`
 
-Library functions are listed in `ppx/tests/SCaml.ml`.
+Library functions are listed in `src/tests/SCaml.ml`.
 
 ## Unsupported
 
