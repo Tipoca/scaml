@@ -135,11 +135,12 @@ module Operation = struct
   type t
   let transfer_tokens : 'a -> tz -> 'a contract -> t = fun _ -> assert false
   let set_delegate : key_hash option -> t = fun _ -> assert false
-  let create_account : key_hash -> key_hash option -> bool -> tz -> (t * address) = fun _ -> assert false
 end
 
 type operation = Operation.t
 type operations = operation list
+
+let create_contract : ('param -> 'storage -> operations * 'storage) -> tz -> 'storage -> 'param -> operation * address = fun _ -> assert false
 
 module Timestamp = struct
   type t = Timestamp of string
