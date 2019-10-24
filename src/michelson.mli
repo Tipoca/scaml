@@ -27,6 +27,7 @@ module Type : sig
     | TyKeyHash
     | TyTimestamp
     | TyAddress
+    | TyChainID
     | TyKey
     | TySignature
     | TyOperation
@@ -52,6 +53,7 @@ module Type : sig
   val tyKeyHash : t
   val tyTimestamp : t
   val tyAddress : t
+  val tyChainID : t
   val tyKey : t
   val tySignature : t
   val tyOperation : t
@@ -159,6 +161,7 @@ module Opcode : sig
     | SOURCE
     | SENDER
     | ADDRESS
+    | CHAIN_ID
 (*
     | CREATE_CONTRACT of t list
 *)

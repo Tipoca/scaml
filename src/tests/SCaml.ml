@@ -149,6 +149,11 @@ module Timestamp = struct
 end
 type timestamp = Timestamp.t = Timestamp of string
 
+module Chain_id = struct
+  type t = Chain_id of string
+end
+type chain_id = Chain_id.t = Chain_id of string
+
 (* maybe the place is not good *)
 module Global : sig
   val get_now : unit -> timestamp
@@ -157,6 +162,7 @@ module Global : sig
   val get_source : unit -> address
   val get_sender : unit -> address
   val get_steps_to_quota : unit -> nat
+  val get_chain_id : unit -> chain_id
 end = struct
   let get_now _ = assert false
   let get_amount _ = assert false
@@ -164,6 +170,7 @@ end = struct
   let get_source _ = assert false
   let get_sender _ = assert false
   let get_steps_to_quota _ = assert false
+  let get_chain_id _ = assert false
 end
 
 module Key = struct
@@ -188,3 +195,4 @@ module Obj = struct
   let pack : 'a -> bytes = fun _ -> assert false
   let unpack : bytes -> 'a option = fun _ -> assert false
 end
+

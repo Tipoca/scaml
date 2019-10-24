@@ -244,6 +244,7 @@ let rec type_expr tenv ty =
         | Some "Signature.t", [] -> Ok (tySignature)
         | Some "Key_hash.t", [] -> Ok (tyKeyHash)
         | Some "Bytes.t", [] -> Ok (tyBytes)
+        | Some "Chain_id.t", [] -> Ok (tyChainID)
         | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_data_type p)
         | None, _ -> prerr_endline "GAGA"; Error (Unsupported_data_type p)
       end
@@ -1179,31 +1180,34 @@ let implementation sourcefile str =
       let final = compile_global_entry ty_storage ty_return node in
       let ty_param = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_param in
       let ty_param = 
-        let open M.Type in
-        let rec add_annot ty node = match ty.desc, node with
-          | _, `Leaf (_,vb) -> 
-              (* XXX dup *)
-              let id = match pattern vb.vb_pat with
-                | [p] -> p.desc
-                | _ -> assert false
-              in
-              let fix_name s = match s with
-                | "" -> assert false
-                | _ ->
-                    if String.unsafe_get s (String.length s - 1) = '_' then
-                      String.sub s 0 (String.length s - 1)
-                    else
-                      s
-              in
-              { ty with attrs= [ "@" ^ fix_name (Ident.name id) ] }
-          | TyOr (ty1, ty2), `Node (n1, n2) ->
-              let ty1 = add_annot ty1 n1 in
-              let ty2 = add_annot ty2 n2 in
-              { ty with desc= TyOr (ty1, ty2) }
-          | _, `Node _ -> 
-              Format.eprintf "Entry point type: %a@." M.Type.pp ty;
-              assert false
-        in
-        add_annot ty_param node
+        match node with
+        | `Leaf _ (* sole entry point *) -> ty_param
+        | `Node _ ->
+            let open M.Type in
+            let rec add_annot ty node = match ty.desc, node with
+              | _, `Leaf (_,vb) -> 
+                  (* XXX dup *)
+                  let id = match pattern vb.vb_pat with
+                    | [p] -> p.desc
+                    | _ -> assert false
+                  in
+                  let fix_name s = match s with
+                    | "" -> assert false
+                    | _ ->
+                        if String.unsafe_get s (String.length s - 1) = '_' then
+                          String.sub s 0 (String.length s - 1)
+                        else
+                          s
+                  in
+                  { ty with attrs= [ "@" ^ fix_name (Ident.name id) ] }
+              | TyOr (ty1, ty2), `Node (n1, n2) ->
+                  let ty1 = add_annot ty1 n1 in
+                  let ty2 = add_annot ty2 n2 in
+                  { ty with desc= TyOr (ty1, ty2) }
+              | _, `Node _ -> 
+                  Format.eprintf "Entry point type: %a@." M.Type.pp ty;
+                  assert false
+            in
+            add_annot ty_param node
       in
       ty_param, ty_storage, structure [] str final

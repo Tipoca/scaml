@@ -289,6 +289,7 @@ let primitives =
   ; "Global.get_source", (1, simple [ DROP 1; SOURCE ])
   ; "Global.get_sender", (1, simple [ DROP 1; SENDER ])
   ; "Global.get_steps_to_quota", (1, simple [ DROP 1; STEPS_TO_QUOTA ])
+  ; "Global.get_chain_id", (1, simple [ DROP 1; CHAIN_ID ])
 
   ; "Crypto.check_signature", (3, simple [ CHECK_SIGNATURE ])
   ; "Crypto.blake2b", (1, simple [ BLAKE2B ])

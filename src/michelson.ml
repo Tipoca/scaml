@@ -61,6 +61,7 @@ module Type = struct
     | TyKeyHash
     | TyTimestamp
     | TyAddress
+    | TyChainID
   
     | TyKey
     | TySignature
@@ -87,6 +88,7 @@ module Type = struct
   let tyKeyHash             = mk TyKeyHash
   let tyTimestamp           = mk TyTimestamp
   let tyAddress             = mk TyAddress
+  let tyChainID             = mk TyChainID
   let tyKey                 = mk TyKey
   let tySignature           = mk TySignature
   let tyOperation           = mk TyOperation
@@ -115,6 +117,7 @@ module Type = struct
     | TyKeyHash   -> !"key_hash"
     | TyTimestamp -> !"timestamp"
     | TyAddress   -> !"address"
+    | TyChainID   -> !"chain_id"
   
     | TyKey       -> !"key"
     | TySignature -> !"signature"
@@ -246,6 +249,7 @@ module Opcode = struct
     | SOURCE
     | SENDER
     | ADDRESS
+    | CHAIN_ID
 (*
     | CREATE_CONTRACT of t list
 *)
@@ -353,6 +357,7 @@ module Opcode = struct
       | SOURCE          -> !"SOURCE"
       | SENDER          -> !"SENDER"
       | ADDRESS         -> !"ADDRESS"
+      | CHAIN_ID        -> !"CHAIN_ID"
     in
     f t
 
@@ -423,6 +428,7 @@ module Opcode = struct
       | SENDER
       | ADDRESS
       | APPLY
+      | CHAIN_ID
       as t) -> t
 end
 
