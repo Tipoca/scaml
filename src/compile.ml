@@ -30,65 +30,17 @@ end = struct
               M.Type.pp ty)) t
 end
 
-(* The Michelson type of the environment part of a closure:
-   (ty1 option * (ty2 option * (ty(n-1) option * tyn option)..))
-*)
-(*
-let closure_env_type xtys =
-  match List.rev xtys with
-  | [] -> assert false
-  | (_,tylast)::xs ->
-      List.fold_left (fun acc (_,ty) ->
-          tyPair (tyOption ty, acc)) (tyOption tylast) xs
-*)
-
-(*
-(* Convert closure type represented in TyLambda (ty1, ty2, cinfo)
-   to the real type in Michelson: 
-     (TyLambda (ty1, ty2, empty), closure_env_type (env of cinfo))
-*)
-let rec closure_type t = match t.desc with
-  | (TyString
-    | TyNat
-    | TyInt
-    | TyBytes
-    | TyBool
-    | TyUnit
-    | TyMutez
-    | TyKeyHash
-    | TyTimestamp
-    | TyAddress
-    | TyKey
-    | TySignature
-    | TyOperation) -> t
-  | TyList t -> tyList (closure_type t)
-  | TyPair (t1,t2) -> tyPair (closure_type t1, closure_type t2)
-  | TyOption t -> tyOption (closure_type t)
-  | TyOr (t1,t2) -> tyOr (closure_type t1, closure_type t2)
-  | TySet t -> tySet (closure_type t)
-  | TyMap (t1,t2) -> tyMap (closure_type t1, closure_type t2)
-  | TyBigMap (t1,t2) -> tyBigMap (closure_type t1, closure_type t2)
-  | TyContract t -> tyContract (closure_type t)
-  | TyLambda (t1, t2) ->
-      match (repr_closure_info closure_info).closure_desc with
-      | CLLink _ -> assert false
-      | CLEmpty -> assert false
-      | CLList [] -> t
-      | CLList xtys -> 
-          let env_type = closure_type @@ closure_env_type xtys in
-          tyPair (tyLambda ( tyPair(closure_type t1, env_type),
-                                       closure_type t2,
-                                       { closure_desc = CLList [] } ),
-                       env_type)
-*)
-
 (* Copy a value of the identifier from the deep of the stack to its top. *)
 let compile_var ~loc env id = match MEnv.find id env with
   | None -> 
       internal_error ~loc "variable not found: %s in %s" 
         (Ident.unique_name id)
         (Format.sprintf "%a" MEnv.pp env)
+  | Some (0,_typ) ->
+      [ COMMENT( "var " ^ Ident.name id, [ DUP ]) ] 
   | Some (n,_typ) ->
+      [ COMMENT( "var " ^ Ident.name id, [ DIG n; DUP; DUG (n+1) ]) ] 
+(*
       let rec f = function
         | 0 -> [ DUP ]
         | n -> 
@@ -96,8 +48,20 @@ let compile_var ~loc env id = match MEnv.find id env with
             [ DIP (1, f (n-1)); SWAP ]
       in
       [ COMMENT( "var " ^ Ident.name id, f n ) ]
+*)
 
 let rec compile env t = 
+  let os = compile_desc env t in
+  let comments = 
+    List.filter_map (function
+        | IML.Comment s -> Some s
+        (* | _ -> None *)) t.IML.attr
+  in
+  match comments with
+  | [] -> os
+  | _ -> [COMMENT (String.concat ", " comments, os)]
+      
+and compile_desc env t =
   let loc = t.IML.loc in
   match t.IML.desc with
   | IML.Const op -> [ PUSH (t.typ, op) ]
@@ -183,9 +147,9 @@ let rec compile env t =
                   [ LAMBDA (ty1, ty2, o @ clean) ]
               | _ -> 
                   (* fvars: x1:ty1 :: x2:ty2 :: .. :: xn:tyn 
-                  
+
                      inside lambda:  p :: x1:ty1 :: x2:ty2 :: .. :: xn:tyn
-                     
+
                      lambda's parameter:  tyn * (ty(n-1) * ( .. (ty1 * p.typ) .. ))
                   *)
                   let lambda =
@@ -197,15 +161,15 @@ let rec compile env t =
                     in
                     (* 
                        -   (xn, (xn-1, .., (x1, p1) ..))  :: 0
-                       
+
                        DUP (xn, (xn-1, .., (x1, p1) ..)) :: (xn, (xn-1, .., (x1, p) ..)) :: 0
                        DIP { CAR }  (vn, (vn-1, .., (v1, p1) ..)) :: vn :: 0
                        CDR   (vn-1, .., (v1, p1) ..) :: vn :: 0
-                       
+
                        DUP
                        DIP { CAR }
                        CDR
-                       
+
                        ..  p1 :: x1 :: .. :: xn :: 0
                     *)
                     let extractor = 
@@ -266,7 +230,7 @@ let compile_structure t =
   let p2, t = get_abst t in
   let env = ((p2.desc,p2.typ)::(p1.desc,p1.typ)::env) in
   let os = compile env t in
-  [ COMMENT ("defs", [DIP (1, ops)]) 
+  [ COMMENT ("defs", if ops = [] then [] else [DIP (1, ops)]) 
   ; COMMENT ("entry point init", [DUP ; CDR; DIP (1, [CAR])])
   ; COMMENT ("entry point", os )
   ; COMMENT ("final clean up", [ DIP (1, [ DROP (List.length env) ]) ])]

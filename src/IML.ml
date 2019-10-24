@@ -8,15 +8,23 @@ module M = Michelson
 open M.Type
 module C = M.Constant
 
-type 'desc with_loc_and_type =
+type ('desc, 'attr) with_loc_and_type =
   { desc : 'desc
   ; loc : Location.t
   ; typ : M.Type.t
+  ; attr : 'attr
   }
 
-type pat = Ident.t with_loc_and_type
+type pat = (Ident.t, unit) with_loc_and_type
 
-type t = desc with_loc_and_type
+type attr = 
+  | Comment of string
+
+type attrs = attr list
+
+let add_attr a t = { t with attr= a :: t.attr }
+
+type t = (desc, attrs) with_loc_and_type
 
 and desc =
   | Const of M.Opcode.constant
@@ -95,54 +103,63 @@ let rec get_constant t =
       end
   | _ -> Error t.loc
 
-let rec pp ppf = 
+let pp ppf = 
   let p = Format.pp_print_string ppf in
   let f fmt = Format.fprintf ppf fmt in
-  fun t -> match t.desc with
-  | Const c -> f "(%a : %a)" C.pp c M.Type.pp t.typ
-  | Nil ty -> f "([] : %a)" M.Type.pp ty
-  | Cons (t1, t2) -> f "(%a :: %a)" pp t1 pp t2
-  | IML_None ty -> f "(None : %a)" M.Type.pp ty
-  | IML_Some t -> f "(Some %a)" pp t
-  | Left (ty, t) -> f "Left (%a) (%a)" M.Type.pp ty pp t
-  | Right (ty, t) -> f "Right (%a) (%a)" M.Type.pp ty pp t
-  | Unit -> p "()"
-  | Var (id, _) -> f "%s" (Ident.name id)
-  | Tuple (t1, t2) -> f "(%a, %a)" pp t1 pp t2
-  | Assert t -> f "assert (%a)" pp t
-  | AssertFalse -> p "assert false"
-  | Fun (_ty1, _ty2, pat, body) ->
-      f "@[<2>(fun %s ->@ %a@ : %a)@]"
-        (Ident.name pat.desc) pp body M.Type.pp t.typ
-  | IfThenElse (t1, t2, t3) -> 
-      f "(if %a @[then %a@ else %a@])"
-        pp t1 pp t2 pp t3
-  | App (t1, ts) -> 
-      f "(%a %a)" pp t1 Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
-  | Prim (n, _ops, ts) ->
-      f "(%s %a)" 
-        n
-        Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
-  | Let (p, t1, t2) ->
-      f "@[<2>(let %s =@ %a in@ %a)@]"
-        (Ident.name p.desc) pp t1 pp t2
-  | Switch_or (t, p1, t1, p2, t2) ->
-      f "@[<2>(match %a with@ | Left %s -> %a@ | Right %s -> %a)@]"
-        pp t
-        (Ident.name p1.desc) pp t1 
-        (Ident.name p2.desc) pp t2
-  | Switch_cons (t, p1, p2, t1, t2) ->
-      f "@[<2>(match %a with@ | %s::%s -> %a@ | [] -> %a)@]"
-        pp t
-        (Ident.name p1.desc) 
-        (Ident.name p2.desc) 
-        pp t1 
-        pp t2
-  | Switch_none (t, t1, p2, t2) ->
-      f "@[<2>(match %a with@ | None -> %a@ | Some %s -> %a)@]"
-        pp t
-        pp t1 
-        (Ident.name p2.desc) pp t2
+  let rec pp _ppf t =
+    f "%a %a" desc t attr t.attr
+
+  and attr _ppf attrs = 
+    List.iter (function
+        | Comment s -> f "/* %s */" s) attrs
+                         
+  and desc _ppf t = match t.desc with
+    | Const c -> f "(%a : %a)" C.pp c M.Type.pp t.typ
+    | Nil ty -> f "([] : %a)" M.Type.pp ty
+    | Cons (t1, t2) -> f "(%a :: %a)" pp t1 pp t2
+    | IML_None ty -> f "(None : %a)" M.Type.pp ty
+    | IML_Some t -> f "(Some %a)" pp t
+    | Left (ty, t) -> f "Left (%a) (%a)" M.Type.pp ty pp t
+    | Right (ty, t) -> f "Right (%a) (%a)" M.Type.pp ty pp t
+    | Unit -> p "()"
+    | Var (id, _) -> f "%s" (Ident.name id)
+    | Tuple (t1, t2) -> f "(%a, %a)" pp t1 pp t2
+    | Assert t -> f "assert (%a)" pp t
+    | AssertFalse -> p "assert false"
+    | Fun (_ty1, _ty2, pat, body) ->
+        f "@[<2>(fun %s ->@ %a@ : %a)@]"
+          (Ident.name pat.desc) pp body M.Type.pp t.typ
+    | IfThenElse (t1, t2, t3) -> 
+        f "(if %a @[then %a@ else %a@])"
+          pp t1 pp t2 pp t3
+    | App (t1, ts) -> 
+        f "(%a %a)" pp t1 Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
+    | Prim (n, _ops, ts) ->
+        f "(%s %a)" 
+          n
+          Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
+    | Let (p, t1, t2) ->
+        f "@[<2>(let %s =@ %a in@ %a)@]"
+          (Ident.name p.desc) pp t1 pp t2
+    | Switch_or (t, p1, t1, p2, t2) ->
+        f "@[<2>(match %a with@ | Left %s -> %a@ | Right %s -> %a)@]"
+          pp t
+          (Ident.name p1.desc) pp t1 
+          (Ident.name p2.desc) pp t2
+    | Switch_cons (t, p1, p2, t1, t2) ->
+        f "@[<2>(match %a with@ | %s::%s -> %a@ | [] -> %a)@]"
+          pp t
+          (Ident.name p1.desc) 
+          (Ident.name p2.desc) 
+          pp t1 
+          pp t2
+    | Switch_none (t, t1, p2, t2) ->
+        f "@[<2>(match %a with@ | None -> %a@ | Some %s -> %a)@]"
+          pp t
+          pp t1 
+          (Ident.name p2.desc) pp t2
+  in
+  pp ppf
 
 module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
 
@@ -252,26 +269,25 @@ let type_expr ~loc tenv ty =
 
 let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } = 
   let typ = type_expr ~loc pat_env pat_type in
+  let mk loc id typ = { loc; desc=id; typ; attr= () } in
+  let mk_dummy loc typ = { loc; desc=Ident.dummy; typ; attr= () } in
   match pat_desc with
-  | Tpat_var (id, {loc}) ->
-      [{ loc; desc=id; typ }]
+  | Tpat_var (id, {loc}) -> [mk loc id typ]
 
   | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
       (* We transform (_ as x) in x if _ and x have the same location.
          The compiler transforms (x:t) into (_ as x : t).
          This avoids transforming a warning 27 into a 26.
        *)
-      [{ loc; desc=id; typ }]
+      [mk loc id typ]
 
-  | Tpat_any         -> 
-      [{ loc; desc=Ident.dummy; typ }]
+  | Tpat_any         -> [mk_dummy loc typ]
 
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
   | Tpat_tuple _     -> unsupported ~loc "tuple pattern"
 
-  | Tpat_construct ({loc}, _, []) when typ.desc = TyUnit ->
-      [{ loc; desc=Ident.dummy; typ }]
+  | Tpat_construct ({loc}, _, []) when typ.desc = TyUnit -> [mk_dummy loc typ]
 
   | Tpat_construct _ -> unsupported ~loc "variant pattern"
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
@@ -296,7 +312,7 @@ let parse_timestamp s =
 
 let parse_bytes s =
   try
-    ignore @@ Hex.to_string (`Hex s); Ok (C.Bytes s)
+    ignore & Hex.to_string (`Hex s); Ok (C.Bytes s)
   with
   | _ -> Error "Bytes must take hex representation of bytes"
 
@@ -323,7 +339,7 @@ let attr_has_entry_point =
 let structure env str final =
 
   let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
-    let make typ desc = { loc; typ; desc } in
+    let make typ desc = { loc; typ; desc; attr= [] } in
     match (Ctype.expand_head exp_env exp_type).Types.desc with
     (* bool *)
     | Tconstr (p, [], _) when p = Predef.path_bool ->
@@ -344,7 +360,7 @@ let structure env str final =
                       let e1 = expression env e1 in
                       let e2 = expression env e2 in
                       (* tyList e1.typ = e2.typ *)
-                      make_constant @@ make e2.typ @@ Cons (e1, e2)
+                      make_constant & make e2.typ & Cons (e1, e2)
                   | _ -> internal_error ~loc "strange cons"
                 end
             | s -> internal_error ~loc "strange list constructor %s" s
@@ -360,7 +376,7 @@ let structure env str final =
               begin match args with
                 | [e1] ->
                     let e1 = expression env e1 in
-                    make_constant @@ make (tyOption e1.typ) @@ IML_Some e1
+                    make_constant & make (tyOption e1.typ) & IML_Some e1
                 | _ -> internal_error ~loc "strange cons"
               end
           | s -> internal_error ~loc "strange list constructor %s" s
@@ -378,11 +394,11 @@ let structure env str final =
         | "Left" -> 
             let e = expression env arg in
             (* e.typ = ty1 *)
-            make_constant @@ make e.typ @@ Left (ty2, e)
+            make_constant & make e.typ & Left (ty2, e)
         | "Right" ->
             let e = expression env arg in
             (* e.typ = ty2 *)
-            make_constant @@ make e.typ @@ Right (ty1, e)
+            make_constant & make e.typ & Right (ty1, e)
         | s -> internal_error ~loc "strange sum constructor %s" s
         end
 
@@ -532,28 +548,28 @@ let structure env str final =
           errorf ~loc "entry declaration is only allowed for the toplevel definitions";
     end;
     let typ = type_expr ~loc exp_env exp_type in
-    let make desc = { loc; typ; desc } in
+    let mk desc = { loc; typ; desc; attr= [] } in
     match exp_desc with
     | Texp_ident (Path.Pident id, {loc=_}, _vd) -> 
         begin match List.assoc_opt id env with
           | None -> assert false
           | Some _ty ->
               (* typ = ty *)
-              make @@ Var (id, typ)
+              mk & Var (id, typ)
         end
     | Texp_ident (p, {loc}, _vd) ->
         begin match Path.is_scaml p with
-          | Some n -> make @@ primitive ~loc typ n []
+          | Some n -> mk & primitive ~loc typ n []
           | None -> unsupported ~loc "complex path %s" (Path.xname p)
         end
     | Texp_constant (Const_string (s, None)) -> 
-        make @@ Const (String s)
+        mk & Const (String s)
     | Texp_constant _ -> unsupported ~loc "constant"
     | Texp_tuple [e1; e2] ->
         let e1 = expression env e1 in
         let e2 = expression env e2 in
         (* tyPair (e1.typ, e2.typ) = typ *) 
-        make_constant @@ make @@ Tuple (e1, e2)
+        make_constant & mk & Tuple (e1, e2)
     | Texp_tuple _ -> unsupported ~loc "tuple with more than 2 elems"
     | Texp_construct ({loc}, c, args) -> 
         construct ~loc env exp_env exp_type c args
@@ -562,9 +578,9 @@ let structure env str final =
         begin match e.exp_desc with
         | Texp_construct (_, {cstr_name="false"}, []) ->
             (* assert false has type 'a *)
-            make AssertFalse
+            mk AssertFalse
         | _ -> 
-            make @@ Assert (expression env e)
+            mk & Assert (expression env e)
         end
   
     | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
@@ -578,7 +594,8 @@ let structure env str final =
         List.fold_left (fun e (v,def) ->
             { loc; (* XXX inaccurate *)
               typ= e.typ;
-              desc= Let (v, def, e) } ) e rev_vbs
+              desc= Let (v, def, e);
+              attr= [] } ) e rev_vbs
   
     | Texp_apply (_, []) -> assert false
     | Texp_apply (f, args) -> 
@@ -605,8 +622,8 @@ let structure env str final =
           | None -> 
               let f = expression env f in
               (* f.typ = fty *)
-              make @@ App (f, args)
-          | Some n -> make @@ primitive ~loc:f.exp_loc fty n args
+              mk & App (f, args)
+          | Some n -> mk & primitive ~loc:f.exp_loc fty n args
         end
   
     | Texp_function { arg_label= (Labelled _ | Optional _) } ->
@@ -626,13 +643,13 @@ let structure env str final =
               let env = (v.desc,v.typ)::env in
               let e = expression env c_rhs in
 (* freevars can be changed because of optimizatios
-              let s = IdTys.(elements @@ remove (v.desc, v.typ) (freevars e)) in
+              let s = IdTys.(elements & remove (v.desc, v.typ) (freevars e)) in
 *)
 (*
               typ = tyLambda (ty1, ty2)
               ty2 = e.typ
 *)
-              make @@ Fun (ty1, ty2, v, e)
+              mk & Fun (ty1, ty2, v, e)
           | _ -> assert false
         end
   
@@ -642,7 +659,7 @@ let structure env str final =
         let eelse = expression env else_ in
         (* ignore (unify ethen.typ eelse.typ);
            ignore (unify typ ethen.typ); *)
-        { loc; typ; desc = IfThenElse (econd, ethen, eelse) }
+        mk & IfThenElse (econd, ethen, eelse)
   
     | Texp_match (_, _, e::_, _) -> 
         unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
@@ -651,7 +668,7 @@ let structure env str final =
         unsupported ~loc "non exhaustive pattern match"
         
     | Texp_match (e , cases, [], Total) -> 
-        make @@ compile_match ~loc env e cases
+        mk & compile_match ~loc env e cases
         
     | Texp_ifthenelse (_, _, None) ->
         unsupported ~loc "if-then without else"
@@ -704,7 +721,8 @@ let structure env str final =
             in
             App ({ loc; (* XXX inaccurate *)
                    typ;
-                   desc= Prim (n, conv fty, args) }, left)
+                   desc= Prim (n, conv fty, args);
+                   attr= [] }, left)
   
   and compile_match ~loc:loc0 env e cases =
     let loc = e.exp_loc in
@@ -749,7 +767,7 @@ let structure env str final =
     match pattern vb_pat with
     | [v] ->
         let e = expression env vb_expr in
-        (* ignore @@ unify v.typ e.typ; *)
+        (* ignore & unify v.typ e.typ; *)
         vb_pat.pat_type, v, e
     | _ -> assert false
   
@@ -795,7 +813,7 @@ let structure env str final =
     (* This is if the entry point is alone and at the end *)
     let vbs = List.flatten & List.rev rev_vbss in
     List.fold_right (fun (_,v,b) x ->
-        { loc=Location.none; typ= tyUnit; desc= Let (v, b, x) })
+        { loc=Location.none; typ= tyUnit; desc= Let (v, b, x); attr= [] })
       vbs
       final
   in
@@ -952,17 +970,17 @@ let dummy_loc =
 let compile_global_entry ty_storage ty_return node =
 
   let id_storage = Ident.create "storage" in
-  let mk desc typ = { desc; typ; loc= dummy_loc } in
+  let mk desc typ = { desc; typ; loc= dummy_loc; attr= [] } in
   let mk_var id typ =  mk (Var (id, typ)) typ in
-  let mk_pat = mk in
+  let mk_pat desc typ = { desc; typ; loc= dummy_loc; attr= () } in
 
   let pat_storage = mk_pat id_storage ty_storage in
   let e_storage = mk_var id_storage ty_storage in
 
   let rec f param_id node = match node with
     | `Leaf (_,vb) ->
-        let var = match pattern vb.vb_pat with
-          | [p] -> mk_var p.desc p.typ
+        let id, var = match pattern vb.vb_pat with
+          | [p] -> p.desc, mk_var p.desc p.typ
           | _ -> assert false
         in
         let param_type = match var.typ with
@@ -975,7 +993,8 @@ let compile_global_entry ty_storage ty_return node =
                                  tyLambda (ty_storage, ty_return, { closure_desc= CLEmpty }),
                                  { closure_desc= CLEmpty }));
 *)
-        mk (App (var, [param_var; e_storage])) ty_return,
+        add_attr (Comment ("entry " ^ Ident.name id))
+        & mk (App (var, [param_var; e_storage])) ty_return,
         param_type
 
     | `Node (n1, n2) ->
@@ -1001,6 +1020,8 @@ let compile_global_entry ty_storage ty_return node =
     (tyLambda (param_typ, f1.typ))
 
 module VMap = Map.Make(struct type t = Ident.t let compare = compare end)
+
+let add_attrs attrs t = { t with attr= attrs @ t.attr }
 
 let count_variables t = 
   let incr v st = match VMap.find_opt v st with
@@ -1032,7 +1053,8 @@ let subst id t1 t2 =
   let rec f t = 
     let mk desc = { t with desc } in
     match t.desc with
-    | Var (id', _) when id = id' -> t1 (* t1 never contains id *)
+    | Var (id', _) when id = id' -> 
+        add_attrs t.attr t1 (* t1 never contains id *)
     | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
 
     | IML_Some t -> mk & IML_Some (f t)
@@ -1060,37 +1082,58 @@ let subst id t1 t2 =
 *)
 let optimize t = 
   let rec f t = 
-    let mk desc = { t with desc } in
-    match t.desc with
-    | App (t, []) -> f t
-    | App (u, t::ts) -> 
-        let t = f t in
-        let ts = List.map f ts in
-        begin match f u with
-        | {desc= Fun (_ty1, _ty2, pat, body)} ->
-            f & mk & App (mk & Let (pat, t, body), ts)
-        | u -> mk & App (u, t::ts)
-        end
-    | Let (p, t1, t2) -> 
-        let vmap = count_variables t2 in
-        begin match VMap.find_opt p.desc vmap with
-          | None -> f t2
-          | Some 1 -> f & subst p.desc t1 t2
-          | _ -> mk & Let (p, f t1, f t2)
-        end
-    | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
-    | IML_Some t -> mk & IML_Some (f t)
-    | Left (a, t) -> mk & Left (a, f t)
-    | Right (a, t) -> mk & Right (a, f t)
-    | Assert t -> mk & Assert (f t)
-    | Fun (a, b, c, t) -> mk & Fun (a, b, c, f t)
-    | Cons (t1, t2) -> mk & Cons (f t1, f t2)
-    | Tuple (t1, t2) -> mk & Tuple (f t1, f t2)
-    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
-    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
-    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
-    | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
-    | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+    let attrs = ref (Some t.attr) in
+    let add_attrs t' = 
+      match !attrs with
+      | Some as_ ->
+          attrs := None;
+          { t' with attr= as_ @ t'.attr } 
+      | None -> assert false
+    in
+    let mk desc = add_attrs & { t with desc; attr= [] } in
+    let res = match t.desc with
+      | App (t, []) -> add_attrs & f t 
+      | App (u, t::ts) -> 
+          let t = f t in
+          let ts = List.map f ts in
+          begin match f u with
+          | {desc= Fun (_ty1, ty2, pat, body)} ->
+              f & mk & App ({ desc= Let (pat, t, body);
+                              loc= t.loc; (* incorrect *)
+                              typ= ty2;
+                              attr= [] },
+                            ts)
+          | u -> mk & App (u, t::ts)
+          end
+      | Let (p, t1, t2) -> 
+          let vmap = count_variables t2 in
+          begin match VMap.find_opt p.desc vmap with
+            | None -> add_attrs & f t2
+            | Some 1 -> 
+                add_attrs 
+                & f & subst p.desc (add_attr (Comment ("= " ^ Ident.name p.desc)) t1) t2
+            | _ -> mk & Let (p, f t1, f t2)
+          end
+      | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> 
+          add_attrs { t with attr= [] }
+      | IML_Some t -> mk & IML_Some (f t)
+      | Left (a, t) -> mk & Left (a, f t)
+      | Right (a, t) -> mk & Right (a, f t)
+      | Assert t -> mk & Assert (f t)
+      | Fun (a, b, c, t) -> mk & Fun (a, b, c, f t)
+      | Cons (t1, t2) -> mk & Cons (f t1, f t2)
+      | Tuple (t1, t2) -> mk & Tuple (f t1, f t2)
+      | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
+      | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
+      | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
+      | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
+      | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+    in
+    begin match !attrs with
+      | Some _ -> assert false
+      | None -> ()
+    end;
+    res
   in
   f t
 

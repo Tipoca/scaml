@@ -1,12 +1,18 @@
-type 'desc with_loc_and_type =
+type ('desc, 'attr) with_loc_and_type =
   { desc : 'desc
-  ; loc : Location.t
-  ; typ : Michelson.Type.t
+  ; loc  : Location.t
+  ; typ  : Michelson.Type.t
+  ; attr : 'attr
   }
 
-type pat = Ident.t with_loc_and_type
+type pat = (Ident.t, unit) with_loc_and_type
 
-type t = desc with_loc_and_type
+type attr = 
+  | Comment of string
+
+type attrs = attr list
+
+type t = (desc, attrs) with_loc_and_type
 
 and desc =
   | Const of Michelson.Opcode.constant
