@@ -245,8 +245,8 @@ let rec type_expr tenv ty =
         | Some "Key_hash.t", [] -> Ok (tyKeyHash)
         | Some "Bytes.t", [] -> Ok (tyBytes)
         | Some "Chain_id.t", [] -> Ok (tyChainID)
-        | Some s, _ -> prerr_endline ("XXX " ^ s); Error (Unsupported_data_type p)
-        | None, _ -> prerr_endline "GAGA"; Error (Unsupported_data_type p)
+        | Some s, _ -> Error (Unsupported_data_type p)
+        | None, _ -> Error (Unsupported_data_type p)
       end
 
   | Tpoly (ty, []) -> type_expr tenv ty
@@ -329,7 +329,9 @@ let constructions_by_string =
     ("Timestamp.t" , ("timestamp", "Timestamp", tyTimestamp, 
                       parse_timestamp));
     ("Bytes.t"     , ("bytes", "Bytes", tyBytes, 
-                      parse_bytes))
+                      parse_bytes));
+    ("Chain_id.t"  , ("chain_id", "Chain_id", tyChainID,
+                      fun x -> Ok (C.String x)))
   ]
 
 let attr_has_entry_point = 
