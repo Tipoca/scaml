@@ -8,16 +8,8 @@ build_dir=$script_dir/_build
 
 d=$(dirname $script_dir)
 
-while [ ! -x $d/_build/install/default/lib/ppx_scaml/ppx.exe ]; do
-    if [ "$d" = "/" ]; then
-	echo "SCaml compiler binary not found"
-	exit 2
-    fi
-    d=$(dirname $d)
-done
-
-ppx=$d/_build/install/default/lib/ppx_scaml/ppx.exe
-echo ppx=$ppx
+comp="dune exec ../main.exe --"
+echo comp=$comp
 
 for i in $*
 do
@@ -32,8 +24,8 @@ do
       ml=$build_dir/$(basename $i)
       tz=`echo $ml | sed -e 's/\.ml$/.tz/'`
       rm -f "$tz"
-      echo $ppx $ml
-      (cd $script_dir; $ppx $ml)
+      echo $comp $ml
+      (cd $script_dir; $comp $ml)
       ;;
   esac
 

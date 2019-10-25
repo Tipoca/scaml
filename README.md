@@ -12,6 +12,7 @@ This immediately leads to the following benefits:
 
 * Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
 * SCaml programs are also compilable as OCaml programs, which can simulate their behaviour.
+* OCaml programmers can start writing SCaml programs immediately.
 * Users can use the existing OCaml programming language tutorials and references to learn SCaml.
 
 ## Restrictions
@@ -22,7 +23,7 @@ The following OCaml features are not supported:
 * Polymorphism
 * Sum types other than lists, options, and `type ('a,'b) sum = Left of 'a | Right of 'b`.
 * Product types other than a pair: `t1 * t2`.
-* SML modules.
+* Modules.
 * Labeled functions.
 * Nested patterns. Constants in patterns. "Or" pattern.  Pattern guards.  Exception patterns.
 * Multi case in `function`

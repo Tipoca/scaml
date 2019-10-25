@@ -1,12 +1,18 @@
-type 'desc with_loc_and_type =
+type ('desc, 'attr) with_loc_and_type =
   { desc : 'desc
-  ; loc : Location.t
-  ; typ : Michelson.Type.t
+  ; loc  : Location.t
+  ; typ  : Michelson.Type.t
+  ; attr : 'attr
   }
 
-type pat = Ident.t with_loc_and_type
+type pat = (Ident.t, unit) with_loc_and_type
 
-type t = desc with_loc_and_type
+type attr = 
+  | Comment of string
+
+type attrs = attr list
+
+type t = (desc, attrs) with_loc_and_type
 
 and desc =
   | Const of Michelson.Opcode.constant
@@ -21,8 +27,7 @@ and desc =
   | Tuple of t * t
   | Assert of t
   | AssertFalse
-  | Fun of Michelson.Type.t * Michelson.Type.t * pat * t *
-      (Tools.Ident.t * Michelson.Type.t) list
+  | Fun of Michelson.Type.t * Michelson.Type.t * pat * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
@@ -33,8 +38,10 @@ and desc =
 
 val pp : Format.formatter -> t -> unit
 
-val structure : parameter: Michelson.Type.t ->
-  (Tools.Ident.t * Michelson.Type.t) list -> Typedtree.structure -> t
+val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
 
-val fix_entrypoint_type :
-  string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t
+module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
+
+val freevars : t -> IdTys.t
+
+val optimize : t -> t

@@ -29,7 +29,7 @@ module Ident = struct
   let is_stdlib i = name i = "Stdlib" && persistent i
   let is_scaml i = name i = "SCaml" && persistent i
 
-  let dummy = Ident.create "_"
+  let dummy = Ident.create "_dummy_"
 end
 
 module Path = struct
@@ -60,5 +60,10 @@ end
 
 let errorf = Location.raise_errorf
 let unsupported ~loc fmt = Printf.ksprintf (fun s -> errorf ~loc "SCaml does not support %s" s) fmt
-let internal_error ~loc fmt = Printf.ksprintf (fun s -> errorf ~loc "SCaml internal error: %s" s) fmt
+let internal_error ~loc fmt = 
+  Printf.ksprintf (fun s -> 
+      errorf ~loc "SCaml internal error: %s\n%s" s
+        Printexc.(raw_backtrace_to_string (get_callstack 20))
+    ) fmt
+
 

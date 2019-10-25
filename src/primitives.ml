@@ -20,15 +20,17 @@ let simple os = fun _ty pre -> pre @ os
 
 (* We can omit the types here, since they are coded in SCaml.ml *)
 
+(*
 (* EXEC for pure lambda and closure *)
 let exec = function
   | false -> [ EXEC ]
-  | true -> [ DIP [ DUP; CDR; DIP [ CAR ] ]; PAIR; EXEC ]
+  | true -> [ DIP (1, [ DUP; CDR; DIP (1, [ CAR ]) ]); PAIR; EXEC ]
 
 let is_closure cli =
   match (repr_closure_info cli).closure_desc with
   | CLList xs -> xs <> []
   | _ -> assert false
+*)
 
 let primitives = 
   [ "fst"     , (1, simple [CAR])
@@ -68,20 +70,7 @@ let primitives =
   ; "lnot"         , (1, simple [NOT])
 
   ; "List.length"  , (1, simple [SIZE])
-  ; "List.map"     , (2, fun typ xs ->
-        (* XXX dup *)
-        let is_closure =
-          match typ with
-          | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, _, cli) ->
-                  is_closure cli
-              | _ -> assert false
-              end
-          | _ -> 
-              Format.eprintf "List.map: %a@." M.Type.pp typ;
-              assert false
-        in
+  ; "List.map"     , (2, fun _typ xs ->
 (* lambda : map : S              SWAP ;
    { hd; <tl> } : lambda : S     MAP {
      hd : lambda : S              DIP DUP
@@ -96,27 +85,14 @@ let primitives =
         xs @
         [ SWAP ; 
           MAP ( 
-            [ DIP [ DUP ] ]
-            @ exec is_closure
+            [ DIP (1, [ DUP ]) ]
+            @ [ EXEC ]
           ) ;
-          DIP [ DROP ]
+          DIP (1, [ DROP 1 ])
         ])
 
 
-  ; "List.fold_left"    , (3, fun typ xs -> 
-        let is_closure1, is_closure2 =
-          match typ with
-          | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
-                  is_closure cli1,
-                  is_closure cli2
-              | _ -> assert false
-              end
-          | _ -> 
-              Format.eprintf "List.fold: %a@." M.Type.pp typ;
-              assert false
-        in
+  ; "List.fold_left"    , (3, fun _typ xs -> 
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
@@ -131,43 +107,31 @@ let primitives =
 *)           
 
         xs @
-        [ SWAP ; DIP [ SWAP ]; SWAP;
-          ITER ([ DIP [ DIP [ DUP ]; SWAP ] ]
-                @ exec is_closure1
+        [ SWAP ; DIP (1, [ SWAP ]); SWAP;
+          ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
+                @ [ EXEC ]
                 @ [ SWAP ]
-                @ exec is_closure2);
-          DIP [ DROP ]
+                @ [ EXEC ]);
+          DIP (1, [ DROP 1])
         ])
 
   ; "List.rev", (1, fun ty xs -> 
-        match ty with
-        | TyLambda (TyList ty, TyList ty', _) when ty = ty' ->
-            xs @ [DIP [NIL ty]; ITER [CONS]]
+        match ty.desc with
+        | TyLambda ({ desc= TyList ty }, { desc= TyList _ty' }) ->
+            (* ty = _ty' *)
+            xs @ [DIP (1, [NIL ty]); ITER [CONS]]
         | _ -> assert false)
 
   ; "Set.empty", (0, fun typ xs ->
         assert (xs = []);
-        match typ with
+        match typ.desc with
         | TySet ty -> [EMPTY_SET ty]
         | _ -> assert false)
 
   ; "Set.length"  , (1, simple [SIZE])
   ; "Set.mem"     , (2, simple [MEM])
   ; "Set.update"  , (3, simple [UPDATE])
-  ; "Set.fold"    , (3, fun typ xs -> 
-        let is_closure1, is_closure2 =
-          match typ with
-          | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
-                  is_closure cli1,
-                  is_closure cli2
-              | _ -> assert false
-              end
-          | _ -> 
-              Format.eprintf "Set.fold: %a@." M.Type.pp typ;
-              assert false
-        in
+  ; "Set.fold"    , (3, fun _typ xs -> 
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -185,30 +149,18 @@ let primitives =
 *)           
 
         xs @
-        [ SWAP ; DIP [ SWAP ];
-          ITER ([ DIP [ DIP [ DUP ]; SWAP ] ]
-                @ exec is_closure1
+        [ SWAP ; DIP (1, [ SWAP ]);
+          ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
+                @ [ EXEC ]
                 @ [ SWAP ]
-                @ exec is_closure2);
-          DIP [ DROP ]
+                @ [ EXEC ]);
+          DIP (1, [ DROP 1 ])
         ])
       
   ; "Loop.left"    , (2, fun typ xs -> 
-        let is_closure =
-          match typ with
-          | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, _, cli1) ->
-                  is_closure cli1
-              | _ -> assert false
-              end
-          | _ -> 
-              Format.eprintf "Loop.left %a@." M.Type.pp typ;
-              assert false
-        in
         let rty =
-          match typ with
-          | TyLambda (_, TyLambda(_, rty, _), _) -> rty
+          match typ.desc with
+          | TyLambda (_, { desc= TyLambda(_, rty) }) -> rty
           | _ -> 
               Format.eprintf "Loop.left %a@." M.Type.pp typ;
               assert false
@@ -227,8 +179,8 @@ let primitives =
 *)
         xs @
         [ SWAP ; LEFT rty;
-          LOOP_LEFT (  DIP [ DUP ] :: exec is_closure );
-          DIP [ DROP ] ])
+          LOOP_LEFT (  DIP (1, [ DUP ]) :: [ EXEC ] );
+          DIP (1, [ DROP 1 ]) ])
       
   ; "String.concat",   (2, simple [CONCAT])
   ; "String.length",   (1, simple [SIZE])
@@ -237,7 +189,7 @@ let primitives =
 
   ; "Map.empty", (0, fun typ xs ->
         assert (xs = []);
-        match typ with
+        match typ.desc with
         | TyMap (ty1,ty2) -> [EMPTY_MAP (ty1, ty2)]
         | _ -> assert false)
 
@@ -246,21 +198,7 @@ let primitives =
   ; "Map.mem", (2, simple [MEM])
   ; "Map.update", (3, simple [UPDATE])
 
-  ; "Map.map", (2, fun typ xs ->
-        (* XXX dup *)
-        let is_closure1, is_closure2 =
-          match typ with
-          | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, _, cli2), cli1) ->
-                  is_closure cli1,
-                  is_closure cli2
-              | _ -> assert false
-              end
-          | _ -> 
-              Format.eprintf "Map.map: %a@." M.Type.pp typ;
-              assert false
-        in
+  ; "Map.map", (2, fun _typ xs ->
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
@@ -280,30 +218,16 @@ let primitives =
         xs @
         [ SWAP ; 
           MAP ( 
-            [ DIP [ DUP ];
-              DUP; CAR; DIP [ CDR; SWAP ] ]
-            @ exec is_closure1
+            [ DIP (1, [ DUP ]);
+              DUP; CAR; DIP (1, [ CDR; SWAP ]) ]
+            @ [ EXEC ]
             @ [ SWAP ]
-            @ exec is_closure2
+            @ [ EXEC ]
           ) ;
-          DIP [ DROP ]
+          DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.fold"    , (3, fun typ xs -> 
-        let is_closure1, is_closure2, is_closure3 =
-          match typ with
-          | TyLambda (typ, _, _) ->
-              begin match typ with
-              | TyLambda (_, TyLambda (_, TyLambda (_, _, cli3), cli2), cli1) ->
-                  is_closure cli1,
-                  is_closure cli2,
-                  is_closure cli3
-              | _ -> assert false
-              end
-          | _ -> 
-              Format.eprintf "Map.fold: %a@." M.Type.pp typ;
-              assert false
-        in
+  ; "Map.fold"    , (3, fun _typ xs -> 
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -322,23 +246,23 @@ let primitives =
 *)           
 
         xs @
-        [ SWAP ; DIP [ SWAP ];
-          ITER ([ DUP; CAR; DIP [ CDR ];
-                  DIP [ DIP [ DIP [ DUP ]; SWAP ]; SWAP ] ]
-                @ exec is_closure1
+        [ SWAP ; DIP (1, [ SWAP ]);
+          ITER ([ DUP; CAR; DIP (1, [ CDR ]);
+                  DIP (1, [ DIP (1, [ DIP (1, [ DUP ]); SWAP ]); SWAP ]) ]
+                @ [ EXEC ]
                 @ [ SWAP ]
-                @ exec is_closure2
+                @ [ EXEC ]
                 @ [ SWAP ]
-                @ exec is_closure3);
-          DIP [ DROP ]
+                @ [ EXEC ]);
+          DIP (1, [ DROP 1 ])
         ])
       
                
   ; "Obj.pack", (1, simple [ PACK ])
 
   ; "Obj.unpack", (1, fun ty xs ->
-      match ty with
-      | TyLambda (_, TyOption ty, _) ->
+      match ty.desc with
+      | TyLambda (_, { desc= TyOption ty }) ->
           xs @ [ UNPACK ty ]
       | _ -> assert false)
       
@@ -346,8 +270,8 @@ let primitives =
   ; "Bytes.slice", (3, simple [ SLICE ]) (* XXX not tested *)
                    
   ; "Contract.contract", (1, fun ty xs ->
-        match ty with
-        | TyLambda (_, TyOption (TyContract ty), _) ->
+        match ty.desc with
+        | TyLambda (_, { desc= TyOption ({ desc= TyContract ty }) }) ->
             xs @ [ CONTRACT ty ]
         | _ -> assert false)
 
@@ -359,12 +283,13 @@ let primitives =
   ; "Operation.set_delegate", (1, simple [ SET_DELEGATE ])
   ; "Operation.create_account", (4, simple [ CREATE_ACCOUNT; PAIR ])
 
-  ; "Global.get_now", (1, simple [ DROP; NOW ])
-  ; "Global.get_amount", (1, simple [ DROP; AMOUNT ])
-  ; "Global.get_balance", (1, simple [ DROP; BALANCE ])
-  ; "Global.get_source", (1, simple [ DROP; SOURCE ])
-  ; "Global.get_sender", (1, simple [ DROP; SENDER ])
-  ; "Global.get_steps_to_quota", (1, simple [ DROP; STEPS_TO_QUOTA ])
+  ; "Global.get_now", (1, simple [ DROP 1; NOW ])
+  ; "Global.get_amount", (1, simple [ DROP 1; AMOUNT ])
+  ; "Global.get_balance", (1, simple [ DROP 1; BALANCE ])
+  ; "Global.get_source", (1, simple [ DROP 1; SOURCE ])
+  ; "Global.get_sender", (1, simple [ DROP 1; SENDER ])
+  ; "Global.get_steps_to_quota", (1, simple [ DROP 1; STEPS_TO_QUOTA ])
+  ; "Global.get_chain_id", (1, simple [ DROP 1; CHAIN_ID ])
 
   ; "Crypto.check_signature", (3, simple [ CHECK_SIGNATURE ])
   ; "Crypto.blake2b", (1, simple [ BLAKE2B ])

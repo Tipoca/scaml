@@ -1,5 +1,15 @@
+open Spotlib.Spot
+
+module Mline : sig
+  type t
+  val pp : Format.t -> t -> unit
+end
+
 module Type : sig
-  type t =
+  type t = { desc : desc 
+           ; attrs : string list
+           }
+  and desc = 
     | TyString
     | TyNat
     | TyInt
@@ -17,29 +27,45 @@ module Type : sig
     | TyKeyHash
     | TyTimestamp
     | TyAddress
+    | TyChainID
     | TyKey
     | TySignature
     | TyOperation
     | TyContract of t
-    | TyLambda of t * t * closure_info
+    | TyLambda of t * t
 
-  and closure_info = { mutable closure_desc : closure_desc; }
+  val mk : desc -> t
 
-  and closure_desc =
-    | CLEmpty (* never unified with a proper closure info! *)
-    | CLList of (Ident.t * t) list
-    | CLLink of closure_info
-
-  val repr_closure_info : closure_info -> closure_info
+  val tyString : t
+  val tyNat : t
+  val tyInt : t
+  val tyBytes : t
+  val tyBool : t
+  val tyUnit : t
+  val tyList : t -> t
+  val tyPair : (t * t) -> t
+  val tyOption : t -> t
+  val tyOr : (t * t) -> t
+  val tySet : t -> t
+  val tyMap : (t * t) -> t
+  val tyBigMap : (t * t) -> t
+  val tyMutez : t
+  val tyKeyHash : t
+  val tyTimestamp : t
+  val tyAddress : t
+  val tyChainID : t
+  val tyKey : t
+  val tySignature : t
+  val tyOperation : t
+  val tyContract : t -> t
+  val tyLambda : (t * t) -> t
 
   val pp : Format.formatter -> t -> unit
-
-  exception Unification_error of t * t
-  val unify : t -> t -> t
+  val to_micheline : t -> Mline.t
 end
 
-module Opcode : sig
-  type constant =
+module Constant : sig
+  type t =
     | Unit
     | Bool of bool
     | Int of Z.t
@@ -47,20 +73,29 @@ module Opcode : sig
     (* | Mutez of int *)
     | String of string
     | Bytes of string
-    | Option of constant option
-    | List of constant list
-    | Set of constant list
-    | Map of (constant * constant) list
-    | Big_map of (constant * constant) list
-    | Pair of constant * constant
-    | Left of constant
-    | Right of constant
+    | Option of t option
+    | List of t list
+    | Set of t list
+    | Map of (t * t) list
+    | Big_map of (t * t) list
+    | Pair of t * t
+    | Left of t
+    | Right of t
     | Timestamp of Z.t
 
+  val pp : Format.formatter -> t -> unit
+  val to_micheline : t -> Mline.t
+end
+  
+module Opcode : sig
+  type constant = Constant.t
+                    
   type t =
     | DUP
-    | DIP of t list
-    | DROP
+    | DIP of int * t list
+    | DIG of int
+    | DUG of int
+    | DROP of int
     | SWAP
     | PAIR
     | ASSERT
@@ -69,6 +104,7 @@ module Opcode : sig
     | LEFT of Type.t
     | RIGHT of Type.t
     | LAMBDA of Type.t * Type.t * t list
+    | APPLY
     | PUSH of Type.t * constant
     | NIL of Type.t
     | CONS
@@ -112,6 +148,7 @@ module Opcode : sig
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT
+    | CREATE_CONTRACT of module_
     | IMPLICIT_ACCOUNT
     | NOW
     | AMOUNT
@@ -125,16 +162,19 @@ module Opcode : sig
     | SOURCE
     | SENDER
     | ADDRESS
-(*
-    | CREATE_CONTRACT of t list
-*)
+    | CHAIN_ID
 
-  val pp_constant : Format.formatter -> constant -> unit
+  and module_ = { parameter : Type.t ; storage : Type.t ; code : t list }
+
   val pp : Format.formatter -> t -> unit
+  val to_micheline : t -> Mline.t
   val clean_failwith : t list -> t list
 end
 
 module Module : sig
-  type t = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
+  type t = Opcode.module_ = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
+(*
+  val to_micheline : t -> Mline.t
+*)
   val pp : Format.formatter -> t -> unit
 end

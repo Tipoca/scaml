@@ -11,6 +11,3 @@ let main (x:unit) y =
              match ys with
              | z::zs -> false
              | [] -> (x = Int 1) && (y = Int 2))
-
-    
-

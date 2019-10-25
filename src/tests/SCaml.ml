@@ -135,11 +135,12 @@ module Operation = struct
   type t
   let transfer_tokens : 'a -> tz -> 'a contract -> t = fun _ -> assert false
   let set_delegate : key_hash option -> t = fun _ -> assert false
-  let create_account : key_hash -> key_hash option -> bool -> tz -> (t * address) = fun _ -> assert false
 end
 
 type operation = Operation.t
 type operations = operation list
+
+let create_contract : ('param -> 'storage -> operations * 'storage) -> tz -> 'storage -> 'param -> operation * address = fun _ -> assert false
 
 module Timestamp = struct
   type t = Timestamp of string
@@ -149,6 +150,11 @@ module Timestamp = struct
 end
 type timestamp = Timestamp.t = Timestamp of string
 
+module Chain_id = struct
+  type t = Chain_id of string
+end
+type chain_id = Chain_id.t = Chain_id of string
+
 (* maybe the place is not good *)
 module Global : sig
   val get_now : unit -> timestamp
@@ -157,6 +163,7 @@ module Global : sig
   val get_source : unit -> address
   val get_sender : unit -> address
   val get_steps_to_quota : unit -> nat
+  val get_chain_id : unit -> chain_id
 end = struct
   let get_now _ = assert false
   let get_amount _ = assert false
@@ -164,6 +171,7 @@ end = struct
   let get_source _ = assert false
   let get_sender _ = assert false
   let get_steps_to_quota _ = assert false
+  let get_chain_id _ = assert false
 end
 
 module Key = struct
@@ -182,15 +190,10 @@ module Crypto = struct
   let sha256 : bytes -> bytes = fun _ -> assert false
   let sha512 : bytes -> bytes = fun _ -> assert false
   let hash_key  : key -> key_hash = fun _ -> assert false
-(*
-      | STEPS_TO_QUOTA
-      | SOURCE
-      | SENDER
-      | ADDRESS
-        *)
 end
 
 module Obj = struct
   let pack : 'a -> bytes = fun _ -> assert false
   let unpack : bytes -> 'a option = fun _ -> assert false
 end
+

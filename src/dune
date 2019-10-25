@@ -1,0 +1,6 @@
+(executable
+  (name main)
+  (public_name scamlc)
+  (flags -w A-4-9-40-41-42-44-45)
+  (libraries compiler-libs.common ocaml-migrate-parsetree spotlib
+  	     hex ptime zarith tezos-micheline))

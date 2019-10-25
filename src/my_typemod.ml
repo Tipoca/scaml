@@ -14,4 +14,5 @@ let type_implementation sourcefile outputprefix modulename initial_env ast =
   with
   | e -> 
     Location.report_exception Format.err_formatter e;
-    raise e
+    (* raise e *)
+    exit 1
