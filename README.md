@@ -96,6 +96,15 @@ In future,
 * Key hashes: `Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"`
 * Signatures: `Signature "edsigu4chLHh7rDAUxHyifHYTJyuS8zybSSFQ5eSXydXD7PWtHXrpeS19ds3hA587p5JNjyJcZbLx8QtemuJBEFkLyzjAhTjjta"`
 
+### Entry points
+
+Top level `let` bindings with `[@entry]` attribute are treated as entry points.  If none of `[@entry]` specified, the last value definition is treated as the entry point:
+
+```
+let [@entry] case1 (param : int) storage = ...
+let [@entry] case2 (param : string) storage = ...
+```
+
 ## Examples
 
 Under `src/tests/`
