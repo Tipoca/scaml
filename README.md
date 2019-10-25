@@ -12,8 +12,8 @@ This immediately leads to the following benefits:
 
 * Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
 * SCaml programs are also compilable as OCaml programs, which can simulate their behaviour.
-* OCaml programmers can start writing SCaml programs immediately.
 * Users can use the existing OCaml programming language tutorials and references to learn SCaml.
+* Researchers can use SCaml for bases of their research prototypes.
 
 ## Restrictions
 
@@ -46,7 +46,7 @@ Primitives defined in a module `SCaml` is referred.
 
 ### SCaml typing 
 
-An additional small typing phase to enforce the type of the entry point
+An additional small typing phase to enforce the types of the entry points
 to be `'parameter -> 'storage -> (SCaml.operation list, 'storage)`
 
 It will also try forcing the typing of `SCaml.self`.
