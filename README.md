@@ -105,7 +105,6 @@ Library functions are listed in `ppx/tests/SCaml.ml`.
 
 ## Unsupported
 
-* Big maps
 * `CREATE_CONTRACT`
 * Check of addresses, keys, key_hashes and signatures
 
