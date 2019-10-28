@@ -12,7 +12,7 @@ This immediately leads to the following benefits:
 
 * Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
 * SCaml programs are also compilable as OCaml programs, which can simulate their behaviour.
-* Users can use the existing OCaml programming language tutorials and references to learn SCaml.
+* OCaml programmers can start writing SCaml programs immediately.  New comers can learn SCaml through existing OCaml language tutorials and references.
 * Researchers can use SCaml for bases of their research prototypes.
 
 ## Restrictions
@@ -70,7 +70,7 @@ IML performs type inference for typed closure conversion.
 
 * Integers: `Int 42`, `Int (-100)`
 * Natural numbers: `Nat 42`, `Nat 12345`
-* Tezzys: `Tz 1.0`, `Tz 0.000001`
+* Tezzies: `Tz 1.0`, `Tz 0.000001`
 
 Each arithmetic type has its own set of arithmetic binary operators:
 
@@ -80,8 +80,8 @@ Each arithmetic type has its own set of arithmetic binary operators:
 
 In future,
 
-* We can introduce integer suffixes to natural numbers and tezzys, like `42p`, `1.23t`
-* We can introduce the SML style overloading of these operators.
+* Integer suffixes to natural numbers and tezzys, like `42p`, `1.23t`
+* SML style overloading of these operators.
 
 ### Container literals
 
@@ -92,10 +92,19 @@ In future,
 ### String based constants
 
 * Bytes: `Bytes "0123456789abcdef"`
-* Address: `Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN" = Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN"`
+* Address: `Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN"`
 * Keys: `Key "edpkuSR6ywqsk17myFVRcw2eXhVib2MeLc9D1QkEQb98ctWUBwSJpF"`
-* Key hashes: `Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx" = Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"`
+* Key hashes: `Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"`
 * Signatures: `Signature "edsigu4chLHh7rDAUxHyifHYTJyuS8zybSSFQ5eSXydXD7PWtHXrpeS19ds3hA587p5JNjyJcZbLx8QtemuJBEFkLyzjAhTjjta"`
+
+### Entry points
+
+Top level `let` bindings with `[@entry]` attribute are treated as entry points.  If none of `[@entry]` specified, the last value definition is treated as the entry point:
+
+```
+let [@entry] case1 (param : int) storage = ...
+let [@entry] case2 (param : string) storage = ...
+```
 
 ## Examples
 
@@ -107,6 +116,6 @@ Library functions are listed in `src/tests/SCaml.ml`.
 
 * Big maps
 * `CREATE_CONTRACT`
-* Check of addresses, keys, key_hashes and signatures
+* Check of validities of addresses, keys, key_hashes and signatures
 
 
