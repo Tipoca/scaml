@@ -36,8 +36,8 @@ $ dune install
 If successful, there should be the compiler executable:
 
 ```
-$ ls _opam/lib/ppx_scaml/ppx.exe 
-_opam/lib/ppx_scaml/ppx.exe*
+$ ls _opam/bin/scamlc
+_opam/bin/scamlc
 ```
 
 # Test
@@ -50,60 +50,36 @@ $ ./test.sh xxx.ml
 If `tezos-client` is in `PATH` and it is configured to connect to a running node with a valid blockchain protocol, it should also dry-run the compiled tz:
 
 ```
-ppx=/.../_build/install/default/lib/ppx_scaml/ppx.exe
------ ml_closure4.ml
-/.../_build/install/default/lib/ppx_scaml/ppx.exe /.../ppx/tests//_build/ml_closure4.ml
-{ parameter (unit) ; storage (unit) ;
-  code { { /* defs */
-           DIP { { /* f */
-                   LAMBDA
-                     (int)
-                     (pair (lambda (pair (int) (option (int))) (pair (lambda (pair (int) (pair (option (int)) (option (int)))) (int)) (pair (option (int)) (option (int))))) (option (int)))
-                     { { /* clos */ { /* x */ DUP } ; SOME } ;
-                       LAMBDA
-                         (pair (int) (option (int)))
-                         (pair (lambda (pair (int) (pair (option (int)) (option (int)))) (int)) (pair (option (int)) (option (int))))
-                         { { /* get arg */ DUP ; DIP { CAR } ; CDR } ;
-                           { /* get x */ IF_NONE { UNIT ; FAILWITH } {  } } ;
-                           { /* clos */
-                             { /* y */ DIP { DUP } ; SWAP } ; SOME ;
-                             { /* x */ DIP { DUP } ; SWAP } ; SOME ; PAIR } ;
-                           LAMBDA
-                             (pair (int) (pair (option (int)) (option (int))))
-                             (int)
-                             { { /* get arg */ DUP ; DIP { CAR } ; CDR } ;
-                               DUP ;
-                               DIP { CAR ;
-                                     { /* get x */
-                                       IF_NONE { UNIT ; FAILWITH } {  } } } ;
-                               CDR ;
-                               { /* get y */ IF_NONE { UNIT ; FAILWITH } {  } } ;
-                               { /* z */ DIP { DIP { DUP } ; SWAP } ; SWAP } ;
-                               { /* y */ DIP { DUP } ; SWAP } ; MUL ;
-                               { /* x */ DIP { DIP { DUP } ; SWAP } ; SWAP } ;
-                               SUB ;
-                               { /* lambda clean up */
-                                 DIP { DROP ; DROP ; DROP } } } ;
-                           PAIR ;
-                           { /* lambda clean up */ DIP { DROP ; DROP } } } ;
-                       PAIR ; { /* lambda clean up */ DIP { DROP } } } } } };
-         { /* entry point init */ DUP ; CDR ; DIP { CAR } };
-         { /* entry point */
-           PUSH (int) 4 ;
-           { /* f */ DIP { DIP { DIP { DUP } ; SWAP } ; SWAP } ; SWAP } ;
-           PUSH (int) 10 ; EXEC ; PUSH (int) 3 ;
-           DIP { DUP ; CDR ; DIP { CAR } } ; PAIR ; EXEC ; PUSH (int) 2 ;
-           DIP { DUP ; CDR ; DIP { CAR } } ; PAIR ; EXEC ; COMPARE ; 
-           EQ ; ASSERT ; PUSH (unit) Unit ; NIL (operation) ; PAIR };
-         { /* final clean up */ DIP { DROP ; DROP ; DROP } } } }
-open SCaml
-let f x y z = x - (y * z)
-let main () () = ([], (assert ((f (Int 10) (Int 3) (Int 2)) = (Int 4))))
-Executing /.../tezos-client run script /.../ppx/tests//_build/ml_closure4.tz on storage Unit and input Unit
+$ ./test.sh closure2.ml 
+comp=dune exec ../main.exe --
+----- closure2.ml
+dune exec ../main.exe -- /Users/jun/.share/4.07.1/scaml/src/tests//_build/closure2.ml
+Entering directory '/Users/jun/.share/4.07.1/scaml'
+Entering directory '/Users/jun/.share/4.07.1/scaml'
+parameter unit ;
+storage unit ;
+code { { /* defs */ } ;
+       { /* entry point init */ DUP ; CDR ; DIP { CAR } } ;
+       { /* entry point */
+         { /* entry main */
+           PUSH int 6 ;
+           { /* = d */ { /* = a */ PUSH int 1 } ; { /* = c */ PUSH int 3 } ; ADD } ;
+           { /* = e */ PUSH int 2 } ;
+           ADD ;
+           COMPARE ;
+           EQ ;
+           ASSERT ;
+           PUSH unit Unit ;
+           NIL operation ;
+           PAIR } } ;
+       { /* final clean up */ DIP { DROP 2 } } } ;
+
+Executing /var/folders/6_/d6bx9d112z7fzxvwdmwk5qgr0000gn/T/tezos-tmp-client.XXXXXXXX.5M0z3d0L/bin/tezos-client run script /Users/jun/.share/4.07.1/scaml/src/tests//_build/closure2.tz on storage Unit and input Unit
 storage
   Unit
 emitted operations
   
+big_map diff
 
 ```
 
