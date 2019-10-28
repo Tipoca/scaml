@@ -4,3 +4,4 @@ dune-project
 .merlin
 *.install
 src/tests/*.iml
+_build
