@@ -129,6 +129,7 @@ module Opcode : sig
     | UNIT
     | EMPTY_SET of Type.t
     | EMPTY_MAP of Type.t * Type.t
+    | EMPTY_BIG_MAP of Type.t * Type.t
     | SIZE
     | MEM
     | UPDATE
