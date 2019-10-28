@@ -115,6 +115,6 @@ Library functions are listed in `src/tests/SCaml.ml`.
 ## Unsupported
 
 * `CREATE_CONTRACT`
-* Check of validities of addresses, keys, key_hashes and signatures
+* Check of validities of addresses, keys, key_hashes and signatures, which can be checked by Michelson typing.
 
 
