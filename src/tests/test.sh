@@ -1,13 +1,16 @@
 #!/bin/bash
 set -e
 
+# Where am I?
 script_dir="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
+
+# Where to work?
 build_dir=$script_dir/_build
 
+# Make sure the library module is compiled
 (cd $script_dir; ocamlfind ocamlc -package zarith -c SCaml.ml)
 
-d=$(dirname $script_dir)
-
+# Compilation command
 comp="dune exec ../main.exe --"
 echo comp=$comp
 
@@ -16,14 +19,19 @@ do
   echo "----- $i"    
   case "$i" in
   *.tz)
+      # Do nothing if it is *.tz
       tz="$i"
       ;;
   *)
+      # Compile it under $build_dir
       if [ ! -d $build_dir ]; then mkdir $build_dir; fi
       cp $i $build_dir/$(basename $i)
       ml=$build_dir/$(basename $i)
+      # Remove old output files
+      iml=`echo $ml | sed -e 's/\.ml$/.iml/'`
       tz=`echo $ml | sed -e 's/\.ml$/.tz/'`
-      rm -f "$tz"
+      rm -f "$iml" "$tz"
+      # Compile!
       echo $comp $ml
       (cd $script_dir; $comp $ml)
       ;;
