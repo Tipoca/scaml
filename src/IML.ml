@@ -236,6 +236,7 @@ let rec type_expr tenv ty =
         | Some "tz", [] -> Ok (tyMutez)
         | Some "Set.t", [ty] -> Ok (tySet ty)
         | Some "Map.t", [ty1; ty2] -> Ok (tyMap (ty1, ty2))
+        | Some "BigMap.t", [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
         | Some "Operation.t", [] -> Ok (tyOperation)
         | Some "Contract.t", [ty] -> Ok (tyContract ty)
         | Some "Timestamp.t", [] -> Ok (tyTimestamp)
@@ -245,7 +246,7 @@ let rec type_expr tenv ty =
         | Some "Key_hash.t", [] -> Ok (tyKeyHash)
         | Some "Bytes.t", [] -> Ok (tyBytes)
         | Some "Chain_id.t", [] -> Ok (tyChainID)
-        | Some s, _ -> Error (Unsupported_data_type p)
+        | Some _, _ -> Error (Unsupported_data_type p)
         | None, _ -> Error (Unsupported_data_type p)
       end
 
@@ -511,9 +512,9 @@ let structure env str final =
                       | _ -> assert false) xs in
                   { e with typ; desc= Const (Map xs) }
               | Ok _ -> assert false
-              | Error loc -> errorf ~loc "Elements of Set must be constants"
+              | Error loc -> errorf ~loc "Elements of Map must be constants"
               end
-          | _ -> internal_error ~loc "strange set arguments"
+          | _ -> internal_error ~loc "strange map arguments"
         end
 
     (* C "string" style constants *)
@@ -540,7 +541,7 @@ let structure env str final =
                       | _ -> errorf ~loc "%s only takes a string literal" cname
         end
 
-    | _ -> prerr_endline cstr_name; assert false
+    | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false
   
   and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes } =
     (* wildly ignores extra *)

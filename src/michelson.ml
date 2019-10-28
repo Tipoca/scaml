@@ -111,7 +111,7 @@ module Type = struct
     | TyOr (t1, t2)     -> prim "or" [to_micheline t1; to_micheline t2]
     | TySet t           -> prim "set" [to_micheline t]
     | TyMap (t1, t2)    -> prim "map" [to_micheline t1; to_micheline t2]
-    | TyBigMap (t1, t2) -> prim "bigmap" [to_micheline t1; to_micheline t2]
+    | TyBigMap (t1, t2) -> prim "big_map" [to_micheline t1; to_micheline t2]
   
     | TyMutez     -> !"mutez"
     | TyKeyHash   -> !"key_hash"
