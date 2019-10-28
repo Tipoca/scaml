@@ -114,7 +114,6 @@ Library functions are listed in `src/tests/SCaml.ml`.
 
 ## Unsupported
 
-* Big maps
 * `CREATE_CONTRACT`
 * Check of validities of addresses, keys, key_hashes and signatures
 

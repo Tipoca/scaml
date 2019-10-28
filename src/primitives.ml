@@ -257,6 +257,17 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
       
+
+  (* big map *)
+
+  ; "BigMap.empty", (0, fun typ xs ->
+        assert (xs = []);
+        match typ.desc with
+        | TyBigMap (ty1,ty2) -> [EMPTY_BIG_MAP (ty1, ty2)]
+        | _ -> assert false)
+  ; "BigMap.get", (2, simple [ GET ] )
+  ; "BigMap.mem", (2, simple [MEM])
+  ; "BigMap.update", (3, simple [UPDATE])
                
   ; "Obj.pack", (1, simple [ PACK ])
 
@@ -281,7 +292,6 @@ let primitives =
 
   ; "Operation.transfer_tokens", (3, simple [ TRANSFER_TOKENS ])
   ; "Operation.set_delegate", (1, simple [ SET_DELEGATE ])
-  ; "Operation.create_account", (4, simple [ CREATE_ACCOUNT; PAIR ])
 
   ; "Global.get_now", (1, simple [ DROP 1; NOW ])
   ; "Global.get_amount", (1, simple [ DROP 1; AMOUNT ])

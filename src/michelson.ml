@@ -111,7 +111,7 @@ module Type = struct
     | TyOr (t1, t2)     -> prim "or" [to_micheline t1; to_micheline t2]
     | TySet t           -> prim "set" [to_micheline t]
     | TyMap (t1, t2)    -> prim "map" [to_micheline t1; to_micheline t2]
-    | TyBigMap (t1, t2) -> prim "bigmap" [to_micheline t1; to_micheline t2]
+    | TyBigMap (t1, t2) -> prim "big_map" [to_micheline t1; to_micheline t2]
   
     | TyMutez     -> !"mutez"
     | TyKeyHash   -> !"key_hash"
@@ -217,6 +217,7 @@ module Opcode = struct
     | UNIT
     | EMPTY_SET of Type.t
     | EMPTY_MAP of Type.t * Type.t
+    | EMPTY_BIG_MAP of Type.t * Type.t
     | SIZE
     | MEM
     | UPDATE
@@ -332,6 +333,7 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
       | UNIT -> !"UNIT"
       | EMPTY_SET ty -> prim "EMPTY_SET" [ Type.to_micheline ty ]
       | EMPTY_MAP (ty1, ty2) -> prim "EMPTY_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
+      | EMPTY_BIG_MAP (ty1, ty2) -> prim "EMPTY_BIG_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
       | SIZE   -> !"SIZE"
       | MEM    -> !"MEM"
       | UPDATE -> !"UPDATE"
@@ -420,7 +422,7 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
       | EXEC
       | FAILWITH
       | UNIT 
-      | EMPTY_SET _ | EMPTY_MAP _
+      | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
       | SIZE
       | MEM
       | UPDATE

@@ -86,7 +86,20 @@ module Map = struct
 end
 type ('k, 'v) map = ('k, 'v) Map.t
 
-type ('a, 'b) big_map = BigMap of ('a * 'b) list
+module BigMap : sig
+  type ('k, 'v) t (* we cannot have a constant *)
+  val empty : ('k, 'v) t
+  val get : 'k -> ('k, 'v) t -> 'k option
+  val mem : 'k -> ('k, 'v) t -> bool
+  val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
+end = struct
+  type ('k, 'v) t = BigMap of ('k * 'v) list
+  let empty : ('k, 'v) t = BigMap []
+  let get : 'k -> ('k, 'v) t -> 'k option = fun _ -> assert false
+  let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false
+  let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
+end
+type ('k, 'v) big_map = ('k, 'v) BigMap.t
 
 module Loop = struct
   let left : ('a -> ('a, 'b) sum) -> 'a -> 'b = fun _ -> assert false
