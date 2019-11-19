@@ -72,7 +72,7 @@ module Set = struct
   let update : 'a -> bool -> 'a t -> 'a t = fun _ -> assert false
   let fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false
 end
-type 'a set = 'a Set.t
+type 'a set = 'a Set.t = Set of 'a list
 
 module Map = struct
   type ('k, 'v) t = Map of ('k * 'v) list
@@ -84,7 +84,7 @@ module Map = struct
   let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
   let fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
 end
-type ('k, 'v) map = ('k, 'v) Map.t
+type ('k, 'v) map = ('k, 'v) Map.t = Map of ('k * 'v) list
 
 module BigMap : sig
   type ('k, 'v) t (* we cannot have a constant *)

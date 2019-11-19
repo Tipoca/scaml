@@ -197,6 +197,8 @@ and compile_desc env t =
       List.fold_left (fun ofun arg ->
           let oarg = compile env arg in
           ofun @ oarg @ [ EXEC ]) ofun args
+  | Match (e, cases) -> 
+      Pmatch.compile e cases
 
 
 let split_entry_point t =

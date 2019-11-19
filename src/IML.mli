@@ -1,3 +1,5 @@
+open Spotlib.Spot
+
 type ('desc, 'attr) with_loc_and_type =
   { desc : 'desc
   ; loc  : Location.t
@@ -5,7 +7,24 @@ type ('desc, 'attr) with_loc_and_type =
   ; attr : 'attr
   }
 
-type pat = (Ident.t, unit) with_loc_and_type
+val dummy_loc : Location.t
+                 
+type var = Ident.t
+
+type pat_desc =
+  | PVar of var
+  | PPair of pat * pat
+  | PLeft of pat
+  | PRight of pat
+  | PWild
+
+and pat = (pat_desc, unit) with_loc_and_type
+
+val pp_pat : Format.t -> pat -> unit
+      
+type patvar = (Ident.t, unit) with_loc_and_type
+
+val pp_patvar : Format.t -> patvar -> unit
 
 type attr = 
   | Comment of string
@@ -27,21 +46,24 @@ and desc =
   | Tuple of t * t
   | Assert of t
   | AssertFalse
-  | Fun of Michelson.Type.t * Michelson.Type.t * pat * t
+  | Fun of Michelson.Type.t * Michelson.Type.t * patvar * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
-  | Let of pat * t * t
-  | Switch_or of t * pat * t * pat * t
-  | Switch_cons of t * pat * pat * t * t
-  | Switch_none of t * t * pat * t
+  | Let of patvar * t * t
+  | Switch_or of t * patvar * t * patvar * t
+  | Switch_cons of t * patvar * patvar * t * t
+  | Switch_none of t * t * patvar * t
+  | Match of t * (pat * t) list
 
-val pp : Format.formatter -> t -> unit
+val pp : Format.t -> t -> unit
 
 val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
 
 module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
 
+val patvars : pat -> IdTys.t
+                       
 val freevars : t -> IdTys.t
 
 val optimize : t -> t

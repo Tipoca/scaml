@@ -1,7 +1,5 @@
 # SCaml, Smart Contract Abstract Machine Language.
 
-> Scam never calls it a scam.
-
 Small and Simple Strict Subset of OCaml for Smart contracts.
 
 ## Strict subset of OCaml
@@ -11,7 +9,7 @@ All the valid SCaml programs are also valid as OCaml programs.
 This immediately leads to the following benefits:
 
 * Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
-* SCaml programs are also compilable as OCaml programs, which can simulate their behaviour.
+* SCaml programs are also compilable as OCaml programs, which can simulate their behaviour.  It will also open a door to write a dApp consists both of on-chain and off-chain programs in one language.
 * OCaml programmers can start writing SCaml programs immediately.  New comers can learn SCaml through existing OCaml language tutorials and references.
 * Researchers can use SCaml for bases of their research prototypes.
 

@@ -15,7 +15,29 @@ type ('desc, 'attr) with_loc_and_type =
   ; attr : 'attr
   }
 
-type pat = (Ident.t, unit) with_loc_and_type
+type var = Ident.t
+
+type pat_desc =
+  | PVar of var
+  | PPair of pat * pat
+  | PLeft of pat
+  | PRight of pat
+  | PWild
+
+and pat = (pat_desc, unit) with_loc_and_type
+
+let rec pp_pat ppf pat = 
+  let open Format in
+  match pat.desc with
+  | PVar i -> fprintf ppf "%s" (Ident.name i)
+  | PPair (p1, p2) -> fprintf ppf "@[(%a,@ %a)@]" pp_pat p1 pp_pat p2
+  | PLeft p -> fprintf ppf "@[Left %a@]" pp_pat p
+  | PRight p -> fprintf ppf "@[Right %a@]" pp_pat p
+  | PWild -> string ppf "_"
+      
+type patvar = (Ident.t, unit) with_loc_and_type
+
+let pp_patvar ppf patvar = pp_pat ppf { patvar with desc= PVar patvar.desc }
 
 type attr = 
   | Comment of string
@@ -39,14 +61,15 @@ and desc =
   | Tuple of t * t
   | Assert of t
   | AssertFalse
-  | Fun of M.Type.t * M.Type.t * pat * t
+  | Fun of M.Type.t * M.Type.t * patvar * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (M.Opcode.t list -> M.Opcode.t list) * t list
-  | Let of pat * t * t
-  | Switch_or of t * pat * t * pat * t
-  | Switch_cons of t * pat * pat * t * t
-  | Switch_none of t * t * pat * t
+  | Let of patvar * t * t
+  | Switch_or of t * patvar * t * patvar * t
+  | Switch_cons of t * patvar * patvar * t * t
+  | Switch_none of t * t * patvar * t
+  | Match of t * (pat * t) list
 
 let almost_constant t = 
   match t.desc with
@@ -127,8 +150,8 @@ let pp ppf =
     | Assert t -> f "assert (%a)" pp t
     | AssertFalse -> p "assert false"
     | Fun (_ty1, _ty2, pat, body) ->
-        f "@[<2>(fun %s ->@ %a@ : %a)@]"
-          (Ident.name pat.desc) pp body M.Type.pp t.typ
+        f "@[<2>(fun (%a) ->@ %a@ : %a)@]"
+          pp_patvar pat pp body M.Type.pp t.typ
     | IfThenElse (t1, t2, t3) -> 
         f "(if %a @[then %a@ else %a@])"
           pp t1 pp t2 pp t3
@@ -139,30 +162,48 @@ let pp ppf =
           n
           Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
     | Let (p, t1, t2) ->
-        f "@[<2>(let %s =@ %a in@ %a)@]"
-          (Ident.name p.desc) pp t1 pp t2
+        f "@[<2>(let %a =@ %a in@ %a)@]"
+          pp_patvar p pp t1 pp t2
     | Switch_or (t, p1, t1, p2, t2) ->
-        f "@[<2>(match %a with@ | Left %s -> %a@ | Right %s -> %a)@]"
+        f "@[<2>(match %a with@ | Left %a -> %a@ | Right %a -> %a)@]"
           pp t
-          (Ident.name p1.desc) pp t1 
-          (Ident.name p2.desc) pp t2
+          pp_patvar p1 pp t1 
+          pp_patvar p2 pp t2
     | Switch_cons (t, p1, p2, t1, t2) ->
-        f "@[<2>(match %a with@ | %s::%s -> %a@ | [] -> %a)@]"
+        f "@[<2>(match %a with@ | %a::%a -> %a@ | [] -> %a)@]"
           pp t
-          (Ident.name p1.desc) 
-          (Ident.name p2.desc) 
+          pp_patvar p1
+          pp_patvar p2
           pp t1 
           pp t2
     | Switch_none (t, t1, p2, t2) ->
-        f "@[<2>(match %a with@ | None -> %a@ | Some %s -> %a)@]"
+        f "@[<2>(match %a with@ | None -> %a@ | Some (%a) -> %a)@]"
           pp t
           pp t1 
-          (Ident.name p2.desc) pp t2
+          pp_patvar p2 pp t2
+    | Match (t, cases) ->
+        f "@[<2>(match %a with@ @[%a@])@]"
+          pp t
+          (Format.list "@ | "
+             (fun ppf (p, e) -> Format.fprintf ppf "%a -> %a"
+                 pp_pat p
+                 pp e)) cases
   in
   pp ppf
 
 module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
 
+let rec patvars p =
+  let open IdTys in
+  match p.desc with
+  | PVar id -> singleton (id, p.typ)
+  | PPair (p1, p2) -> union (patvars p1) (patvars p2)
+  | PLeft p -> patvars p
+  | PRight p -> patvars p
+  | PWild -> empty
+    
+let patvars_var p = IdTys.singleton (p.desc, p.typ)
+    
 let rec freevars t = 
   let open IdTys in
   match t.desc with
@@ -177,24 +218,28 @@ let rec freevars t =
   | Prim (_,_,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty ts
   | Fun (_,_,pat,t) -> 
-      diff (freevars t) (singleton (pat.desc, pat.typ))
+      diff (freevars t) (patvars_var pat)
   | Let (pat, t1, t2) ->
-      diff (union (freevars t1) (freevars t2)) (singleton (pat.desc, pat.typ))
+      diff (union (freevars t1) (freevars t2)) (patvars_var pat)
   | Switch_or (t, p1, t1, p2, t2) ->
       union (freevars t)
         (union 
-           (remove (p1.desc, p1.typ) (freevars t1))
-           (remove (p2.desc, p2.typ) (freevars t2)))
+           (diff (freevars t1) (patvars_var p1))
+           (diff (freevars t2) (patvars_var p2)))
   | Switch_cons (t, p1, p2, t1, t2) ->
       union (freevars t)
         (union 
-           (remove (p1.desc, p1.typ) (remove (p2.desc, p2.typ) (freevars t1)))
+           (diff (diff (freevars t1) (patvars_var p1)) (patvars_var p2))
            (freevars t2))
   | Switch_none (t, t1, p2, t2) ->
       union (freevars t)
         (union 
            (freevars t1)
-           (remove (p2.desc, p2.typ) (freevars t2)))
+           (diff (freevars t2) (patvars_var p2)))
+  | Match (t, cases) ->
+      union (freevars t)
+        (List.fold_left (fun acc (p, t) ->
+             union acc (diff (freevars t) (patvars p))) empty cases)
 
 type type_expr_error =
   | Type_variable of Types.type_expr
@@ -253,19 +298,22 @@ let rec type_expr tenv ty =
   | Tpoly (ty, []) -> type_expr tenv ty
   | _ -> Error (Unsupported_type ty)
 
-let type_expr ~loc tenv ty = 
+let type_expr ~loc ?(this="This") tenv ty = 
   match type_expr tenv ty with
   | Ok x -> x
   | Error (Type_variable ty') -> 
-      errorf ~loc "This has type %a, which has too generic type %a for SCaml."
+      errorf ~loc "%s has type %a, which has too generic type %a for SCaml."
+        this
         Printtyp.type_expr ty
         Printtyp.type_expr ty'
   | Error (Unsupported_type ty') ->
-      errorf ~loc "This has type %a, which has unsupported type %a in SCaml"
+      errorf ~loc "%s has type %a, which has unsupported type %a in SCaml"
+        this
         Printtyp.type_expr ty
         Printtyp.type_expr ty'
   | Error (Unsupported_data_type p) ->
-      errorf ~loc "This has type %a, which has unsupported data type %s in SCaml"
+      errorf ~loc "%s has type %a, which has unsupported data type %s in SCaml"
+        this
         Printtyp.type_expr ty
         (Path.name p)
 
@@ -292,6 +340,44 @@ let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_construct ({loc}, _, []) when typ.desc = TyUnit -> [mk_dummy loc typ]
 
   | Tpat_construct _ -> unsupported ~loc "variant pattern"
+  | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
+  | Tpat_record _    -> unsupported ~loc "record pattern"
+  | Tpat_array _     -> unsupported ~loc "array pattern"
+  | Tpat_or _        -> unsupported ~loc "or pattern"
+  | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
+
+let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } = 
+  let typ = type_expr ~loc pat_env pat_type in
+  let mk desc = { loc; desc; typ; attr= () } in
+  match pat_desc with
+  | Tpat_var (id, _) -> mk (PVar id)
+
+  | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
+      (* We transform (_ as x) in x if _ and x have the same location.
+         The compiler transforms (x:t) into (_ as x : t).
+         This avoids transforming a warning 27 into a 26.
+       *)
+      mk (PVar id)
+
+  | Tpat_any         -> mk PWild
+
+  | Tpat_alias _     -> unsupported ~loc "alias pattern"
+  | Tpat_constant _  -> unsupported ~loc "constant pattern"
+  | Tpat_tuple [p1; p2] -> mk (PPair (patternx p1, patternx p2))
+
+  | Tpat_tuple _     -> unsupported ~loc "tuple pattern (arity > 2)"
+
+  | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
+
+  | Tpat_construct (_, cdesc, [p]) ->
+      begin match cdesc.cstr_name with (* XXX fragile *)
+        | "Left" -> mk (PLeft (patternx p))
+        | "Right" -> mk (PRight (patternx p))
+        | _ ->  unsupported ~loc "unknown constructor"
+      end
+
+  | Tpat_construct (_, _, _) -> unsupported ~loc "constructor (arity > 1)"
+
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
   | Tpat_record _    -> unsupported ~loc "record pattern"
   | Tpat_array _     -> unsupported ~loc "array pattern"
@@ -398,11 +484,11 @@ let structure env str final =
         | "Left" -> 
             let e = expression env arg in
             (* e.typ = ty1 *)
-            make_constant & make e.typ & Left (ty2, e)
+            make_constant & make typ & Left (ty2, e)
         | "Right" ->
             let e = expression env arg in
             (* e.typ = ty2 *)
-            make_constant & make e.typ & Right (ty1, e)
+            make_constant & make typ & Right (ty1, e)
         | s -> internal_error ~loc "strange sum constructor %s" s
         end
 
@@ -672,7 +758,9 @@ let structure env str final =
         unsupported ~loc "non exhaustive pattern match"
         
     | Texp_match (e , cases, [], Total) -> 
-        mk & compile_match ~loc env e cases
+        (* mk & compile_match ~loc env e cases *)
+        Format.eprintf "match-e %a@." Printtyp.type_scheme e.exp_type;
+        mk & compile_matchx env e cases
         
     | Texp_ifthenelse (_, _, None) ->
         unsupported ~loc "if-then without else"
@@ -764,7 +852,19 @@ let structure env str final =
         Switch_none (expression env e,
                      expression env le,
                      rv, expression ((rv.desc, rv.typ)::env) re)
-    | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
+    | _, _ -> 
+        unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
+  
+  and compile_matchx env e cases =
+    let compile_case env case = 
+      match case.c_guard with
+      | Some e -> unsupported ~loc:e.exp_loc "guard"
+      | None -> 
+          let p = patternx case.c_lhs in
+          let pvars = IdTys.elements & patvars p in
+          (patternx case.c_lhs, expression (pvars@env) case.c_rhs)
+    in
+    Match (expression env e, List.map (compile_case env) cases)
   
   and value_binding env { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
     (* currently we only handle very simple sole variable pattern *)
@@ -1053,6 +1153,9 @@ let count_variables t =
 
     | App (t, ts) -> List.fold_right f (t::ts) st
     | Prim (_, _, ts) -> List.fold_right f ts st
+    | Match (t, cases) -> 
+        f t & List.fold_left (fun st (_,t) ->
+            f t st) st cases
   in
   f t VMap.empty
 
@@ -1079,6 +1182,8 @@ let subst id t1 t2 =
     | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
     | App (t, ts) -> mk & App (f t, List.map f ts)
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+    | Match (t, cases) ->
+        mk & Match (f t, List.map (fun (p,t) -> (p, f t)) cases)
   in
   f t2
 
@@ -1136,6 +1241,7 @@ let optimize t =
       | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
       | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
       | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+      | Match (t, cases) -> mk & Match (f t, List.map (fun (p,t) -> p, f t) cases)
     in
     begin match !attrs with
       | Some _ -> assert false
@@ -1178,10 +1284,10 @@ let implementation sourcefile str =
         type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_operations
       in
 
-      let ty_storage = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_storage in
+      let ty_storage = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract storage" tenv ty_storage in
       let ty_return = tyPair (ty_operations, ty_storage) in
       let final = compile_global_entry ty_storage ty_return node in
-      let ty_param = type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_param in
+      let ty_param = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract global parameter" tenv ty_param in
       let ty_param = 
         match node with
         | `Leaf _ (* sole entry point *) -> ty_param
