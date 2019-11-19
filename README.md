@@ -56,8 +56,6 @@ IML is a simple typed purely functional language.
 
 Most of the unsupported features of OCaml are rejected here.
 
-IML performs type inference for typed closure conversion.
-
 ### Compilation to Michelson
 
 `IML` AST is compiled to Michelson.
