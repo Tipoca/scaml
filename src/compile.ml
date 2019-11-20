@@ -117,7 +117,8 @@ and compile_desc env t =
       let os = compile env t in
       let os1 = compile ((p1.desc,p1.typ)::env) t1 in
       let os2 = compile ((p2.desc,p2.typ)::env) t2 in
-      os @ [IF_LEFT (os1, os2); DIP (1, [DROP 1])]
+      os @ [IF_LEFT (os1 @ [DIP (1, [DROP 1])], 
+                     os2 @ [DIP (1, [DROP 1])])]
   | Switch_cons (t, p1, p2, t1, t2) ->
       let os = compile env t in
       let os1 = compile ((p1.desc,p1.typ)::(p2.desc,p2.typ)::env) t1 in
@@ -197,8 +198,7 @@ and compile_desc env t =
       List.fold_left (fun ofun arg ->
           let oarg = compile env arg in
           ofun @ oarg @ [ EXEC ]) ofun args
-  | Match (e, cases) -> 
-      Pmatch.compile e cases
+  | Match _ -> assert false (* must be compiled down to switches *)
 
 
 let split_entry_point t =
