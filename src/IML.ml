@@ -23,6 +23,7 @@ type pat_desc =
   | PLeft of pat
   | PRight of pat
   | PWild
+  | PUnit
 
 and pat = (pat_desc, unit) with_loc_and_type
 
@@ -34,6 +35,7 @@ let rec pp_pat ppf pat =
   | PLeft p -> fprintf ppf "@[Left %a@]" pp_pat p
   | PRight p -> fprintf ppf "@[Right %a@]" pp_pat p
   | PWild -> string ppf "_"
+  | PUnit -> string ppf "()"
       
 type patvar = (Ident.t, unit) with_loc_and_type
 
@@ -201,6 +203,7 @@ let rec patvars p =
   | PLeft p -> patvars p
   | PRight p -> patvars p
   | PWild -> empty
+  | PUnit -> empty
     
 let patvars_var p = IdTys.singleton (p.desc, p.typ)
     
@@ -760,7 +763,7 @@ let structure env str final =
     | Texp_match (e , cases, [], Total) -> 
         (* mk & compile_match ~loc env e cases *)
         Format.eprintf "match-e %a@." Printtyp.type_scheme e.exp_type;
-        mk & compile_matchx env e cases
+        mk & compile_match env e cases
         
     | Texp_ifthenelse (_, _, None) ->
         unsupported ~loc "if-then without else"
@@ -816,46 +819,7 @@ let structure env str final =
                    desc= Prim (n, conv fty, args);
                    attr= [] }, left)
   
-  and compile_match ~loc:loc0 env e cases =
-    let loc = e.exp_loc in
-    let ty = type_expr ~loc e.exp_env e.exp_type in
-    let compile_case case = 
-      match case.c_guard with
-      | Some e -> unsupported ~loc:e.exp_loc "guard"
-      | None -> 
-          match case.c_lhs.pat_desc with
-          | Tpat_construct (_, { cstr_name }, xs) -> cstr_name, xs, case.c_rhs
-          | _ -> unsupported ~loc:case.c_lhs.pat_loc "non variant pattern"
-    in
-    let cases = 
-      List.sort (fun (n1,_,_) (n2,_,_) -> compare n1 n2) (List.map compile_case cases)
-    in
-    match ty.desc, cases with
-    | TyOr (_ty1, _ty2), [("Left",[l],le); ("Right",[r],re)] ->
-        let get_var p = match pattern p with [v] -> v | _ -> assert false in
-        let lv = get_var l in
-        let rv = get_var r in
-        Switch_or (expression env e,
-                   lv, expression ((lv.desc, lv.typ)::env) le,
-                   rv, expression ((rv.desc, rv.typ)::env) re)
-    | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
-    | TyList _ty1, [("::",[l1;l2],le); ("[]",[],re)] ->
-        let get_var p = match pattern p with [v] -> v | _ -> assert false in
-        let lv1 = get_var l1 in
-        let lv2 = get_var l2 in
-        Switch_cons (expression env e,
-                     lv1, lv2, expression ((lv1.desc, lv1.typ)::(lv2.desc, lv2.typ)::env) le,
-                     expression env re)
-    | TyOption _ty1, [("None",[],le); ("Some",[r],re)] ->
-        let get_var p = match pattern p with [v] -> v | _ -> assert false in
-        let rv = get_var r in
-        Switch_none (expression env e,
-                     expression env le,
-                     rv, expression ((rv.desc, rv.typ)::env) re)
-    | _, _ -> 
-        unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
-  
-  and compile_matchx env e cases =
+  and compile_match env e cases =
     let compile_case env case = 
       match case.c_guard with
       | Some e -> unsupported ~loc:e.exp_loc "guard"

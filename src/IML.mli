@@ -17,6 +17,7 @@ type pat_desc =
   | PLeft of pat
   | PRight of pat
   | PWild
+  | PUnit
 
 and pat = (pat_desc, unit) with_loc_and_type
 
