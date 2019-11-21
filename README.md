@@ -15,7 +15,7 @@ This immediately leads to the following benefits:
 
 ## Restrictions
 
-The following OCaml features are not supported:
+The following OCaml features are **not** supported:
 
 * Recursion
 * Polymorphism
@@ -30,6 +30,30 @@ The following OCaml features are not supported:
 * Exceptions.
 * Arrays.
 * Classes, and objects.
+
+### No user defined types (yet)
+
+For simplicity SCaml support only 2 ways to create complex types:
+pair `ty1 * ty2` and sum `(ty1, ty2) sum`, which correspond with
+the composite types of Michelson.  The pair is a two arity tuple
+and `sum` has the following definition:
+
+```
+type ('a, 'b) sum =
+  | Left of 'a
+  | Right of 'b
+```
+
+### No real pattern matching (yet)
+
+For simplicity, the pattern match `match .. with ..` of OCaml 
+is hugely restricted in SCaml.
+
+* Constructors in patterns are restricted to `Left`, `Right`, `::`, `[]`, `Some` and `None.
+* Constructors in patterns can take only variables as their arguments.  No nested pattern is allowed.
+
+This means that for now SCaml's `match .. with ..` is just a syntactic sugar of 
+Michelson conditional opcodes `IF_LEFT`, `IF_CONS` and `IF_NONE`.
 
 ## Design
 
