@@ -24,6 +24,7 @@ type pat_desc =
   | PRight of pat
   | PWild
   | PUnit
+  | PConst of M.Opcode.constant
 
 and pat = (pat_desc, unit) with_loc_and_type
 
@@ -36,6 +37,7 @@ let rec pp_pat ppf pat =
   | PRight p -> fprintf ppf "@[Right %a@]" pp_pat p
   | PWild -> string ppf "_"
   | PUnit -> string ppf "()"
+  | PConst c -> C.pp ppf c
       
 type patvar = (Ident.t, unit) with_loc_and_type
 
@@ -204,6 +206,7 @@ let rec patvars p =
   | PRight p -> patvars p
   | PWild -> empty
   | PUnit -> empty
+  | PConst _ -> empty
     
 let patvars_var p = IdTys.singleton (p.desc, p.typ)
     
@@ -372,6 +375,13 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
 
   | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
 
+  | Tpat_construct (_, {cstr_name}, []) when typ.desc = TyBool ->
+      begin match cstr_name with
+        | "true" -> mk (PConst (C.Bool true))
+        | "false" -> mk (PConst (C.Bool false))
+        | _ -> assert false
+      end
+
   | Tpat_construct (_, cdesc, [p]) ->
       begin match cdesc.cstr_name with (* XXX fragile *)
         | "Left" -> mk (PLeft (patternx p))
@@ -379,7 +389,8 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
         | _ ->  unsupported ~loc "unknown constructor"
       end
 
-  | Tpat_construct (_, _, _) -> unsupported ~loc "constructor (arity > 1)"
+  | Tpat_construct (_, {cstr_name}, _) -> 
+      unsupported ~loc "unknown constructor %s" cstr_name
 
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
   | Tpat_record _    -> unsupported ~loc "record pattern"

@@ -18,6 +18,7 @@ type pat_desc =
   | PRight of pat
   | PWild
   | PUnit
+  | PConst of Michelson.Opcode.constant
 
 and pat = (pat_desc, unit) with_loc_and_type
 

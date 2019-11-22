@@ -44,4 +44,11 @@ let main (main : unit) (storage : unit) =
      | _ -> false
    )
 
+   &&
+
+   ( match true with
+     | true -> true
+     | _ -> false
+   )
+
  )

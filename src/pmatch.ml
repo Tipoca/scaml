@@ -1,6 +1,7 @@
 open Spotlib.Spot
 open IML
 module Type = Michelson.Type
+module C =Michelson.Constant
 
 let create_var =
   let cntr = ref 0 in
@@ -33,6 +34,8 @@ and sw =
   | SRight
   | SPair
   | SUnit
+  | STrue 
+  | SFalse
 
 let rec pp ppf =
   let f fmt = Format.fprintf ppf fmt in
@@ -57,7 +60,10 @@ let rec pp ppf =
              | SLeft, vs, t -> f "@[SLeft %a (%a)@]" pvs vs pp t
              | SRight, vs, t -> f "@[SRight %a (%a)@]" pvs vs pp t
              | SPair, vs, t -> f "SPair %a (%a)" pvs vs pp t
-             | SUnit, vs, t -> f "SUnit %a (%a)" pvs vs pp t)) xs
+             | SUnit, vs, t -> f "SUnit %a (%a)" pvs vs pp t
+             | STrue, vs, t -> f "STrue %a (%a)" pvs vs pp t
+             | SFalse, vs, t -> f "SFalse %a (%a)" pvs vs pp t
+           )) xs
 
 (* specialize on Left and Right *)
 let specialize c (matrix : matrix) : matrix =
@@ -68,6 +74,11 @@ let specialize c (matrix : matrix) : matrix =
           match c, pat.desc with
           | SLeft,  PLeft p  -> (p :: pats, i) :: st
           | SRight, PRight p -> (p :: pats, i) :: st
+          | STrue,  PConst (C.Bool true)  -> (pats, i) :: st
+          | SFalse, PConst (C.Bool false) -> (pats, i) :: st
+          | (STrue | SFalse),  PWild -> (pats, i) :: st
+          | _, PConst (C.Bool _) -> st
+          | _, PConst _ -> assert false
           | _, (PLeft _ | PRight _)  -> st
           | SLeft, PWild -> 
               let typl = match pat.typ.desc with
@@ -96,6 +107,7 @@ let default (matrix : matrix) : matrix =
           match pat.desc with
           | PLeft _ -> st
           | PRight _ -> st
+          | PConst _ -> st
           | PWild -> (pats, i) :: st
           | PVar _ -> assert false (* not yet *)
           | PUnit -> assert false (* not yet *)
@@ -144,12 +156,18 @@ let rec cc o matrix = match matrix with
                 | PRight _ -> SRight :: st
                 | PPair _ ->  SPair :: st
                 | PUnit ->  SUnit :: st
-                | PWild | PVar _ -> st) [] column
+                | PWild | PVar _ -> st
+                | PConst (C.Bool true) -> STrue :: st
+                | PConst (C.Bool false) -> SFalse :: st
+                | PConst _ -> assert false
+              ) [] column
           in
-          (* for Left and Right, think constructors are always full *)
+          (* for Left and Right, true and false, 
+             think constructors are always full *)
           let constructors = 
             match constructors with
             | [SLeft] | [SRight] -> [SLeft; SRight]
+            | [STrue] | [SFalse] -> [STrue; SFalse]
             | _ -> constructors
           in
           let _is_signature = 
@@ -186,6 +204,7 @@ let rec cc o matrix = match matrix with
                             in
                             [ create_var "l", ty1 ; 
                               create_var "r", ty2 ]
+                        | STrue | SFalse -> []
                         | _ -> assert false
                       in
                       c, vs, cc (vs @ o) (specialize c matrix)
@@ -252,7 +271,16 @@ let rec build aty acts t = match t with
                            mkp tyr vr, tr)
                            
   | Switch (_, ((SLeft | SRight), _, _ ) :: _) -> assert false
-      
+
+  | Switch (v, ( [STrue, [], tt ;
+                  SFalse, [], tf]
+               | [SFalse, [], tf;
+                  STrue, [], tt] )) ->
+      let tt = build aty acts tt in
+      let tf = build aty acts tf in
+      mke aty & IfThenElse (mkv v, tt, tf)
+                           
+  | Switch (_, ((STrue | SFalse), _, _) :: _) -> assert false
 
             
 let compile_match e cases =
@@ -296,11 +324,6 @@ let compile_match e cases =
   let make x = 
     let match_ = 
       mke typ (Let (mkp e.typ v, e, x))
-(*
-                    mke typ (Match ( mke e.typ (Var (v, e.typ)), 
-                                     List.map (fun (pat, _v, _f, e) ->
-                                         (pat, e)) acts))))
-*)
     in
     List.fold_right (fun (v, f, _e) st ->
         mke st.typ (Let (mkp f.typ v,
