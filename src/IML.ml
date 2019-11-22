@@ -762,7 +762,7 @@ let structure env str final =
         
     | Texp_match (e , cases, [], Total) -> 
         (* mk & compile_match ~loc env e cases *)
-        Format.eprintf "match-e %a@." Printtyp.type_scheme e.exp_type;
+        (* Format.eprintf "match-e %a@." Printtyp.type_scheme e.exp_type; *)
         mk & compile_match env e cases
         
     | Texp_ifthenelse (_, _, None) ->
@@ -1220,7 +1220,7 @@ let implementation sourcefile str =
   match get_entries vbs with
   | [] -> 
       errorf ~loc:(Location.in_file sourcefile)
-        "SCaml needs at least one value definition for an entry piont"
+        "SCaml needs at least one value definition for an entry point"
   | vbs ->
       let tenv = str.str_final_env in
       let pvbs, ty_storage = type_check_entries str.str_final_env vbs in
