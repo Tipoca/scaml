@@ -51,4 +51,12 @@ let main (main : unit) (storage : unit) =
      | _ -> false
    )
 
+   && 
+
+   ( match Int 1 with
+     | Int 2 -> false
+     | Int 1 -> true
+     | _ -> false
+   )
+
  )

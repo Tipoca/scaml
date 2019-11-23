@@ -375,35 +375,15 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
 
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
-(*
-
-  | Tpat_constant (p, [], _) when Path.is_scaml_dot "int" p ->
-      make (tyInt) begin
-        let arg = match args with
-            | [arg] -> arg
-            | _ -> internal_error ~loc "strange Int arguments"
-          in
-          match arg.exp_desc with
-            | Texp_constant (Const_int n) -> Const (Int (Z.of_int n))
-            | _ -> errorf ~loc "Int can only take an integer constant"
-        end
-*)  
 
   | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
 
-  | Tpat_tuple _     -> unsupported ~loc "tuple pattern (arity > 2)"
+  | Tpat_tuple _ -> unsupported ~loc "tuple pattern (arity > 2)"
 
   | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
 
-  | Tpat_construct (_, {cstr_name}, []) when typ.desc = TyBool ->
-      begin match cstr_name with
-        | "true" -> mk (PConstr (CBool true, []))
-        | "false" -> mk (PConstr (CBool false, []))
-        | _ -> assert false
-      end
-
-  | Tpat_construct (_, cdesc, ps) (* XXX TYPE *) ->
-      begin match cdesc.cstr_name, typ.desc, ps with (* XXX fragile *)
+  | Tpat_construct (_, cdesc, ps) ->
+      begin match cdesc.cstr_name, typ.desc, ps with
         | "Left", TyOr _, [p] -> mk (PConstr (CLeft, [patternx p]))
         | "Right", TyOr _, [p] -> mk (PConstr (CRight, [patternx p]))
         | "Some", TyOption _, [p] -> mk (PConstr (CSome, [patternx p]))
@@ -412,7 +392,11 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
         | "[]", TyList _, [] -> mk (PConstr (CNil, []))
         | "true", TyBool, [] -> mk (PConstr (CBool true, []))
         | "false", TyBool, [] -> mk (PConstr (CBool false, []))
-        | n, _, _ ->  unsupported ~loc "unknown constructor %s" n
+        | "Int", TyInt, [{pat_desc= Tpat_constant (Const_int n)}] ->
+            mk & PConstr (CConstant (C.Int (Z.of_int n)), [])
+        | "Int", TyInt, [_] -> errorf ~loc "Int can only take an integer constant"
+            
+        | n, _, _ ->  unsupported ~loc "pattern %s" n
       end
 
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"

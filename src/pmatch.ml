@@ -27,7 +27,7 @@ type var = Ident.t * Type.t
 type t = 
   | Fail
   | Leaf of (Ident.t * var) list * int
-  | Switch of var * (IML.constr * var list * t) list
+  | Switch of var * (IML.constr * var list * t) list * t option (* default *)
 
 let rec pp ppf =
   let f fmt = Format.fprintf ppf fmt in
@@ -40,7 +40,7 @@ let rec pp ppf =
                (Ident.name v)
                (Ident.name v'))) binders
         n
-  | Switch (v, xs) ->
+  | Switch (v, xs, None) ->
       f "@[<2>Switch %s@ [ @[%a@] ]@]"
         (Ident.name & fst v)
         (Format.list ";@ " (fun ppf -> 
@@ -51,6 +51,18 @@ let rec pp ppf =
              fun (c, vs, t) ->
                f "%s %a (%a)" (string_of_constr c) pvs vs pp t
            )) xs
+  | Switch (v, xs, Some d) ->
+      f "@[<2>Switch %s@ [ @[%a@] default %a]@]"
+        (Ident.name & fst v)
+        (Format.list ";@ " (fun ppf -> 
+             let f fmt = Format.fprintf ppf fmt in
+             let pvs _ppf vs = 
+               f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.name x) vs
+             in
+             fun (c, vs, t) ->
+               f "%s %a (%a)" (string_of_constr c) pvs vs pp t
+           )) xs
+        pp d
 
 (* specialize on Left and Right *)
 let specialize c (matrix : matrix) : matrix =
@@ -98,6 +110,8 @@ let specialize c (matrix : matrix) : matrix =
           | CNil, PWild -> (pats, i) :: st
 
           | CBool _, PWild -> (pats, i) :: st
+
+          | CConstant _, PWild -> (pats, i) :: st
 
           | _ -> assert false (* not yet *)
     ) matrix []
@@ -159,28 +173,26 @@ let rec cc o matrix = match matrix with
              think constructors are always full *)
           let constructors = 
             match constructors with
-            | [CLeft] | [CRight] -> 
-                [CLeft; CRight]
-            | [CSome] | [CNone] -> 
-                [CSome; CNone]
-            | [CCons] | [CNil] -> 
-                [CCons; CNil]
-            | [(CBool _)] ->
-                [(CBool true) ; (CBool false)]
+            | [CLeft] | [CRight] -> [CLeft; CRight]
+            | [CSome] | [CNone] -> [CSome; CNone]
+            | [CCons] | [CNil] -> [CCons; CNil]
+            | [(CBool _)] -> [(CBool true) ; (CBool false)]
             | _ -> constructors
           in
           (* XXX weak. this depends on the above code *)
-          let _is_signature = 
+          let is_signature = 
             match constructors with
             | [CLeft; CRight]
             | [CSome; CNone]
             | [CCons; CNil]
+            | [CPair]
             | [(CBool true) ; (CBool false)] -> true
             | _ -> false
           in
           assert (constructors <> []);
           Switch (List.hd o, 
-                  let vty = snd (List.hd o) in
+
+                  (let vty = snd (List.hd o) in
                   List.map (fun c ->
                       let o = List.tl o in
                       let vs = 
@@ -223,17 +235,17 @@ let rec cc o matrix = match matrix with
 
                         | CBool _ -> []
 
+                        | CConstant _ -> [] (* int/nat/tz *)
+
                         | x -> 
                             Format.eprintf "xxx %s@." (string_of_constr x);
                             assert false
                       in
                       c, vs, cc (vs @ o) (specialize c matrix)
-                    ) constructors
-(*
-                    @
-                    if is_signature then [] 
-                    else cc (List.tl o) (default matrix)
-*)
+                    ) constructors),
+                  
+                  if is_signature then None
+                  else Some (cc (List.tl o) (default matrix))
                  )
         in
         if i = 0 then algo o column
@@ -250,7 +262,7 @@ let mkfst e =
     | TyPair (ty, _) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "fst" Primitives.primitives) e.typ in
+  let prim = snd (List.assoc "fst" Primitives.primitives) e.typ (* XXX wrong. this should be e.typ -> ty *) in
   mke ty (Prim ("fst", prim, [e]))
 
 let mksnd e =
@@ -258,8 +270,13 @@ let mksnd e =
     | TyPair (_, ty) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "snd" Primitives.primitives) e.typ in
+  let prim = snd (List.assoc "snd" Primitives.primitives) e.typ (* XXX wrong. this should be e.typ -> ty *) in
   mke ty (Prim ("snd", prim, [e]))
+
+let mkeq e1 e2 =
+  let prim = snd (List.assoc "=" Primitives.primitives) 
+             & Type.tyLambda (e1.typ, Type.tyLambda (e2.typ, Type.tyBool)) in
+  mke Type.tyBool (Prim ("=", prim, [e1; e2]))
 
 let mkv (id, typ) = mke typ & Var (id, typ)
 
@@ -271,17 +288,17 @@ let rec build aty acts t = match t with
                         mke ty (Var (v', ty)),
                         st))) binders
         (List.nth acts i)
-  | Switch (_, []) -> assert false
-  | Switch (v, [CPair, [v1,ty1; v2,ty2], t]) ->
+  | Switch (_, [], _) -> assert false
+  | Switch (v, [CPair, [v1,ty1; v2,ty2], t], None) ->
       let t = build aty acts t in
       mke aty & Let (mkp ty1 v1, mkfst & mkv v, 
                      mke aty & Let (mkp ty2 v2, mksnd & mkv v,
                                     t))
-  | Switch (_, [CUnit, [], t]) -> build aty acts t
+  | Switch (_, [CUnit, [], t], None) -> build aty acts t
   | Switch (v, ( [ CLeft, [vl,tyl], tl
                  ; CRight, [vr,tyr], tr ]
                | [ CRight, [vr,tyr], tr 
-                 ; CLeft, [vl,tyl], tl ] )) ->
+                 ; CLeft, [vl,tyl], tl ] ), None) ->
       let tl = build aty acts tl in
       let tr = build aty acts tr in
       mke aty & Switch_or (mkv v, 
@@ -291,7 +308,7 @@ let rec build aty acts t = match t with
   | Switch (v, ( [(CBool true), [], tt ;
                   (CBool false), [], tf]
                | [(CBool false), [], tf ;
-                  (CBool true), [], tt] )) ->
+                  (CBool true), [], tt] ), None) ->
       let tt = build aty acts tt in
       let tf = build aty acts tf in
       mke aty & IfThenElse (mkv v, tt, tf)
@@ -299,7 +316,7 @@ let rec build aty acts t = match t with
   | Switch (v, ( [CSome, [vs,tys], ts;
                   CNone, [], tn]
                | [CNone, [], tn; 
-                  CSome, [vs,tys], ts])) ->
+                  CSome, [vs,tys], ts]), None) ->
       let ts = build aty acts ts in
       let tn = build aty acts tn in
       mke aty & Switch_none (mkv v, tn, mkp tys vs, ts) 
@@ -307,12 +324,31 @@ let rec build aty acts t = match t with
   | Switch (v, ( [CCons, [v1,ty1; v2,ty2], tc;
                   CNil, [], tn]
                | [CNil, [], tn; 
-                  CCons, [v1,ty1; v2,ty2], tc])) ->
+                  CCons, [v1,ty1; v2,ty2], tc]), None) ->
       let tc = build aty acts tc in
       let tn = build aty acts tn in
       mke aty & Switch_cons (mkv v, 
                              mkp ty1 v1, mkp ty2 v2, tc, tn)
-  | _ -> assert false
+
+  | Switch (_v, _cases, None) -> assert false
+
+  | Switch (v, cases, Some d) ->
+      (* all cases must be about constants with infinite members *)
+      if not & List.for_all (function (CConstant _, [], _) -> true
+                                    | (CConstant _, _, _) -> assert false
+                                    | (c, _, _) -> 
+                                        prerr_endline (string_of_constr c);
+                                        false) cases
+      then assert false;
+      List.fold_right (fun case telse ->
+          match case with 
+          | (CConstant c, [], t) ->
+              let t = build aty acts t in
+              mke aty & IfThenElse (mkeq (mkv v) 
+                                      (mke (snd v) & Const c),
+                                    t, telse)
+          | _ -> assert false) cases  & build aty acts d
+
             
 let compile_match e cases =
 
