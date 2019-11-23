@@ -27,15 +27,7 @@ type var = Ident.t * Type.t
 type t = 
   | Fail
   | Leaf of (Ident.t * var) list * int
-  | Switch of var * (sw * var list * t) list
-        
-and sw = 
-  | SLeft
-  | SRight
-  | SPair
-  | SUnit
-  | STrue 
-  | SFalse
+  | Switch of var * (IML.constr * var list * t) list
 
 let rec pp ppf =
   let f fmt = Format.fprintf ppf fmt in
@@ -56,13 +48,8 @@ let rec pp ppf =
              let pvs _ppf vs = 
                f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.name x) vs
              in
-             function
-             | SLeft, vs, t -> f "@[SLeft %a (%a)@]" pvs vs pp t
-             | SRight, vs, t -> f "@[SRight %a (%a)@]" pvs vs pp t
-             | SPair, vs, t -> f "SPair %a (%a)" pvs vs pp t
-             | SUnit, vs, t -> f "SUnit %a (%a)" pvs vs pp t
-             | STrue, vs, t -> f "STrue %a (%a)" pvs vs pp t
-             | SFalse, vs, t -> f "SFalse %a (%a)" pvs vs pp t
+             fun (c, vs, t) ->
+               f "%s %a (%a)" (string_of_constr c) pvs vs pp t
            )) xs
 
 (* specialize on Left and Right *)
@@ -72,31 +59,47 @@ let specialize c (matrix : matrix) : matrix =
       | [] -> assert false
       | pat::pats ->
           match c, pat.desc with
-          | SLeft,  PLeft p  -> (p :: pats, i) :: st
-          | SRight, PRight p -> (p :: pats, i) :: st
-          | STrue,  PConst (C.Bool true)  -> (pats, i) :: st
-          | SFalse, PConst (C.Bool false) -> (pats, i) :: st
-          | (STrue | SFalse),  PWild -> (pats, i) :: st
-          | _, PConst (C.Bool _) -> st
-          | _, PConst _ -> assert false
-          | _, (PLeft _ | PRight _)  -> st
-          | SLeft, PWild -> 
+          | c, PConstr (c', ps) ->
+              if c = c' then (ps @ pats, i) :: st else st
+                
+          (* For wild, we need to build another wild with arg type. 
+             XXX Currently we must code for each.  Ugh.
+          *)
+          | CLeft, PWild -> 
               let typl = match pat.typ.desc with
                 | TyOr (typl, _typr) -> typl
                 | _ -> assert false
               in
               (mkp typl PWild :: pats, i) :: st
-          | SRight, PWild -> 
+
+          | CRight, PWild -> 
               let typr = match pat.typ.desc with
                 | TyOr (_typl, typr) -> typr
                 | _ -> assert false
               in
               (mkp typr PWild :: pats, i) :: st
-          | SPair, PPair (p1, p2) -> (p1 :: p2 :: pats, i) :: st
-          | _, PWild -> assert false 
-          | _, PVar _ -> assert false (* not yet *)
-          | _, PUnit -> assert false (* not yet *)
-          | _, PPair _ -> assert false (* impos *)
+
+          | CSome, PWild -> 
+              let typ = match pat.typ.desc with
+                | TyOption typ -> typ
+                | _ -> assert false
+              in
+              (mkp typ PWild :: pats, i) :: st
+
+          | CNone, PWild -> (pats, i) :: st
+
+          | CCons, PWild -> 
+              let typ = match pat.typ.desc with
+                | TyList typ -> typ
+                | _ -> assert false
+              in
+              (mkp typ PWild :: mkp pat.typ PWild :: pats, i) :: st
+
+          | CNil, PWild -> (pats, i) :: st
+
+          | CBool _, PWild -> (pats, i) :: st
+
+          | _ -> assert false (* not yet *)
     ) matrix []
 
 let default (matrix : matrix) : matrix =
@@ -105,13 +108,9 @@ let default (matrix : matrix) : matrix =
       | [] -> assert false
       | pat::pats ->
           match pat.desc with
-          | PLeft _ -> st
-          | PRight _ -> st
-          | PConst _ -> st
+          | PConstr (_, _) -> st
           | PWild -> (pats, i) :: st
           | PVar _ -> assert false (* not yet *)
-          | PUnit -> assert false (* not yet *)
-          | PPair _ -> assert false (* impos *)
     ) matrix []
 
 let swap i o (matrix : matrix) : _ * matrix =
@@ -152,30 +151,31 @@ let rec cc o matrix = match matrix with
           let constructors = 
             List.sort_uniq compare
             & List.fold_left (fun st p -> match p.desc with
-                | PLeft  _ -> SLeft  :: st
-                | PRight _ -> SRight :: st
-                | PPair _ ->  SPair :: st
-                | PUnit ->  SUnit :: st
+                | PConstr (c, _) -> c :: st
                 | PWild | PVar _ -> st
-                | PConst (C.Bool true) -> STrue :: st
-                | PConst (C.Bool false) -> SFalse :: st
-                | PConst _ -> assert false
               ) [] column
           in
           (* for Left and Right, true and false, 
              think constructors are always full *)
           let constructors = 
             match constructors with
-            | [SLeft] | [SRight] -> [SLeft; SRight]
-            | [STrue] | [SFalse] -> [STrue; SFalse]
+            | [CLeft] | [CRight] -> 
+                [CLeft; CRight]
+            | [CSome] | [CNone] -> 
+                [CSome; CNone]
+            | [CCons] | [CNil] -> 
+                [CCons; CNil]
+            | [(CBool _)] ->
+                [(CBool true) ; (CBool false)]
             | _ -> constructors
           in
+          (* XXX weak. this depends on the above code *)
           let _is_signature = 
             match constructors with
-            | [SLeft; SRight]
-            | [SRight; SLeft]
-            | [SPair] 
-            | [SUnit] -> true
+            | [CLeft; CRight]
+            | [CSome; CNone]
+            | [CCons; CNil]
+            | [(CBool true) ; (CBool false)] -> true
             | _ -> false
           in
           assert (constructors <> []);
@@ -185,27 +185,47 @@ let rec cc o matrix = match matrix with
                       let o = List.tl o in
                       let vs = 
                         match c with
-                        | SLeft -> 
+                        | CLeft -> 
                             let ty = match vty.desc with
                               | TyOr (ty, _) -> ty
                               | _ -> assert false
                             in
                             [ create_var "l", ty ]
-                        | SRight -> 
+                        | CRight -> 
                             let ty = match vty.desc with
                               | TyOr (_, ty) -> ty
                               | _ -> assert false
                             in
                             [ create_var "r", ty ]
-                        | SPair -> 
+                        | CPair -> 
                             let ty1,ty2 = match vty.desc with
                               | TyPair (ty1, ty2) -> ty1, ty2
                               | _ -> assert false
                             in
                             [ create_var "l", ty1 ; 
                               create_var "r", ty2 ]
-                        | STrue | SFalse -> []
-                        | _ -> assert false
+                        | CCons -> 
+                            let ty = match vty.desc with
+                              | TyList ty -> ty
+                              | _ -> assert false
+                            in
+                            [ create_var "hd", ty 
+                            ; create_var "tl", vty
+                            ]
+                        | CNil -> []
+                        | CSome -> 
+                            let ty = match vty.desc with
+                              | TyOption ty -> ty
+                              | _ -> assert false
+                            in
+                            [ create_var "x", ty ]
+                        | CNone -> []
+
+                        | CBool _ -> []
+
+                        | x -> 
+                            Format.eprintf "xxx %s@." (string_of_constr x);
+                            assert false
                       in
                       c, vs, cc (vs @ o) (specialize c matrix)
                     ) constructors
@@ -252,36 +272,47 @@ let rec build aty acts t = match t with
                         st))) binders
         (List.nth acts i)
   | Switch (_, []) -> assert false
-  | Switch (v, [SPair, [v1,ty1; v2,ty2], t]) ->
+  | Switch (v, [CPair, [v1,ty1; v2,ty2], t]) ->
       let t = build aty acts t in
       mke aty & Let (mkp ty1 v1, mkfst & mkv v, 
                      mke aty & Let (mkp ty2 v2, mksnd & mkv v,
                                     t))
-  | Switch (_, (SPair, _, _)::_) -> assert false
-  | Switch (_, [SUnit, [], t]) -> build aty acts t
-  | Switch (_, (SUnit, _, _)::_) -> assert false
-  | Switch (v, ( [SLeft, [vl,tyl], tl ;
-                  SRight, [vr,tyr], tr]
-               | [SRight, [vr,tyr], tr;
-                  SLeft, [vl,tyl], tl] )) ->
+  | Switch (_, [CUnit, [], t]) -> build aty acts t
+  | Switch (v, ( [ CLeft, [vl,tyl], tl
+                 ; CRight, [vr,tyr], tr ]
+               | [ CRight, [vr,tyr], tr 
+                 ; CLeft, [vl,tyl], tl ] )) ->
       let tl = build aty acts tl in
       let tr = build aty acts tr in
       mke aty & Switch_or (mkv v, 
                            mkp tyl vl, tl,
                            mkp tyr vr, tr)
                            
-  | Switch (_, ((SLeft | SRight), _, _ ) :: _) -> assert false
-
-  | Switch (v, ( [STrue, [], tt ;
-                  SFalse, [], tf]
-               | [SFalse, [], tf;
-                  STrue, [], tt] )) ->
+  | Switch (v, ( [(CBool true), [], tt ;
+                  (CBool false), [], tf]
+               | [(CBool false), [], tf ;
+                  (CBool true), [], tt] )) ->
       let tt = build aty acts tt in
       let tf = build aty acts tf in
       mke aty & IfThenElse (mkv v, tt, tf)
                            
-  | Switch (_, ((STrue | SFalse), _, _) :: _) -> assert false
-
+  | Switch (v, ( [CSome, [vs,tys], ts;
+                  CNone, [], tn]
+               | [CNone, [], tn; 
+                  CSome, [vs,tys], ts])) ->
+      let ts = build aty acts ts in
+      let tn = build aty acts tn in
+      mke aty & Switch_none (mkv v, tn, mkp tys vs, ts) 
+                           
+  | Switch (v, ( [CCons, [v1,ty1; v2,ty2], tc;
+                  CNil, [], tn]
+               | [CNil, [], tn; 
+                  CCons, [v1,ty1; v2,ty2], tc])) ->
+      let tc = build aty acts tc in
+      let tn = build aty acts tn in
+      mke aty & Switch_cons (mkv v, 
+                             mkp ty1 v1, mkp ty2 v2, tc, tn)
+  | _ -> assert false
             
 let compile_match e cases =
 

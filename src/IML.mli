@@ -11,14 +11,15 @@ val dummy_loc : Location.t
                  
 type var = Ident.t
 
+type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of bool | CPair | CConstant of Michelson.Constant.t
+(* Glitch: Unit, true, false, None, [] are not CConstant *) 
+   
+val string_of_constr : constr -> string
+
 type pat_desc =
   | PVar of var
-  | PPair of pat * pat
-  | PLeft of pat
-  | PRight of pat
+  | PConstr of constr * pat list
   | PWild
-  | PUnit
-  | PConst of Michelson.Opcode.constant
 
 and pat = (pat_desc, unit) with_loc_and_type
 

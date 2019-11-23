@@ -17,14 +17,25 @@ type ('desc, 'attr) with_loc_and_type =
 
 type var = Ident.t
 
+type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of bool | CPair | CConstant of Michelson.Constant.t
+
+let string_of_constr = function
+  | CPair -> "(,)"
+  | CLeft -> "Left"
+  | CRight -> "Right"
+  | CSome -> "Some"
+  | CNone -> "None"
+  | CCons -> "(::)"
+  | CNil -> "[]"
+  | CUnit -> "()"
+  | CBool true -> "true"
+  | CBool false -> "false"
+  | CConstant c -> Format.sprintf "%a" C.pp c
+
 type pat_desc =
   | PVar of var
-  | PPair of pat * pat
-  | PLeft of pat
-  | PRight of pat
+  | PConstr of constr * pat list
   | PWild
-  | PUnit
-  | PConst of M.Opcode.constant
 
 and pat = (pat_desc, unit) with_loc_and_type
 
@@ -32,12 +43,9 @@ let rec pp_pat ppf pat =
   let open Format in
   match pat.desc with
   | PVar i -> fprintf ppf "%s" (Ident.name i)
-  | PPair (p1, p2) -> fprintf ppf "@[(%a,@ %a)@]" pp_pat p1 pp_pat p2
-  | PLeft p -> fprintf ppf "@[Left %a@]" pp_pat p
-  | PRight p -> fprintf ppf "@[Right %a@]" pp_pat p
+  | PConstr (c, []) -> fprintf ppf "%s" (string_of_constr c)
+  | PConstr (c, ps) -> fprintf ppf "@[%s (%a)@]" (string_of_constr c) (Format.list ",@ " pp_pat) ps
   | PWild -> string ppf "_"
-  | PUnit -> string ppf "()"
-  | PConst c -> C.pp ppf c
       
 type patvar = (Ident.t, unit) with_loc_and_type
 
@@ -201,12 +209,9 @@ let rec patvars p =
   let open IdTys in
   match p.desc with
   | PVar id -> singleton (id, p.typ)
-  | PPair (p1, p2) -> union (patvars p1) (patvars p2)
-  | PLeft p -> patvars p
-  | PRight p -> patvars p
+  | PConstr (_, []) -> empty
+  | PConstr (_, p::ps) -> List.fold_left union (patvars p) (List.map patvars ps)
   | PWild -> empty
-  | PUnit -> empty
-  | PConst _ -> empty
     
 let patvars_var p = IdTys.singleton (p.desc, p.typ)
     
@@ -368,8 +373,23 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_any         -> mk PWild
 
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
+
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
-  | Tpat_tuple [p1; p2] -> mk (PPair (patternx p1, patternx p2))
+(*
+
+  | Tpat_constant (p, [], _) when Path.is_scaml_dot "int" p ->
+      make (tyInt) begin
+        let arg = match args with
+            | [arg] -> arg
+            | _ -> internal_error ~loc "strange Int arguments"
+          in
+          match arg.exp_desc with
+            | Texp_constant (Const_int n) -> Const (Int (Z.of_int n))
+            | _ -> errorf ~loc "Int can only take an integer constant"
+        end
+*)  
+
+  | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
 
   | Tpat_tuple _     -> unsupported ~loc "tuple pattern (arity > 2)"
 
@@ -377,20 +397,23 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
 
   | Tpat_construct (_, {cstr_name}, []) when typ.desc = TyBool ->
       begin match cstr_name with
-        | "true" -> mk (PConst (C.Bool true))
-        | "false" -> mk (PConst (C.Bool false))
+        | "true" -> mk (PConstr (CBool true, []))
+        | "false" -> mk (PConstr (CBool false, []))
         | _ -> assert false
       end
 
-  | Tpat_construct (_, cdesc, [p]) ->
-      begin match cdesc.cstr_name with (* XXX fragile *)
-        | "Left" -> mk (PLeft (patternx p))
-        | "Right" -> mk (PRight (patternx p))
-        | _ ->  unsupported ~loc "unknown constructor"
+  | Tpat_construct (_, cdesc, ps) (* XXX TYPE *) ->
+      begin match cdesc.cstr_name, typ.desc, ps with (* XXX fragile *)
+        | "Left", TyOr _, [p] -> mk (PConstr (CLeft, [patternx p]))
+        | "Right", TyOr _, [p] -> mk (PConstr (CRight, [patternx p]))
+        | "Some", TyOption _, [p] -> mk (PConstr (CSome, [patternx p]))
+        | "None", TyOption _, [] -> mk (PConstr (CNone, []))
+        | "::", TyList _, [p1; p2] -> mk (PConstr (CCons, [patternx p1; patternx p2]))
+        | "[]", TyList _, [] -> mk (PConstr (CNil, []))
+        | "true", TyBool, [] -> mk (PConstr (CBool true, []))
+        | "false", TyBool, [] -> mk (PConstr (CBool false, []))
+        | n, _, _ ->  unsupported ~loc "unknown constructor %s" n
       end
-
-  | Tpat_construct (_, {cstr_name}, _) -> 
-      unsupported ~loc "unknown constructor %s" cstr_name
 
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
   | Tpat_record _    -> unsupported ~loc "record pattern"
