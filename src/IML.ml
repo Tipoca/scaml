@@ -395,6 +395,11 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
         | "Int", TyInt, [{pat_desc= Tpat_constant (Const_int n)}] ->
             mk & PConstr (CConstant (C.Int (Z.of_int n)), [])
         | "Int", TyInt, [_] -> errorf ~loc "Int can only take an integer constant"
+        | "Nat", TyNat, [{pat_desc= Tpat_constant (Const_int n)}] ->
+            if n < 0 then 
+              errorf ~loc "Nat can only take a positive integer constant";
+            mk & PConstr (CConstant (C.Nat (Z.of_int n)), [])
+        | "Nat", TyNat, [_] -> errorf ~loc "Nat can only take an integer constant"
             
         | n, _, _ ->  unsupported ~loc "pattern %s" n
       end

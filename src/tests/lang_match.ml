@@ -59,4 +59,12 @@ let main (main : unit) (storage : unit) =
      | _ -> false
    )
 
+   && 
+
+   ( match Nat 1 with
+     | Nat 2 -> false
+     | Nat 1 -> true
+     | _ -> false
+   )
+
  )
