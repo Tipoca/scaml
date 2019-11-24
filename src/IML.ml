@@ -328,6 +328,43 @@ let type_expr ~loc ?(this="This") tenv ty =
         Printtyp.type_expr ty
         (Path.name p)
 
+(* Literals *)
+
+let parse_timestamp s =
+  match Ptime.of_rfc3339 s with
+  | Ok (t, _, _) -> 
+      let t' = Ptime.truncate ~frac_s:0 t in
+      if not (Ptime.equal t t') then Error "Subsecond is not allowed in timestamps"
+      else 
+        let posix = Ptime.to_float_s t in
+        if posix < 0. then Error "Timestamp before Epoch is not allowed"
+        else Ok (C.Timestamp (Z.of_float posix))
+  | Error (`RFC3339 (_, e)) -> 
+      Error (Format.sprintf "%a" Ptime.pp_rfc3339_error e)
+
+let parse_bytes s =
+  try
+    ignore & Hex.to_string (`Hex s); Ok (C.Bytes s)
+  with
+  | _ -> Error "Bytes must take hex representation of bytes"
+
+let constructions_by_string =
+  [ ("Signature.t" , ("signature", "Signature", tySignature, 
+                      fun x -> Ok (C.String x)));
+    ("Key_hash.t"  , ("key_hash", "Key_hash", tyKeyHash, 
+                      fun x -> Ok (C.String x)));
+    ("Key.t"       , ("key", "Key", tyKey, 
+                      fun x -> Ok (C.String x)));
+    ("Address.t"   , ("address", "Address", tyAddress, 
+                      fun x -> Ok (C.String x)));
+    ("Timestamp.t" , ("timestamp", "Timestamp", tyTimestamp, 
+                      parse_timestamp));
+    ("Bytes.t"     , ("bytes", "Bytes", tyBytes, 
+                      parse_bytes));
+    ("Chain_id.t"  , ("chain_id", "Chain_id", tyChainID,
+                      fun x -> Ok (C.String x)))
+  ]
+
 let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } = 
   let typ = type_expr ~loc pat_env pat_type in
   let mk loc id typ = { loc; desc=id; typ; attr= () } in
@@ -374,13 +411,19 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
 
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
 
-  | Tpat_constant _  -> unsupported ~loc "constant pattern"
-
   | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
 
   | Tpat_tuple _ -> unsupported ~loc "tuple pattern (arity > 2)"
 
   | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
+
+  | Tpat_constant (Const_string (s, None))  -> 
+      mk (PConstr (CConstant (C.String s), []))
+                                                 
+  | Tpat_constant (Const_string (_, Some _))  -> unsupported ~loc "quoted string"
+
+  | Tpat_constant _ -> unsupported ~loc "constant pattern of type %s"
+                         (Format.sprintf "%a" Printtyp.type_scheme pat_type)
 
   | Tpat_construct (_, cdesc, ps) ->
       begin match cdesc.cstr_name, typ.desc, ps with
@@ -400,6 +443,34 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
               errorf ~loc "Nat can only take a positive integer constant";
             mk & PConstr (CConstant (C.Nat (Z.of_int n)), [])
         | "Nat", TyNat, [_] -> errorf ~loc "Nat can only take an integer constant"
+        | _, TyMutez, [_] -> errorf ~loc "tz constant cannot be used as a pattern"
+        | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+            mk & PConstr (CConstant (C.String s), [])
+        | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
+        | "Key_hash", TyKeyHash, [_] -> unsupported ~loc "Key_hash can only take a string constant"
+
+
+        | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+            mk & PConstr (CConstant (C.String s), [])
+        | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
+        | "Address", TyAddress, [_] -> unsupported ~loc "Address can only take a string constant"
+
+
+        | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+            begin match parse_timestamp s with
+              | Error _e -> errorf ~loc "straonge arguments for Timestamp" 
+              | Ok t -> mk & PConstr (CConstant t, [])
+            end
+        | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
+        | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
+
+        | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+            begin match parse_bytes s with
+              | Error _e -> errorf ~loc "straonge arguments for Bytes" 
+              | Ok t -> mk & PConstr (CConstant t, [])
+            end
+        | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
+        | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
             
         | n, _, _ ->  unsupported ~loc "pattern %s" n
       end
@@ -409,43 +480,6 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_array _     -> unsupported ~loc "array pattern"
   | Tpat_or _        -> unsupported ~loc "or pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
-
-(* Literals *)
-
-let parse_timestamp s =
-  match Ptime.of_rfc3339 s with
-  | Ok (t, _, _) -> 
-      let t' = Ptime.truncate ~frac_s:0 t in
-      if not (Ptime.equal t t') then Error "Subsecond is not allowed in timestamps"
-      else 
-        let posix = Ptime.to_float_s t in
-        if posix < 0. then Error "Timestamp before Epoch is not allowed"
-        else Ok (C.Timestamp (Z.of_float posix))
-  | Error (`RFC3339 (_, e)) -> 
-      Error (Format.sprintf "%a" Ptime.pp_rfc3339_error e)
-
-let parse_bytes s =
-  try
-    ignore & Hex.to_string (`Hex s); Ok (C.Bytes s)
-  with
-  | _ -> Error "Bytes must take hex representation of bytes"
-
-let constructions_by_string =
-  [ ("Signature.t" , ("signature", "Signature", tySignature, 
-                      fun x -> Ok (C.String x)));
-    ("Key_hash.t"  , ("key_hash", "Key_hash", tyKeyHash, 
-                      fun x -> Ok (C.String x)));
-    ("Key.t"       , ("key", "Key", tyKey, 
-                      fun x -> Ok (C.String x)));
-    ("Address.t"   , ("address", "Address", tyAddress, 
-                      fun x -> Ok (C.String x)));
-    ("Timestamp.t" , ("timestamp", "Timestamp", tyTimestamp, 
-                      parse_timestamp));
-    ("Bytes.t"     , ("bytes", "Bytes", tyBytes, 
-                      parse_bytes));
-    ("Chain_id.t"  , ("chain_id", "Chain_id", tyChainID,
-                      fun x -> Ok (C.String x)))
-  ]
 
 let attr_has_entry_point = 
   List.find_map_opt (function
@@ -641,7 +675,7 @@ let structure env str final =
                   if cstr_name <> cname then internal_error ~loc "strange constructor for %s" tyname;
                   match args with 
                   | [] | _::_::_ ->
-                      internal_error ~loc "strange %s arguments" cname
+                      internal_error ~loc "strange arguments for %s" cname
                   | [arg] -> 
                       let e = expression env arg in
                       match e.desc with
@@ -680,6 +714,8 @@ let structure env str final =
         end
     | Texp_constant (Const_string (s, None)) -> 
         mk & Const (String s)
+    | Texp_constant (Const_string (_, Some _)) -> 
+        unsupported ~loc "quoted string"
     | Texp_constant _ -> unsupported ~loc "constant"
     | Texp_tuple [e1; e2] ->
         let e1 = expression env e1 in
