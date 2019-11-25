@@ -79,7 +79,7 @@ module Map = struct
   let empty : ('k, 'v) t = Map []
   let length : ('k, 'v) t -> nat = fun _ -> assert false
   let map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t = fun _ -> assert false
-  let get : 'k -> ('k, 'v) t -> 'k option = fun _ -> assert false
+  let get : 'k -> ('k, 'v) t -> 'v option = fun _ -> assert false
   let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false
   let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
   let fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
@@ -89,13 +89,13 @@ type ('k, 'v) map = ('k, 'v) Map.t = Map of ('k * 'v) list
 module BigMap : sig
   type ('k, 'v) t (* we cannot have a constant *)
   val empty : ('k, 'v) t
-  val get : 'k -> ('k, 'v) t -> 'k option
+  val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
 end = struct
   type ('k, 'v) t = BigMap of ('k * 'v) list
   let empty : ('k, 'v) t = BigMap []
-  let get : 'k -> ('k, 'v) t -> 'k option = fun _ -> assert false
+  let get : 'k -> ('k, 'v) t -> 'v option = fun _ -> assert false
   let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false
   let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
 end
