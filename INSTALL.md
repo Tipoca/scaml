@@ -11,39 +11,20 @@ If you have no 4.07.1 OCaml switch.  (Of course you have `opam` already!):
 
 ```
 $ opam switch create . ocaml-base-compiler.4.07.1
-```
-
-Check your OCaml version:
-
-```
-$ ocamlc -version
-4.07.1
-```
-
-Install required packages:
-
-```
-$ opam install -y ocaml-migrate-parsetree ppxx typpx spotlib hex ptime zarith
-```
-
-Compile SCaml:
-
-```
-$ dune build
-$ dune install
+$ opam install -y vendors/*/*.opam src/scaml.opam
 ```
 
 If successful, there should be the compiler executable:
 
 ```
-$ ls _opam/bin/scamlc
-_opam/bin/scamlc
+$ which scamlc
+.../_opam/bin/scamlc
 ```
 
 # Test
 
 ```
-$ cd tests
+$ cd src/tests
 $ ./test.sh xxx.ml
 ```
 
