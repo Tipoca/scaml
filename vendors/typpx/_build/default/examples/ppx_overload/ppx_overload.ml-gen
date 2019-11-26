@@ -1,8 +1,0 @@
-(** @canonical Ppx_overload.Mod *)
-module Mod = Ppx_overload__Mod
-
-(** @canonical Ppx_overload.Ppx *)
-module Ppx = Ppx_overload__Ppx
-
-(** @canonical Ppx_overload.Sugar *)
-module Sugar = Ppx_overload__Sugar

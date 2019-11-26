@@ -1,1 +1,0 @@
-../../../../default/examples/ppx_type_of/ppx.ml

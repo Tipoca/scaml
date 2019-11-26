@@ -1,4 +1,0 @@
-EXCLUDE_QUERY_DIR
-B ../../_build/default/examples/ppx_type_of/.ppx_type_of.objs/byte
-S .
-FLG -open Ppx_type_of -w -9

@@ -5,3 +5,6 @@ dune-project
 *.install
 src/tests/*.iml
 _build
+_opam
+\#*\#
+.\#*

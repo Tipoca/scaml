@@ -1,4 +1,0 @@
-EXCLUDE_QUERY_DIR
-B ../_build/default/src/.typpx.objs/byte
-S .
-FLG -open Typpx -w -9

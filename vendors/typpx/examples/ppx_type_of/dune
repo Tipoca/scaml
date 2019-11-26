@@ -1,6 +1,0 @@
-(library
- (kind ppx_rewriter)
- (name ppx_type_of)
- (public_name ppx_type_of)
- (flags -w -9)
- (libraries compiler-libs.common ocaml-migrate-parsetree ppxx typpx))

@@ -1,1 +1,0 @@
-examples/ppx_curried_constr/my_typemod.ml: Annot Array Asttypes Btype Builtin_attributes Clflags Cmi_format Cmt_format Config Ctype Env Filename Format Ident Includemod List Location Longident Misc Mtype My_typeclass My_typecore Parsetree Path Printtyp Set String Stypes Subst Sys Typedecl Typedtree Types Typetexp Variance Warnings

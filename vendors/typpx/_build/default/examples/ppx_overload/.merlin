@@ -1,4 +1,0 @@
-EXCLUDE_QUERY_DIR
-B ../../_build/default/examples/ppx_overload/.ppx_overload.objs/byte
-S .
-FLG -open Ppx_overload -w -9
