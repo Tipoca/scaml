@@ -37,6 +37,7 @@ type pat_desc =
   | PConstr of constr * pat list
   | PWild
   | PAlias of pat * Ident.t * Location.t (* location of ident *)
+  | POr of pat * pat 
 
 and pat = (pat_desc, unit) with_loc_and_type
 
@@ -48,6 +49,7 @@ let rec pp_pat ppf pat =
   | PConstr (c, ps) -> fprintf ppf "@[%s (%a)@]" (string_of_constr c) (Format.list ",@ " pp_pat) ps
   | PWild -> string ppf "_"
   | PAlias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp_pat p (Ident.name id)
+  | POr (p1,p2) -> fprintf ppf "(@[%a@ | %a@])" pp_pat p1 pp_pat p2
       
 type patvar = (Ident.t, unit) with_loc_and_type
 
@@ -215,6 +217,7 @@ let rec patvars p =
   | PConstr (_, p::ps) -> List.fold_left union (patvars p) (List.map patvars ps)
   | PWild -> empty
   | PAlias (p, id, _) -> add (id, p.typ) & patvars p
+ | POr (p1, p2) -> union (patvars p1) (patvars p2)
     
 let patvars_var p = IdTys.singleton (p.desc, p.typ)
     
@@ -428,6 +431,10 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_constant _ -> unsupported ~loc "constant pattern of type %s"
                          (Format.sprintf "%a" Printtyp.type_scheme pat_type)
 
+  | Tpat_or (p1, p2, None)   -> mk & POr (patternx p1, patternx p2)
+
+  | Tpat_or (_, _, _)        -> unsupported ~loc "or pattern with row"
+
   | Tpat_construct (_, cdesc, ps) ->
       begin match cdesc.cstr_name, typ.desc, ps with
         | "Left", TyOr _, [p] -> mk (PConstr (CLeft, [patternx p]))
@@ -481,7 +488,6 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
   | Tpat_record _    -> unsupported ~loc "record pattern"
   | Tpat_array _     -> unsupported ~loc "array pattern"
-  | Tpat_or _        -> unsupported ~loc "or pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
 
 let attr_has_entry_point = 

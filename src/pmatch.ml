@@ -66,62 +66,62 @@ let rec pp ppf =
         pp d
 
 (* specialize on Left and Right *)
-let specialize c (matrix : matrix) : matrix =
+let rec specialize c (matrix : matrix) : matrix =
   List.fold_right (fun (pats, i) st ->
       match pats with
       | [] -> assert false
       | pat::pats ->
-          let rec f pat = 
-            match c, pat.desc with
-            | _, PAlias (p, _, _) -> f p
-            | c, PConstr (c', ps) ->
-                if c = c' then (ps @ pats, i) :: st else st
+          match c, pat.desc with
+          | _, PAlias _ -> assert false
+          | c, POr (p1, p2) ->
+              specialize c [(p1::pats, i)]
+              @ specialize c [(p2::pats, i)]
+          | c, PConstr (c', ps) ->
+              if c = c' then (ps @ pats, i) :: st else st
 
-            (* For wild, we need to build another wild with arg type. 
-               XXX Currently we must code for each.  Ugh.
-            *)
-            | CLeft, PWild -> 
-                let typl = match pat.typ.desc with
-                  | TyOr (typl, _typr) -> typl
-                  | _ -> assert false
-                in
-                (mkp typl PWild :: pats, i) :: st
+          (* For wild, we need to build another wild with arg type. 
+             XXX Currently we must code for each.  Ugh.
+          *)
+          | CLeft, PWild -> 
+              let typl = match pat.typ.desc with
+                | TyOr (typl, _typr) -> typl
+                | _ -> assert false
+              in
+              (mkp typl PWild :: pats, i) :: st
 
-            | CRight, PWild -> 
-                let typr = match pat.typ.desc with
-                  | TyOr (_typl, typr) -> typr
-                  | _ -> assert false
-                in
-                (mkp typr PWild :: pats, i) :: st
+          | CRight, PWild -> 
+              let typr = match pat.typ.desc with
+                | TyOr (_typl, typr) -> typr
+                | _ -> assert false
+              in
+              (mkp typr PWild :: pats, i) :: st
 
-            | CSome, PWild -> 
-                let typ = match pat.typ.desc with
-                  | TyOption typ -> typ
-                  | _ -> assert false
-                in
-                (mkp typ PWild :: pats, i) :: st
+          | CSome, PWild -> 
+              let typ = match pat.typ.desc with
+                | TyOption typ -> typ
+                | _ -> assert false
+              in
+              (mkp typ PWild :: pats, i) :: st
 
-            | CNone, PWild -> (pats, i) :: st
+          | CNone, PWild -> (pats, i) :: st
 
-            | CCons, PWild -> 
-                let typ = match pat.typ.desc with
-                  | TyList typ -> typ
-                  | _ -> assert false
-                in
-                (mkp typ PWild :: mkp pat.typ PWild :: pats, i) :: st
+          | CCons, PWild -> 
+              let typ = match pat.typ.desc with
+                | TyList typ -> typ
+                | _ -> assert false
+              in
+              (mkp typ PWild :: mkp pat.typ PWild :: pats, i) :: st
 
-            | CNil, PWild -> (pats, i) :: st
+          | CNil, PWild -> (pats, i) :: st
 
-            | CBool _, PWild -> (pats, i) :: st
+          | CBool _, PWild -> (pats, i) :: st
 
-            | CConstant _, PWild -> (pats, i) :: st
+          | CConstant _, PWild -> (pats, i) :: st
 
-            | _ -> not_yet ()
-          in
-          f pat
+          | _ -> not_yet ()
     ) matrix []
 
-let default (matrix : matrix) : matrix =
+let rec default (matrix : matrix) : matrix =
   List.fold_right (fun (pats, i) st ->
       match pats with
       | [] -> assert false
@@ -131,6 +131,9 @@ let default (matrix : matrix) : matrix =
             | PWild -> (pats, i) :: st
             | PAlias (pat, _id, _loc) -> f pat
             | PVar _ -> not_yet ()
+            | POr (p1, p2) ->
+                default [(p1::pats, i)]
+                @ default [(p2::pats, i)]
           in
           f pat
     ) matrix []
@@ -144,7 +147,7 @@ let unalias_column column : pat list * pat list list =
         let rec f pat = match pat.desc with
           | PAlias (pat, x, _) -> 
               let xs, pat = f pat in x::xs, pat
-          | PWild | PVar _ | PConstr _ -> [], pat
+          | PWild | PVar _ | PConstr _ | POr _ -> [], pat
         in
         let xs, pat  = f pat in
         xs @ st, pat::pats) column ([], []) 
@@ -155,7 +158,7 @@ let unalias_column column : pat list * pat list list =
       let rec has_x pat = match pat.desc with
         | PAlias (_, y, _) when x = y -> true
         | PAlias (pat, _, _) -> has_x pat
-        | PWild | PVar _ | PConstr _ -> false
+        | PWild | PVar _ | PConstr _ | POr _ -> false
       in
       List.map (fun pat0 ->
           { pat0 with desc= if has_x pat0 then PVar x else PWild }
@@ -164,7 +167,6 @@ let unalias_column column : pat list * pat list list =
                   
 (* Extract x's of (p as x) in the column, and make columns for them *)
 let unalias_matrix o (matrix : matrix) : _ list * matrix =
-  let rows = List.map fst matrix in
   let columns = transpose & List.map fst matrix in
   let ocolumns = 
     List.concat 
@@ -208,12 +210,13 @@ let rec cc o matrix =
           | PAlias _ -> assert false
           | PWild | PVar _ -> true 
           | PConstr _ -> false
+          | POr _ -> false
         ) ps 
       then 
         let binder = List.fold_right2 (fun v p st -> match p.desc with
             | PWild -> st
             | PVar v' -> (v',v)::st
-            | PAlias _ | PConstr _ -> assert false) o ps []
+            | PAlias _ | PConstr _ | POr _ -> assert false) o ps []
         in
         Leaf (binder, a)
       else 
@@ -224,10 +227,14 @@ let rec cc o matrix =
           match 
             List.find_all (fun (_i,c) ->
                 List.exists (fun p -> 
-                    match p.desc with
-                    | PAlias _ -> assert false
-                    | PWild | PVar _ -> false
-                    | PConstr _ -> true) c) icolumns
+                    let rec f p = match p.desc with
+                      | PAlias _ -> assert false
+                      | PWild | PVar _ -> false
+                      | PConstr _ -> true
+                      | POr (p1, p2) -> f p1 || f p2
+                    in
+                    f p
+                  ) c) icolumns
           with
           | [] -> assert false
           | (i,c)::_ -> i,c (* blindly select the first *)
@@ -238,10 +245,13 @@ let rec cc o matrix =
           let constructors = 
             List.sort_uniq compare
             & List.fold_left (fun st p -> 
-                match p.desc with
-                | PAlias _ -> assert false
-                | PConstr (c, _) -> c :: st
-                | PWild | PVar _ -> st
+                let rec f p = match p.desc with
+                  | PAlias _ -> assert false
+                  | PConstr (c, _) -> [c]
+                  | PWild | PVar _ -> []
+                  | POr (p1, p2) -> f p1 @ f p2
+                in
+                f p @ st
               ) [] column
           in
           (* for Left and Right, true and false, 

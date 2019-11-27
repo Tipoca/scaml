@@ -21,6 +21,7 @@ type pat_desc =
   | PConstr of constr * pat list
   | PWild
   | PAlias of pat * Ident.t * Location.t (* location of ident *)
+  | POr of pat * pat
 
 and pat = (pat_desc, unit) with_loc_and_type
 
