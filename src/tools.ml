@@ -60,6 +60,8 @@ end
 
 let errorf = Location.raise_errorf
 let unsupported ~loc fmt = Printf.ksprintf (fun s -> errorf ~loc "SCaml does not support %s" s) fmt
+exception Not_yet_implemented
+let not_yet () = raise Not_yet_implemented
 let internal_error ~loc fmt = 
   Printf.ksprintf (fun s -> 
       errorf ~loc "SCaml internal error: %s\n%s" s

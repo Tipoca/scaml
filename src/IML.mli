@@ -20,6 +20,7 @@ type pat_desc =
   | PVar of var
   | PConstr of constr * pat list
   | PWild
+  | PAlias of pat * Ident.t * Location.t (* location of ident *)
 
 and pat = (pat_desc, unit) with_loc_and_type
 
@@ -70,3 +71,6 @@ val patvars : pat -> IdTys.t
 val freevars : t -> IdTys.t
 
 val optimize : t -> t
+
+val save : string -> t -> unit
+(* Print out IML AST to a file.  For debugging. *)

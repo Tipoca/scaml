@@ -1,5 +1,6 @@
 open Spotlib.Spot
 open IML
+open Tools
 module Type = Michelson.Type
 module C =Michelson.Constant
 
@@ -70,50 +71,54 @@ let specialize c (matrix : matrix) : matrix =
       match pats with
       | [] -> assert false
       | pat::pats ->
-          match c, pat.desc with
-          | c, PConstr (c', ps) ->
-              if c = c' then (ps @ pats, i) :: st else st
-                
-          (* For wild, we need to build another wild with arg type. 
-             XXX Currently we must code for each.  Ugh.
-          *)
-          | CLeft, PWild -> 
-              let typl = match pat.typ.desc with
-                | TyOr (typl, _typr) -> typl
-                | _ -> assert false
-              in
-              (mkp typl PWild :: pats, i) :: st
+          let rec f pat = 
+            match c, pat.desc with
+            | _, PAlias (p, _, _) -> f p
+            | c, PConstr (c', ps) ->
+                if c = c' then (ps @ pats, i) :: st else st
 
-          | CRight, PWild -> 
-              let typr = match pat.typ.desc with
-                | TyOr (_typl, typr) -> typr
-                | _ -> assert false
-              in
-              (mkp typr PWild :: pats, i) :: st
+            (* For wild, we need to build another wild with arg type. 
+               XXX Currently we must code for each.  Ugh.
+            *)
+            | CLeft, PWild -> 
+                let typl = match pat.typ.desc with
+                  | TyOr (typl, _typr) -> typl
+                  | _ -> assert false
+                in
+                (mkp typl PWild :: pats, i) :: st
 
-          | CSome, PWild -> 
-              let typ = match pat.typ.desc with
-                | TyOption typ -> typ
-                | _ -> assert false
-              in
-              (mkp typ PWild :: pats, i) :: st
+            | CRight, PWild -> 
+                let typr = match pat.typ.desc with
+                  | TyOr (_typl, typr) -> typr
+                  | _ -> assert false
+                in
+                (mkp typr PWild :: pats, i) :: st
 
-          | CNone, PWild -> (pats, i) :: st
+            | CSome, PWild -> 
+                let typ = match pat.typ.desc with
+                  | TyOption typ -> typ
+                  | _ -> assert false
+                in
+                (mkp typ PWild :: pats, i) :: st
 
-          | CCons, PWild -> 
-              let typ = match pat.typ.desc with
-                | TyList typ -> typ
-                | _ -> assert false
-              in
-              (mkp typ PWild :: mkp pat.typ PWild :: pats, i) :: st
+            | CNone, PWild -> (pats, i) :: st
 
-          | CNil, PWild -> (pats, i) :: st
+            | CCons, PWild -> 
+                let typ = match pat.typ.desc with
+                  | TyList typ -> typ
+                  | _ -> assert false
+                in
+                (mkp typ PWild :: mkp pat.typ PWild :: pats, i) :: st
 
-          | CBool _, PWild -> (pats, i) :: st
+            | CNil, PWild -> (pats, i) :: st
 
-          | CConstant _, PWild -> (pats, i) :: st
+            | CBool _, PWild -> (pats, i) :: st
 
-          | _ -> assert false (* not yet *)
+            | CConstant _, PWild -> (pats, i) :: st
+
+            | _ -> not_yet ()
+          in
+          f pat
     ) matrix []
 
 let default (matrix : matrix) : matrix =
@@ -121,11 +126,55 @@ let default (matrix : matrix) : matrix =
       match pats with
       | [] -> assert false
       | pat::pats ->
-          match pat.desc with
-          | PConstr (_, _) -> st
-          | PWild -> (pats, i) :: st
-          | PVar _ -> assert false (* not yet *)
+          let rec f pat = match pat.desc with
+            | PConstr (_, _) -> st
+            | PWild -> (pats, i) :: st
+            | PAlias (pat, _id, _loc) -> f pat
+            | PVar _ -> not_yet ()
+          in
+          f pat
     ) matrix []
+
+(* Extract x's of (p as x) in the column, and make columns for them *)
+let unalias_column column : pat list * pat list list =
+  let column0 = column in 
+  (* extract aliases *)
+  let xs, column =
+    List.fold_right (fun pat (st, pats) ->
+        let rec f pat = match pat.desc with
+          | PAlias (pat, x, _) -> 
+              let xs, pat = f pat in x::xs, pat
+          | PWild | PVar _ | PConstr _ -> [], pat
+        in
+        let xs, pat  = f pat in
+        xs @ st, pat::pats) column ([], []) 
+  in
+  (* create new columns for xs *)
+  column,
+  List.map (fun x ->
+      let rec has_x pat = match pat.desc with
+        | PAlias (_, y, _) when x = y -> true
+        | PAlias (pat, _, _) -> has_x pat
+        | PWild | PVar _ | PConstr _ -> false
+      in
+      List.map (fun pat0 ->
+          { pat0 with desc= if has_x pat0 then PVar x else PWild }
+        ) column0
+    ) xs
+                  
+(* Extract x's of (p as x) in the column, and make columns for them *)
+let unalias_matrix o (matrix : matrix) : _ list * matrix =
+  let rows = List.map fst matrix in
+  let columns = transpose & List.map fst matrix in
+  let ocolumns = 
+    List.concat 
+    & List.map2 (fun ov column ->
+        let column, new_columns = unalias_column column in
+        (ov, column) :: List.map (fun c -> ov, c) new_columns) o columns
+  in
+  List.map fst ocolumns,
+  List.map2 (fun pats (_,i) -> pats, i)
+    (transpose & List.map snd ocolumns) matrix
 
 let swap i o (matrix : matrix) : _ * matrix =
   let rec f rev_st i xs = match i, xs with
@@ -136,14 +185,35 @@ let swap i o (matrix : matrix) : _ * matrix =
   f [] i o,
   List.map (fun (ps,e) -> f [] i ps, e) matrix
 
-let rec cc o matrix = match matrix with
+let pp_omatrix ppf (o, matrix) =
+  let open Format in
+  fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) -> fprintf ppf "%s" & Ident.name id))
+    o;
+  List.iter (fun (pats, i) ->
+      eprintf "| %a -> %d@."
+        (list ", " pp_pat) pats
+        i) matrix
+
+let rec cc o matrix = 
+  Format.eprintf "compile: %a" pp_omatrix (o,matrix);
+  let o', matrix' = unalias_matrix o matrix in
+  if (o, matrix) <> (o', matrix') then
+    Format.eprintf "simplify: %a" pp_omatrix (o,matrix);
+  let o, matrix = o', matrix' in
+
+  match matrix with
   | [] -> Fail
   | (ps, a)::_ ->
-      if List.for_all (fun p -> match p.desc with PWild | PVar _ -> true | _ -> false) ps then 
+      if List.for_all (fun p -> match p.desc with 
+          | PAlias _ -> assert false
+          | PWild | PVar _ -> true 
+          | PConstr _ -> false
+        ) ps 
+      then 
         let binder = List.fold_right2 (fun v p st -> match p.desc with
             | PWild -> st
             | PVar v' -> (v',v)::st
-            | _ -> assert false) o ps []
+            | PAlias _ | PConstr _ -> assert false) o ps []
         in
         Leaf (binder, a)
       else 
@@ -153,18 +223,23 @@ let rec cc o matrix = match matrix with
         let i, column = 
           match 
             List.find_all (fun (_i,c) ->
-                List.exists (fun p -> match p.desc with
+                List.exists (fun p -> 
+                    match p.desc with
+                    | PAlias _ -> assert false
                     | PWild | PVar _ -> false
-                    | _ -> true) c) icolumns
+                    | PConstr _ -> true) c) icolumns
           with
           | [] -> assert false
           | (i,c)::_ -> i,c (* blindly select the first *)
         in
         (* algo 3 (a) *)
         let algo o column =
+
           let constructors = 
             List.sort_uniq compare
-            & List.fold_left (fun st p -> match p.desc with
+            & List.fold_left (fun st p -> 
+                match p.desc with
+                | PAlias _ -> assert false
                 | PConstr (c, _) -> c :: st
                 | PWild | PVar _ -> st
               ) [] column
@@ -239,21 +314,20 @@ let rec cc o matrix = match matrix with
 
                         | x -> 
                             Format.eprintf "xxx %s@." (string_of_constr x);
-                            assert false
+                            not_yet ()
                       in
                       c, vs, cc (vs @ o) (specialize c matrix)
                     ) constructors),
-                  
+
                   if is_signature then None
                   else Some (cc (List.tl o) (default matrix))
                  )
-        in
-        if i = 0 then algo o column
-        else begin
-          Format.eprintf "i=%d@." i;
-          let o', matrix' = swap i o matrix in
-          cc o' matrix' (* xxx inefficient *)
-        end
+          in
+          if i = 0 then algo o column
+          else begin
+            let o', matrix' = swap i o matrix in
+            cc o' matrix' (* xxx inefficient *)
+          end
   
   
 

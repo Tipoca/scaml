@@ -36,6 +36,7 @@ type pat_desc =
   | PVar of var
   | PConstr of constr * pat list
   | PWild
+  | PAlias of pat * Ident.t * Location.t (* location of ident *)
 
 and pat = (pat_desc, unit) with_loc_and_type
 
@@ -46,6 +47,7 @@ let rec pp_pat ppf pat =
   | PConstr (c, []) -> fprintf ppf "%s" (string_of_constr c)
   | PConstr (c, ps) -> fprintf ppf "@[%s (%a)@]" (string_of_constr c) (Format.list ",@ " pp_pat) ps
   | PWild -> string ppf "_"
+  | PAlias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp_pat p (Ident.name id)
       
 type patvar = (Ident.t, unit) with_loc_and_type
 
@@ -212,6 +214,7 @@ let rec patvars p =
   | PConstr (_, []) -> empty
   | PConstr (_, p::ps) -> List.fold_left union (patvars p) (List.map patvars ps)
   | PWild -> empty
+  | PAlias (p, id, _) -> add (id, p.typ) & patvars p
     
 let patvars_var p = IdTys.singleton (p.desc, p.typ)
     
@@ -409,7 +412,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
 
   | Tpat_any         -> mk PWild
 
-  | Tpat_alias _     -> unsupported ~loc "alias pattern"
+  | Tpat_alias (p, id, {loc}) -> mk (PAlias (patternx p, id, loc))
 
   | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
 
@@ -1343,3 +1346,9 @@ let implementation sourcefile str =
             add_annot ty_param node
       in
       ty_param, ty_storage, structure [] str final
+
+let save path t = 
+  let oc = open_out path in
+  let ppf = Format.of_out_channel oc in
+  Format.fprintf ppf "%a@." pp t;
+  close_out oc

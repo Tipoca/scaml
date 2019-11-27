@@ -1,5 +1,7 @@
 # SCaml, Smart Contract Abstract Machine Language.
 
+> A scam never calls itself a scam.
+
 Small and Simple Strict Subset of OCaml for Smart contracts.
 
 ## Strict subset of OCaml
