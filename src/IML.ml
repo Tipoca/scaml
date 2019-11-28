@@ -85,7 +85,7 @@ and desc =
   | Switch_or of t * patvar * t * patvar * t
   | Switch_cons of t * patvar * patvar * t * t
   | Switch_none of t * t * patvar * t
-  | Match of t * (pat * t) list
+  | Match of t * (pat * t option * t) list
 
 let almost_constant t = 
   match t.desc with
@@ -100,10 +100,7 @@ let almost_constant t =
 
 let make_constant t = 
   match
-    let (>>=) o f = match o with
-      | None -> None
-      | Some x -> f x
-    in
+    let (>>=) = Option.bind in
     match t.desc with
     | Const c -> Some c
     | Nil _ | IML_None _ | Unit -> None (* let's keep it *)
@@ -201,9 +198,16 @@ let pp ppf =
         f "@[<2>(match %a with@ @[%a@])@]"
           pp t
           (Format.list "@ | "
-             (fun ppf (p, e) -> Format.fprintf ppf "%a -> %a"
-                 pp_pat p
-                 pp e)) cases
+             (fun ppf (p, guard, e) -> 
+                match guard with
+                | None -> Format.fprintf ppf "%a -> %a"
+                            pp_pat p
+                            pp e
+                | Some g -> Format.fprintf ppf "%a when %a -> %a"
+                            pp_pat p
+                            pp g
+                            pp e
+             )) cases
   in
   pp ppf
 
@@ -255,8 +259,14 @@ let rec freevars t =
            (diff (freevars t2) (patvars_var p2)))
   | Match (t, cases) ->
       union (freevars t)
-        (List.fold_left (fun acc (p, t) ->
-             union acc (diff (freevars t) (patvars p))) empty cases)
+        (List.fold_left (fun acc (p, g, t) ->
+             union acc 
+               (diff (union 
+                        (freevars t) 
+                        (match g with 
+                         | None -> empty
+                         | Some g -> freevars g)) (patvars p)))
+            empty cases)
 
 type type_expr_error =
   | Type_variable of Types.type_expr
@@ -771,11 +781,7 @@ let structure env str final =
         (* fty = fty' *)
   
         let name = match f with
-          | { exp_desc= Texp_ident (p, _, _) } ->
-              begin match Path.is_scaml p with
-              | None -> None
-              | Some s -> Some s
-              end
+          | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
           | _ -> None
         in
         (* only some fixed combinations *)
@@ -889,12 +895,10 @@ let structure env str final =
   
   and compile_match env e cases =
     let compile_case env case = 
-      match case.c_guard with
-      | Some e -> unsupported ~loc:e.exp_loc "guard"
-      | None -> 
-          let p = patternx case.c_lhs in
-          let pvars = IdTys.elements & patvars p in
-          (patternx case.c_lhs, expression (pvars@env) case.c_rhs)
+      let p = patternx case.c_lhs in
+      let pvars = IdTys.elements & patvars p in
+      let guard = Option.fmap (expression (pvars@env)) case.c_guard in
+      (patternx case.c_lhs, guard, expression (pvars@env) case.c_rhs)
     in
     Match (expression env e, List.map (compile_case env) cases)
   
@@ -1186,8 +1190,11 @@ let count_variables t =
     | App (t, ts) -> List.fold_right f (t::ts) st
     | Prim (_, _, ts) -> List.fold_right f ts st
     | Match (t, cases) -> 
-        f t & List.fold_left (fun st (_,t) ->
-            f t st) st cases
+        f t & List.fold_left (fun st (_,g,t) ->
+            match g with
+            | None -> f t st
+            | Some g -> f t & f g st
+          ) st cases
   in
   f t VMap.empty
 
@@ -1215,7 +1222,11 @@ let subst id t1 t2 =
     | App (t, ts) -> mk & App (f t, List.map f ts)
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
     | Match (t, cases) ->
-        mk & Match (f t, List.map (fun (p,t) -> (p, f t)) cases)
+        mk & Match (f t, 
+                    List.map (fun (p,g,t) -> 
+                        (p, 
+                         Option.fmap f g,
+                         f t)) cases)
   in
   f t2
 
@@ -1273,7 +1284,10 @@ let optimize t =
       | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
       | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
       | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
-      | Match (t, cases) -> mk & Match (f t, List.map (fun (p,t) -> p, f t) cases)
+      | Match (t, cases) -> mk & Match (f t, List.map (fun (p,g,t) -> 
+          p, 
+          Option.fmap f g,
+          f t) cases)
     in
     begin match !attrs with
       | Some _ -> assert false

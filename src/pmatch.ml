@@ -21,7 +21,7 @@ let transpose : 'p list list -> 'p list list = fun rows ->
             assert (List.length row = ncolumns);
             List.nth row i) rows)
 
-type matrix = (pat list * int) list
+type matrix = (pat list * int option * int) list
 
 type var = Ident.t * Type.t
 
@@ -29,7 +29,11 @@ type t =
   | Fail
   | Leaf of (Ident.t * var) list * int
   | Switch of var * (IML.constr * var list * t) list * t option (* default *)
-
+  | Guard of (Ident.t * var) list (* binder *)
+             * int (* guard *)
+             * int (* case *)
+             * t (* otherwise *)
+                
 let rec pp ppf =
   let f fmt = Format.fprintf ppf fmt in
   function
@@ -64,20 +68,29 @@ let rec pp ppf =
                f "%s %a (%a)" (string_of_constr c) pvs vs pp t
            )) xs
         pp d
+  | Guard (binders, guard, case, otherwise) ->
+      f "@[<2>Guard (%a) guard%d case%d [%a]@]" 
+        (Format.list ",@," (fun ppf (v,(v',_)) ->
+             Format.fprintf ppf "%s=%s"
+               (Ident.name v)
+               (Ident.name v'))) binders
+        guard
+        case
+        pp otherwise
 
 (* specialize on Left and Right *)
 let rec specialize c (matrix : matrix) : matrix =
-  List.fold_right (fun (pats, i) st ->
+  List.fold_right (fun (pats, g, i) st ->
       match pats with
       | [] -> assert false
       | pat::pats ->
           match c, pat.desc with
           | _, PAlias _ -> assert false
           | c, POr (p1, p2) ->
-              specialize c [(p1::pats, i)]
-              @ specialize c [(p2::pats, i)]
+              specialize c [(p1::pats, g, i)]
+              @ specialize c [(p2::pats, g, i)]
           | c, PConstr (c', ps) ->
-              if c = c' then (ps @ pats, i) :: st else st
+              if c = c' then (ps @ pats, g, i) :: st else st
 
           (* For wild, we need to build another wild with arg type. 
              XXX Currently we must code for each.  Ugh.
@@ -87,53 +100,53 @@ let rec specialize c (matrix : matrix) : matrix =
                 | TyOr (typl, _typr) -> typl
                 | _ -> assert false
               in
-              (mkp typl PWild :: pats, i) :: st
+              (mkp typl PWild :: pats, g, i) :: st
 
           | CRight, PWild -> 
               let typr = match pat.typ.desc with
                 | TyOr (_typl, typr) -> typr
                 | _ -> assert false
               in
-              (mkp typr PWild :: pats, i) :: st
+              (mkp typr PWild :: pats, g, i) :: st
 
           | CSome, PWild -> 
               let typ = match pat.typ.desc with
                 | TyOption typ -> typ
                 | _ -> assert false
               in
-              (mkp typ PWild :: pats, i) :: st
+              (mkp typ PWild :: pats, g, i) :: st
 
-          | CNone, PWild -> (pats, i) :: st
+          | CNone, PWild -> (pats, g, i) :: st
 
           | CCons, PWild -> 
               let typ = match pat.typ.desc with
                 | TyList typ -> typ
                 | _ -> assert false
               in
-              (mkp typ PWild :: mkp pat.typ PWild :: pats, i) :: st
+              (mkp typ PWild :: mkp pat.typ PWild :: pats, g, i) :: st
 
-          | CNil, PWild -> (pats, i) :: st
+          | CNil, PWild -> (pats, g, i) :: st
 
-          | CBool _, PWild -> (pats, i) :: st
+          | CBool _, PWild -> (pats, g, i) :: st
 
-          | CConstant _, PWild -> (pats, i) :: st
+          | CConstant _, PWild -> (pats, g, i) :: st
 
           | _ -> not_yet ()
     ) matrix []
 
 let rec default (matrix : matrix) : matrix =
-  List.fold_right (fun (pats, i) st ->
+  List.fold_right (fun (pats, g, i) st ->
       match pats with
       | [] -> assert false
       | pat::pats ->
           let rec f pat = match pat.desc with
             | PConstr (_, _) -> st
-            | PWild -> (pats, i) :: st
+            | PWild -> (pats, g, i) :: st
             | PAlias (pat, _id, _loc) -> f pat
             | PVar _ -> not_yet ()
             | POr (p1, p2) ->
-                default [(p1::pats, i)]
-                @ default [(p2::pats, i)]
+                default [(p1::pats, g, i)]
+                @ default [(p2::pats, g, i)]
           in
           f pat
     ) matrix []
@@ -167,7 +180,7 @@ let unalias_column column : pat list * pat list list =
                   
 (* Extract x's of (p as x) in the column, and make columns for them *)
 let unalias_matrix o (matrix : matrix) : _ list * matrix =
-  let columns = transpose & List.map fst matrix in
+  let columns = transpose & List.map (fun (p,_,_) -> p) matrix in
   let ocolumns = 
     List.concat 
     & List.map2 (fun ov column ->
@@ -175,7 +188,7 @@ let unalias_matrix o (matrix : matrix) : _ list * matrix =
         (ov, column) :: List.map (fun c -> ov, c) new_columns) o columns
   in
   List.map fst ocolumns,
-  List.map2 (fun pats (_,i) -> pats, i)
+  List.map2 (fun pats (_,g,i) -> pats, g, i)
     (transpose & List.map snd ocolumns) matrix
 
 let swap i o (matrix : matrix) : _ * matrix =
@@ -185,27 +198,34 @@ let swap i o (matrix : matrix) : _ * matrix =
     | i, x::xs -> f (x::rev_st) (i-1) xs
   in
   f [] i o,
-  List.map (fun (ps,e) -> f [] i ps, e) matrix
+  List.map (fun (ps,g,e) -> f [] i ps, g, e) matrix
 
 let pp_omatrix ppf (o, matrix) =
   let open Format in
-  fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) -> fprintf ppf "%s" & Ident.name id))
-    o;
-  List.iter (fun (pats, i) ->
-      eprintf "| %a -> %d@."
-        (list ", " pp_pat) pats
-        i) matrix
+  fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) ->
+      fprintf ppf "%s" & Ident.name id)) o;
+  List.iter (function
+      | (pats, None, i) ->
+          eprintf "| %a -> %d@."
+            (list ", " pp_pat) pats
+            i
+      | (pats, Some g, i) ->
+          eprintf "| %a when %d -> %d@."
+            (list ", " pp_pat) pats
+            g
+            i
+    ) matrix
 
 let rec cc o matrix = 
-  Format.eprintf "compile: %a" pp_omatrix (o,matrix);
+  Format.eprintf "compile: %a" pp_omatrix (o, matrix);
   let o', matrix' = unalias_matrix o matrix in
   if (o, matrix) <> (o', matrix') then
-    Format.eprintf "simplify: %a" pp_omatrix (o,matrix);
+    Format.eprintf "simplify: %a" pp_omatrix (o, matrix);
   let o, matrix = o', matrix' in
 
   match matrix with
   | [] -> Fail
-  | (ps, a)::_ ->
+  | (ps, g, a)::_ ->
       if List.for_all (fun p -> match p.desc with 
           | PAlias _ -> assert false
           | PWild | PVar _ -> true 
@@ -213,15 +233,19 @@ let rec cc o matrix =
           | POr _ -> false
         ) ps 
       then 
-        let binder = List.fold_right2 (fun v p st -> match p.desc with
+        let binders = List.fold_right2 (fun v p st -> 
+            match p.desc with
             | PWild -> st
             | PVar v' -> (v',v)::st
             | PAlias _ | PConstr _ | POr _ -> assert false) o ps []
         in
-        Leaf (binder, a)
+        match g with
+        | None -> Leaf (binders, a)
+        | Some g ->
+            Guard (binders, g, a, cc o & List.tl matrix)
       else 
         (* find column i where at least one pattern which is not a wildcard *)
-        let columns = transpose & List.map fst matrix in
+        let columns = transpose & List.map (fun (p,_,_) -> p) matrix in
         let icolumns = List.mapi (fun i c -> (i,c)) columns in
         let i, column = 
           match 
@@ -275,9 +299,10 @@ let rec cc o matrix =
             | _ -> false
           in
           assert (constructors <> []);
-          Switch (List.hd o, 
 
-                  (let vty = snd (List.hd o) in
+          let ivty = List.hd o in
+          Switch (ivty,
+                  (let _, vty = ivty in
                   List.map (fun c ->
                       let o = List.tl o in
                       let vs = 
@@ -326,7 +351,9 @@ let rec cc o matrix =
                             Format.eprintf "xxx %s@." (string_of_constr x);
                             not_yet ()
                       in
-                      c, vs, cc (vs @ o) (specialize c matrix)
+                      c, 
+                      vs, 
+                      cc (vs @ o) (specialize c matrix)
                     ) constructors),
 
                   if is_signature then None
@@ -364,81 +391,92 @@ let mkeq e1 e2 =
 
 let mkv (id, typ) = mke typ & Var (id, typ)
 
-let rec build aty acts t = match t with
-  | Fail -> assert false (* ? *)
-  | Leaf (binders, i) -> 
-      List.fold_right (fun (v,(v',ty)) st ->
-          mke aty (Let (mkp ty v,
-                        mke ty (Var (v', ty)),
-                        st))) binders
-        (List.nth acts i)
-  | Switch (_, [], _) -> assert false
-  | Switch (v, [CPair, [v1,ty1; v2,ty2], t], None) ->
-      let t = build aty acts t in
-      mke aty & Let (mkp ty1 v1, mkfst & mkv v, 
-                     mke aty & Let (mkp ty2 v2, mksnd & mkv v,
-                                    t))
-  | Switch (_, [CUnit, [], t], None) -> build aty acts t
-  | Switch (v, ( [ CLeft, [vl,tyl], tl
-                 ; CRight, [vr,tyr], tr ]
-               | [ CRight, [vr,tyr], tr 
-                 ; CLeft, [vl,tyl], tl ] ), None) ->
-      let tl = build aty acts tl in
-      let tr = build aty acts tr in
-      mke aty & Switch_or (mkv v, 
-                           mkp tyl vl, tl,
-                           mkp tyr vr, tr)
-                           
-  | Switch (v, ( [(CBool true), [], tt ;
-                  (CBool false), [], tf]
-               | [(CBool false), [], tf ;
-                  (CBool true), [], tt] ), None) ->
-      let tt = build aty acts tt in
-      let tf = build aty acts tf in
-      mke aty & IfThenElse (mkv v, tt, tf)
-                           
-  | Switch (v, ( [CSome, [vs,tys], ts;
-                  CNone, [], tn]
-               | [CNone, [], tn; 
-                  CSome, [vs,tys], ts]), None) ->
-      let ts = build aty acts ts in
-      let tn = build aty acts tn in
-      mke aty & Switch_none (mkv v, tn, mkp tys vs, ts) 
-                           
-  | Switch (v, ( [CCons, [v1,ty1; v2,ty2], tc;
-                  CNil, [], tn]
-               | [CNil, [], tn; 
-                  CCons, [v1,ty1; v2,ty2], tc]), None) ->
-      let tc = build aty acts tc in
-      let tn = build aty acts tn in
-      mke aty & Switch_cons (mkv v, 
-                             mkp ty1 v1, mkp ty2 v2, tc, tn)
+let build aty acts guards t = 
+  let rec f = function
+    | Fail -> assert false (* ? *)
+    | Leaf (binders, i) -> 
+        List.fold_right (fun (v,(v',ty)) st ->
+            mke aty (Let (mkp ty v,
+                          mke ty (Var (v', ty)),
+                          st))) binders
+          (List.nth acts i)
+    | Guard (binders, guard, case, otherwise) ->
+        List.fold_right (fun (v,(v',ty)) st ->
+            mke aty (Let (mkp ty v,
+                          mke ty (Var (v', ty)),
+                          st))) binders
+        & mke aty & IfThenElse (List.nth guards guard, 
+                                List.nth acts case, 
+                                f otherwise)
 
-  | Switch (_v, _cases, None) -> assert false
+    | Switch (_, [], _) -> assert false
+    | Switch (v, [CPair, [v1,ty1; v2,ty2], t], None) ->
+        let t = f t in
+        mke aty & Let (mkp ty1 v1, mkfst & mkv v, 
+                       mke aty & Let (mkp ty2 v2, mksnd & mkv v,
+                                      t))
+    | Switch (_, [CUnit, [], t], None) -> f t
+    | Switch (v, ( [ CLeft, [vl,tyl], tl
+                   ; CRight, [vr,tyr], tr ]
+                 | [ CRight, [vr,tyr], tr 
+                   ; CLeft, [vl,tyl], tl ] ), None) ->
+        let tl = f tl in
+        let tr = f tr in
+        mke aty & Switch_or (mkv v, 
+                             mkp tyl vl, tl,
+                             mkp tyr vr, tr)
 
-  | Switch (v, cases, Some d) ->
-      (* all cases must be about constants with infinite members *)
-      if not & List.for_all (function (CConstant _, [], _) -> true
-                                    | (CConstant _, _, _) -> assert false
-                                    | (c, _, _) -> 
-                                        prerr_endline (string_of_constr c);
-                                        false) cases
-      then assert false;
-      List.fold_right (fun case telse ->
-          match case with 
-          | (CConstant c, [], t) ->
-              let t = build aty acts t in
-              mke aty & IfThenElse (mkeq (mkv v) 
-                                      (mke (snd v) & Const c),
-                                    t, telse)
-          | _ -> assert false) cases  & build aty acts d
+    | Switch (v, ( [(CBool true), [], tt ;
+                    (CBool false), [], tf]
+                 | [(CBool false), [], tf ;
+                    (CBool true), [], tt] ), None) ->
+        let tt = f tt in
+        let tf = f tf in
+        mke aty & IfThenElse (mkv v, tt, tf)
 
-            
-let compile_match e cases =
+    | Switch (v, ( [CSome, [vs,tys], ts;
+                    CNone, [], tn]
+                 | [CNone, [], tn; 
+                    CSome, [vs,tys], ts]), None) ->
+        let ts = f ts in
+        let tn = f tn in
+        mke aty & Switch_none (mkv v, tn, mkp tys vs, ts) 
+
+    | Switch (v, ( [CCons, [v1,ty1; v2,ty2], tc;
+                    CNil, [], tn]
+                 | [CNil, [], tn; 
+                    CCons, [v1,ty1; v2,ty2], tc]), None) ->
+        let tc = f tc in
+        let tn = f tn in
+        mke aty & Switch_cons (mkv v, 
+                               mkp ty1 v1, mkp ty2 v2, tc, tn)
+
+    | Switch (_v, _cases, None) -> assert false
+
+    | Switch (v, cases, Some d) ->
+        (* all cases must be about constants with infinite members *)
+        if not & List.for_all (function (CConstant _, [], _) -> true
+                                      | (CConstant _, _, _) -> assert false
+                                      | (c, _, _) -> 
+                                          prerr_endline (string_of_constr c);
+                                          false) cases
+        then assert false;
+        List.fold_right (fun case telse ->
+            match case with 
+            | (CConstant c, [], t) ->
+                let t = f t in
+                mke aty & IfThenElse (mkeq (mkv v) 
+                                        (mke (snd v) & Const c),
+                                      t, telse)
+            | _ -> assert false) cases  & f d
+  in
+  f t
+        
+let compile_match e (cases : (pat * IML.t option * IML.t) list) =
 
   (* actions as functions *)
   let acts = 
-    List.mapi (fun i (pat, action) -> 
+    List.mapi (fun i (pat, _g, action) -> 
         let v = create_var (Printf.sprintf "case%d" i) in
         let patvars = IdTys.elements & patvars pat in
         match patvars with
@@ -467,9 +505,20 @@ let compile_match e cases =
             (v, f, e)) cases
   in
 
+  let cases, guards =
+    let cases, guards, _ = 
+      List.fold_left (fun (cases, guards, i) case ->
+          match case with
+          | p, None, e -> (p, None, e)::cases, guards, i
+          | p, Some g, e -> (p, Some i, e)::cases, g::guards, i+1)
+        ([], [], 0) cases
+    in
+    List.rev cases, List.rev guards
+  in
+    
   let v = create_var "v" in
 
-  let typ = (snd & List.hd cases).typ in
+  let typ = (match List.hd cases with (e,_,_) -> e).typ in
 
   (* let casei = fun ... in let v = e in ... *)
   let make x = 
@@ -477,18 +526,19 @@ let compile_match e cases =
       mke typ (Let (mkp e.typ v, e, x))
     in
     List.fold_right (fun (v, f, _e) st ->
-        mke st.typ (Let (mkp f.typ v,
-                         f, st))) acts match_
+        mke st.typ (Let (mkp f.typ v, f, st))) acts match_
   in
 
-  let matrix : matrix = List.mapi (fun i (pat, _) -> ([pat], i)) cases in
-  let res = cc [v,e.typ] matrix in
+  let matrix : matrix = List.mapi (fun i (pat, g, _) -> ([pat], g, i)) cases in
+
+  let res = cc [(v,e.typ)] matrix in
   Format.eprintf "pmatch debug: %a@." pp res;
 
-  let e = build typ (List.map (fun (_,_,e) -> e) acts) res in
+  let e = build typ (List.map (fun (_,_,e) -> e) acts) guards res in
   Format.eprintf "pmatch debug: %a@." IML.pp e;
   make e
 
+(* recursively visit the AST and compile matches down *)
 let rec compile e = 
   let mk desc = { e with desc } in
   match e.desc with
@@ -519,6 +569,6 @@ let rec compile e =
       mk & Switch_none (compile t, compile t1, v2, compile t2)
   | Match (t, cases) ->
       let t = compile t in
-      let cases = List.map (fun (p,e) -> (p,compile e)) cases in
+      let cases = List.map (fun (p,g,e) -> (p, Option.fmap compile g, compile e)) cases in
       compile_match t cases (* XXX location *)
 
