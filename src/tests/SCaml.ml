@@ -1,3 +1,7 @@
+(* The actual implementation of these API functions are given in
+   primitives.ml as Michelson code.  This file is to give their ML types.
+*)
+
 type ocaml_int = int
 type nat = Nat of ocaml_int
 type int = Int of ocaml_int
