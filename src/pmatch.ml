@@ -177,19 +177,28 @@ let unalias_column column : pat list * pat list list =
           { pat0 with desc= if has_x pat0 then PVar x else PWild }
         ) column0
     ) xs
-                  
+
 (* Extract x's of (p as x) in the column, and make columns for them *)
 let unalias_matrix o (matrix : matrix) : _ list * matrix =
-  let columns = transpose & List.map (fun (p,_,_) -> p) matrix in
-  let ocolumns = 
-    List.concat 
-    & List.map2 (fun ov column ->
-        let column, new_columns = unalias_column column in
-        (ov, column) :: List.map (fun c -> ov, c) new_columns) o columns
-  in
-  List.map fst ocolumns,
-  List.map2 (fun pats (_,g,i) -> pats, g, i)
-    (transpose & List.map snd ocolumns) matrix
+  match matrix with
+  | [] -> o, [] (* invalid I guess *)
+  | ([],_,_)::_ -> 
+      (* Special case.  If matrix has 0 width, we cannot use transpose since
+         it loses the number of rows. *)
+      o, matrix
+  | _ ->
+      let columns = transpose & List.map (fun (p,_,_) -> p) matrix in
+      let ocolumns = 
+        List.concat 
+        & List.map2 (fun ov column ->
+            let column', new_columns = unalias_column column in
+            (ov, column') :: List.map (fun c -> ov, c) new_columns) o columns
+      in
+      let o = List.map fst ocolumns in
+      let columns = List.map snd ocolumns in
+      let rows = transpose columns in
+      o,
+      List.map2 (fun pats (_,g,i) -> pats, g, i) rows matrix
 
 let swap i o (matrix : matrix) : _ * matrix =
   let rec f rev_st i xs = match i, xs with
@@ -241,7 +250,8 @@ let rec cc o matrix =
         in
         match g with
         | None -> Leaf (binders, a)
-        | Some g ->
+        | Some g -> 
+            prerr_endline "guard";
             Guard (binders, g, a, cc o & List.tl matrix)
       else 
         (* find column i where at least one pattern which is not a wildcard *)
@@ -353,11 +363,12 @@ let rec cc o matrix =
                       in
                       c, 
                       vs, 
-                      cc (vs @ o) (specialize c matrix)
-                    ) constructors),
+                      (prerr_endline ("specialize on " ^ string_of_constr c);
+                      cc (vs @ o) (specialize c matrix))
+                     ) constructors),
 
                   if is_signature then None
-                  else Some (cc (List.tl o) (default matrix))
+                  else Some (prerr_endline "default"; cc (List.tl o) (default matrix))
                  )
           in
           if i = 0 then algo o column
