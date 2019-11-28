@@ -21,15 +21,21 @@ let transpose : 'p list list -> 'p list list = fun rows ->
             assert (List.length row = ncolumns);
             List.nth row i) rows)
 
-type matrix = (pat list * int option * int) list
+type case = 
+  { pats : pat list
+  ; guard : int option
+  ; action : int 
+  }
 
-type var = Ident.t * Type.t
+type matrix = case list
+
+type var_ty = Ident.t * Type.t
 
 type t = 
   | Fail
-  | Leaf of (Ident.t * var) list * int
-  | Switch of var * (IML.constr * var list * t) list * t option (* default *)
-  | Guard of (Ident.t * var) list (* binder *)
+  | Leaf of (Ident.t * var_ty) list * int
+  | Switch of var_ty * (IML.constr * var_ty list * t) list * t option (* default *)
+  | Guard of (Ident.t * var_ty) list (* binder *)
              * int (* guard *)
              * int (* case *)
              * t (* otherwise *)
@@ -80,78 +86,83 @@ let rec pp ppf =
 
 (* specialize on Left and Right *)
 let rec specialize c (matrix : matrix) : matrix =
-  List.fold_right (fun (pats, g, i) st ->
+  List.fold_right (fun ({ pats } as case) st ->
       match pats with
       | [] -> assert false
       | pat::pats ->
           match c, pat.desc with
           | _, PAlias _ -> assert false
           | c, POr (p1, p2) ->
-              specialize c [(p1::pats, g, i)]
-              @ specialize c [(p2::pats, g, i)]
+              specialize c [{ case with pats= p1::pats }]
+              @ specialize c [{ case with pats= p2::pats }]
+              @ st
           | c, PConstr (c', ps) ->
-              if c = c' then (ps @ pats, g, i) :: st else st
+              if c = c' then { case with pats= ps @ pats } :: st else st
 
           (* For wild, we need to build another wild with arg type. 
              XXX Currently we must code for each.  Ugh.
           *)
+          | CPair, PWild -> 
+              let ty1, ty2 = match pat.typ.desc with
+                | TyPair (ty1, ty2) -> ty1, ty2
+                | _ -> assert false
+              in
+              { case with pats= mkp ty1 PWild :: mkp ty2 PWild :: pats } :: st
+
           | CLeft, PWild -> 
               let typl = match pat.typ.desc with
                 | TyOr (typl, _typr) -> typl
                 | _ -> assert false
               in
-              (mkp typl PWild :: pats, g, i) :: st
+              { case with pats= mkp typl PWild :: pats } :: st
 
           | CRight, PWild -> 
               let typr = match pat.typ.desc with
                 | TyOr (_typl, typr) -> typr
                 | _ -> assert false
               in
-              (mkp typr PWild :: pats, g, i) :: st
+              { case with pats= mkp typr PWild :: pats } :: st
 
           | CSome, PWild -> 
               let typ = match pat.typ.desc with
                 | TyOption typ -> typ
                 | _ -> assert false
               in
-              (mkp typ PWild :: pats, g, i) :: st
+              { case with pats= mkp typ PWild :: pats } :: st
 
-          | CNone, PWild -> (pats, g, i) :: st
 
           | CCons, PWild -> 
               let typ = match pat.typ.desc with
                 | TyList typ -> typ
                 | _ -> assert false
               in
-              (mkp typ PWild :: mkp pat.typ PWild :: pats, g, i) :: st
+              { case with pats= mkp typ PWild :: mkp pat.typ PWild :: pats } :: st
 
-          | CNil, PWild -> (pats, g, i) :: st
+          | (CNone | CNil | CUnit | CBool _ | CConstant _), PWild -> 
+              { case with pats } :: st
 
-          | CBool _, PWild -> (pats, g, i) :: st
-
-          | CConstant _, PWild -> (pats, g, i) :: st
-
-          | _ -> not_yet ()
+          | (_ , PVar _) -> not_yet ()
     ) matrix []
 
 let rec default (matrix : matrix) : matrix =
-  List.fold_right (fun (pats, g, i) st ->
+  List.fold_right (fun ({ pats } as case) st ->
       match pats with
       | [] -> assert false
       | pat::pats ->
           let rec f pat = match pat.desc with
             | PConstr (_, _) -> st
-            | PWild -> (pats, g, i) :: st
+            | PWild -> { case with pats } :: st
             | PAlias (pat, _id, _loc) -> f pat
             | PVar _ -> not_yet ()
             | POr (p1, p2) ->
-                default [(p1::pats, g, i)]
-                @ default [(p2::pats, g, i)]
+                default [{ case with pats= p1::pats }]
+                @ default [{ case with pats= p2::pats}]
+                @ st
           in
           f pat
     ) matrix []
 
-(* Extract x's of (p as x) in the column, and make columns for them *)
+(* Extract x's of (p as x) in the column, and make columns for them. *)
 let unalias_column column : pat list * pat list list =
   let column0 = column in 
   (* extract aliases *)
@@ -182,12 +193,12 @@ let unalias_column column : pat list * pat list list =
 let unalias_matrix o (matrix : matrix) : _ list * matrix =
   match matrix with
   | [] -> o, [] (* invalid I guess *)
-  | ([],_,_)::_ -> 
+  | { pats= [] }::_ -> 
       (* Special case.  If matrix has 0 width, we cannot use transpose since
          it loses the number of rows. *)
       o, matrix
   | _ ->
-      let columns = transpose & List.map (fun (p,_,_) -> p) matrix in
+      let columns = transpose & List.map (fun c -> c.pats) matrix in
       let ocolumns = 
         List.concat 
         & List.map2 (fun ov column ->
@@ -198,7 +209,7 @@ let unalias_matrix o (matrix : matrix) : _ list * matrix =
       let columns = List.map snd ocolumns in
       let rows = transpose columns in
       o,
-      List.map2 (fun pats (_,g,i) -> pats, g, i) rows matrix
+      List.map2 (fun pats case -> { case with pats }) rows matrix
 
 let swap i o (matrix : matrix) : _ * matrix =
   let rec f rev_st i xs = match i, xs with
@@ -207,18 +218,18 @@ let swap i o (matrix : matrix) : _ * matrix =
     | i, x::xs -> f (x::rev_st) (i-1) xs
   in
   f [] i o,
-  List.map (fun (ps,g,e) -> f [] i ps, g, e) matrix
+  List.map (fun ({ pats } as case) -> { case with pats= f [] i pats }) matrix
 
 let pp_omatrix ppf (o, matrix) =
   let open Format in
   fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) ->
       fprintf ppf "%s" & Ident.name id)) o;
   List.iter (function
-      | (pats, None, i) ->
+      | { pats; guard= None; action= i } ->
           eprintf "| %a -> %d@."
             (list ", " pp_pat) pats
             i
-      | (pats, Some g, i) ->
+      | { pats; guard= Some g; action= i } ->
           eprintf "| %a when %d -> %d@."
             (list ", " pp_pat) pats
             g
@@ -234,7 +245,7 @@ let rec cc o matrix =
 
   match matrix with
   | [] -> Fail
-  | (ps, g, a)::_ ->
+  | { pats=ps; guard= g; action= a }::_ ->
       if List.for_all (fun p -> match p.desc with 
           | PAlias _ -> assert false
           | PWild | PVar _ -> true 
@@ -255,7 +266,7 @@ let rec cc o matrix =
             Guard (binders, g, a, cc o & List.tl matrix)
       else 
         (* find column i where at least one pattern which is not a wildcard *)
-        let columns = transpose & List.map (fun (p,_,_) -> p) matrix in
+        let columns = transpose & List.map (fun case -> case.pats) matrix in
         let icolumns = List.mapi (fun i c -> (i,c)) columns in
         let i, column = 
           match 
@@ -540,7 +551,8 @@ let compile_match e (cases : (pat * IML.t option * IML.t) list) =
         mke st.typ (Let (mkp f.typ v, f, st))) acts match_
   in
 
-  let matrix : matrix = List.mapi (fun i (pat, g, _) -> ([pat], g, i)) cases in
+  let matrix : matrix = 
+    List.mapi (fun i (pat, g, _) -> { pats=[pat]; guard= g; action= i}) cases in
 
   let res = cc [(v,e.typ)] matrix in
   Format.eprintf "pmatch debug: %a@." pp res;
