@@ -21,15 +21,16 @@ let transpose : 'p list list -> 'p list list = fun rows ->
             assert (List.length row = ncolumns);
             List.nth row i) rows)
 
+type var_ty = Ident.t * Type.t
+
 type case = 
   { pats : pat list
   ; guard : int option
   ; action : int 
+  ; bindings : (IML.var * var_ty) list
   }
 
 type matrix = case list
-
-type var_ty = Ident.t * Type.t
 
 type t = 
   | Fail
@@ -85,16 +86,16 @@ let rec pp ppf =
         pp otherwise
 
 (* specialize on Left and Right *)
-let rec specialize c (matrix : matrix) : matrix =
-  List.fold_right (fun ({ pats } as case) st ->
+let rec specialize o c (matrix : matrix) : matrix =
+  List.fold_right (fun ({ pats; bindings } as case) st ->
       match pats with
       | [] -> assert false
       | pat::pats ->
           match c, pat.desc with
           | _, PAlias _ -> assert false
           | c, POr (p1, p2) ->
-              specialize c [{ case with pats= p1::pats }]
-              @ specialize c [{ case with pats= p2::pats }]
+              specialize o c [{ case with pats= p1::pats }]
+              @ specialize o c [{ case with pats= p2::pats }]
               @ st
           | c, PConstr (c', ps) ->
               if c = c' then { case with pats= ps @ pats } :: st else st
@@ -141,10 +142,10 @@ let rec specialize c (matrix : matrix) : matrix =
           | (CNone | CNil | CUnit | CBool _ | CConstant _), PWild -> 
               { case with pats } :: st
 
-          | (_ , PVar _) -> not_yet ()
+          | (_ , PVar v) -> { case with pats; bindings= (v, o) :: bindings } :: st
     ) matrix []
 
-let rec default (matrix : matrix) : matrix =
+let rec default o (matrix : matrix) : matrix =
   List.fold_right (fun ({ pats } as case) st ->
       match pats with
       | [] -> assert false
@@ -152,11 +153,11 @@ let rec default (matrix : matrix) : matrix =
           let rec f pat = match pat.desc with
             | PConstr (_, _) -> st
             | PWild -> { case with pats } :: st
+            | PVar v -> { case with pats ; bindings= (v, o) :: case.bindings } :: st
             | PAlias (pat, _id, _loc) -> f pat
-            | PVar _ -> not_yet ()
             | POr (p1, p2) ->
-                default [{ case with pats= p1::pats }]
-                @ default [{ case with pats= p2::pats}]
+                default o [{ case with pats= p1::pats }]
+                @ default o [{ case with pats= p2::pats}]
                 @ st
           in
           f pat
@@ -211,19 +212,19 @@ let unalias_matrix o (matrix : matrix) : _ list * matrix =
       o,
       List.map2 (fun pats case -> { case with pats }) rows matrix
 
-let swap i o (matrix : matrix) : _ * matrix =
+let swap i os (matrix : matrix) : _ * matrix =
   let rec f rev_st i xs = match i, xs with
     | 0, x::xs -> x::List.rev rev_st@xs
     | _, [] -> assert false
     | i, x::xs -> f (x::rev_st) (i-1) xs
   in
-  f [] i o,
+  f [] i os,
   List.map (fun ({ pats } as case) -> { case with pats= f [] i pats }) matrix
 
-let pp_omatrix ppf (o, matrix) =
+let pp_osmatrix ppf (os, matrix) =
   let open Format in
   fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) ->
-      fprintf ppf "%s" & Ident.name id)) o;
+      fprintf ppf "%s" & Ident.name id)) os;
   List.iter (function
       | { pats; guard= None; action= i } ->
           eprintf "| %a -> %d@."
@@ -236,16 +237,16 @@ let pp_omatrix ppf (o, matrix) =
             i
     ) matrix
 
-let rec cc o matrix = 
-  Format.eprintf "compile: %a" pp_omatrix (o, matrix);
-  let o', matrix' = unalias_matrix o matrix in
-  if (o, matrix) <> (o', matrix') then
-    Format.eprintf "simplify: %a" pp_omatrix (o, matrix);
-  let o, matrix = o', matrix' in
+let rec cc os matrix = 
+  Format.eprintf "compile: %a" pp_osmatrix (os, matrix);
+  let os', matrix' = unalias_matrix os matrix in
+  if (os, matrix) <> (os', matrix') then
+    Format.eprintf "simplify: %a" pp_osmatrix (os, matrix);
+  let os, matrix = os', matrix' in
 
   match matrix with
   | [] -> Fail
-  | { pats=ps; guard= g; action= a }::_ ->
+  | { pats=ps; guard= g; action= a; bindings }::_ ->
       if List.for_all (fun p -> match p.desc with 
           | PAlias _ -> assert false
           | PWild | PVar _ -> true 
@@ -253,17 +254,17 @@ let rec cc o matrix =
           | POr _ -> false
         ) ps 
       then 
-        let binders = List.fold_right2 (fun v p st -> 
+        let bindings = List.fold_right2 (fun v p st -> 
             match p.desc with
             | PWild -> st
             | PVar v' -> (v',v)::st
-            | PAlias _ | PConstr _ | POr _ -> assert false) o ps []
+            | PAlias _ | PConstr _ | POr _ -> assert false) os ps bindings
         in
         match g with
-        | None -> Leaf (binders, a)
+        | None -> Leaf (bindings, a)
         | Some g -> 
             prerr_endline "guard";
-            Guard (binders, g, a, cc o & List.tl matrix)
+            Guard (bindings, g, a, cc os & List.tl matrix)
       else 
         (* find column i where at least one pattern which is not a wildcard *)
         let columns = transpose & List.map (fun case -> case.pats) matrix in
@@ -285,7 +286,7 @@ let rec cc o matrix =
           | (i,c)::_ -> i,c (* blindly select the first *)
         in
         (* algo 3 (a) *)
-        let algo o column =
+        let algo os column =
 
           let constructors = 
             List.sort_uniq compare
@@ -321,11 +322,11 @@ let rec cc o matrix =
           in
           assert (constructors <> []);
 
-          let ivty = List.hd o in
+          let ivty = List.hd os in
           Switch (ivty,
                   (let _, vty = ivty in
                   List.map (fun c ->
-                      let o = List.tl o in
+                      let os = List.tl os in
                       let vs = 
                         match c with
                         | CLeft -> 
@@ -355,36 +356,30 @@ let rec cc o matrix =
                             [ create_var "hd", ty 
                             ; create_var "tl", vty
                             ]
-                        | CNil -> []
                         | CSome -> 
                             let ty = match vty.desc with
                               | TyOption ty -> ty
                               | _ -> assert false
                             in
                             [ create_var "x", ty ]
-                        | CNone -> []
 
-                        | CBool _ -> []
+                        | CNil | CNone | CBool _ | CConstant _ (* int/nat/tz *)
+                        | CUnit -> []
 
-                        | CConstant _ -> [] (* int/nat/tz *)
-
-                        | x -> 
-                            Format.eprintf "xxx %s@." (string_of_constr x);
-                            not_yet ()
                       in
                       c, 
                       vs, 
                       (prerr_endline ("specialize on " ^ string_of_constr c);
-                      cc (vs @ o) (specialize c matrix))
+                      cc (vs @ os) (specialize ivty c matrix))
                      ) constructors),
 
                   if is_signature then None
-                  else Some (prerr_endline "default"; cc (List.tl o) (default matrix))
+                  else Some (prerr_endline "default"; cc (List.tl os) (default ivty matrix))
                  )
           in
-          if i = 0 then algo o column
+          if i = 0 then algo os column
           else begin
-            let o', matrix' = swap i o matrix in
+            let o', matrix' = swap i os matrix in
             cc o' matrix' (* xxx inefficient *)
           end
   
@@ -552,7 +547,9 @@ let compile_match e (cases : (pat * IML.t option * IML.t) list) =
   in
 
   let matrix : matrix = 
-    List.mapi (fun i (pat, g, _) -> { pats=[pat]; guard= g; action= i}) cases in
+    List.mapi (fun i (pat, g, _) -> 
+        { pats=[pat]; guard= g; action= i; bindings= [] }) cases 
+  in
 
   let res = cc [(v,e.typ)] matrix in
   Format.eprintf "pmatch debug: %a@." pp res;
