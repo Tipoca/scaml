@@ -44,6 +44,7 @@ let main (main : unit) (storage : unit) =
      | _ -> false
    )
 
+(*
    &&
 
    ( match true with
@@ -104,5 +105,5 @@ let main (main : unit) (storage : unit) =
      | Bytes "0123456789ABCDEF" -> true
      | _ -> false
    )
-
+*)
  )
