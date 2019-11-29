@@ -41,6 +41,7 @@ let lnot_nat : nat -> int = fun _ -> assert false
 let (lnot) : int -> int = fun _ -> assert false
 
 let abs : int -> nat = fun _ -> assert false
+let isnat : int -> nat option = fun _ -> assert false
 
 let fst = fst
 let snd = snd  

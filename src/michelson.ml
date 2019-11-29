@@ -206,7 +206,7 @@ module Opcode = struct
     | COMPARE
     | EQ | LT | LE | GT | GE | NEQ
     | IF of t list * t list
-    | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR 
+    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
     | AND | OR | XOR | NOT
     | EXEC
     | IF_NONE of t list * t list
@@ -307,18 +307,19 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
       | IF_NONE (t,e) -> 
           prim "IF_NONE" [ seq & List.map f t;
                            seq & List.map f e ]
-      | ADD  -> !"ADD"
-      | SUB  -> !"SUB"
-      | MUL  -> !"MUL"
-      | EDIV -> !"EDIV"
-      | ABS  -> !"ABS"
-      | NEG  -> !"NEG"
-      | LSL  -> !"LSL"
-      | LSR  -> !"LSR"
-      | AND  -> !"AND"
-      | OR   -> !"OR" 
-      | XOR  -> !"XOR"
-      | NOT  -> !"NOT"
+      | ADD   -> !"ADD"
+      | SUB   -> !"SUB"
+      | MUL   -> !"MUL"
+      | EDIV  -> !"EDIV"
+      | ABS   -> !"ABS"
+      | ISNAT -> !"ISNAT"
+      | NEG   -> !"NEG"
+      | LSL   -> !"LSL"
+      | LSR   -> !"LSR"
+      | AND   -> !"AND"
+      | OR    -> !"OR" 
+      | XOR   -> !"XOR"
+      | NOT   -> !"NOT"
 
       | EXEC -> !"EXEC"
       | FAILWITH -> !"FAILWITH"
@@ -417,7 +418,7 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
       | SOME
       | COMPARE
       | EQ | LT | LE | GT | GE | NEQ
-      | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR
+      | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
       | AND | OR | XOR | NOT 
       | EXEC
       | FAILWITH
