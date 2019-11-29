@@ -166,7 +166,7 @@ let pp ppf =
         f "@[<2>(fun (%a) ->@ %a@ : %a)@]"
           pp_patvar pat pp body M.Type.pp t.typ
     | IfThenElse (t1, t2, t3) -> 
-        f "(if %a @[then %a@ else %a@])"
+        f "(@[if %a@ then %a@ else %a@])"
           pp t1 pp t2 pp t3
     | App (t1, ts) -> 
         f "(%a %a)" pp t1 Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
@@ -200,10 +200,10 @@ let pp ppf =
           (Format.list "@ | "
              (fun ppf (p, guard, e) -> 
                 match guard with
-                | None -> Format.fprintf ppf "%a -> %a"
+                | None -> Format.fprintf ppf "@[<2>%a ->@ %a@]"
                             pp_pat p
                             pp e
-                | Some g -> Format.fprintf ppf "%a when %a -> %a"
+                | Some g -> Format.fprintf ppf "@[<2>%a when %a ->@ %a@]"
                             pp_pat p
                             pp g
                             pp e

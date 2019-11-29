@@ -4,7 +4,7 @@ open Tools
 module Type = Michelson.Type
 module C =Michelson.Constant
 
-let create_var =
+let create_ident =
   let cntr = ref 0 in
   fun n -> incr cntr; Ident.create & n ^ string_of_int !cntr
 
@@ -21,22 +21,22 @@ let transpose : 'p list list -> 'p list list = fun rows ->
             assert (List.length row = ncolumns);
             List.nth row i) rows)
 
-type var_ty = Ident.t * Type.t
+type id_ty = Ident.t * Type.t
 
 type case = 
   { pats : pat list
   ; guard : int option
   ; action : int 
-  ; bindings : (IML.var * var_ty) list
+  ; bindings : (IML.var * id_ty) list
   }
 
 type matrix = case list
 
 type t = 
   | Fail
-  | Leaf of (Ident.t * var_ty) list * int
-  | Switch of var_ty * (IML.constr * var_ty list * t) list * t option (* default *)
-  | Guard of (Ident.t * var_ty) list (* binder *)
+  | Leaf of (Ident.t * id_ty) list * int
+  | Switch of id_ty * (IML.constr * id_ty list * t) list * t option (* default *)
+  | Guard of (Ident.t * id_ty) list (* binder *)
              * int (* guard *)
              * int (* case *)
              * t (* otherwise *)
@@ -99,7 +99,7 @@ let rec specialize o c (matrix : matrix) : matrix =
                 specialize o c [{ case with pats= p1::pats }]
                 @ specialize o c [{ case with pats= p2::pats }]
             | c, PConstr (c', ps) ->
-                if c = c' then [{ case with pats= ps @ pats }] else st
+                if c = c' then [{ case with pats= ps @ pats }] else []
 
             (* For wild, we need to build another wild with arg type. 
                XXX Currently we must code for each.  Ugh.
@@ -149,6 +149,43 @@ let rec specialize o c (matrix : matrix) : matrix =
           cases @ st
     ) matrix []
 
+let pp_matrix ppf matrix =
+  let open Format in
+  fprintf ppf "matrix:@.";
+  List.iter (function
+      | { pats; guard= None; action= i } ->
+          eprintf "| %a -> %d@."
+            (list ", " pp_pat) pats
+            i
+      | { pats; guard= Some g; action= i } ->
+          eprintf "| %a when %d -> %d@."
+            (list ", " pp_pat) pats
+            g
+            i
+    ) matrix
+
+let pp_osmatrix ppf (os, matrix) =
+  let open Format in
+  fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) ->
+      fprintf ppf "%s" & Ident.name id)) os;
+  List.iter (function
+      | { pats; guard= None; action= i } ->
+          eprintf "| %a -> %d@."
+            (list ", " pp_pat) pats
+            i
+      | { pats; guard= Some g; action= i } ->
+          eprintf "| %a when %d -> %d@."
+            (list ", " pp_pat) pats
+            g
+            i
+    ) matrix
+
+let specialize o c matrix =
+  Format.eprintf "specializing... %a@." pp_matrix matrix;
+  let matrix = specialize o c matrix in
+  Format.eprintf "specialized... %a@." pp_matrix matrix;
+  matrix
+
 let rec default o (matrix : matrix) : matrix =
   List.fold_right (fun ({ pats } as case) st ->
       match pats with
@@ -175,22 +212,6 @@ let swap i os (matrix : matrix) : _ * matrix =
   in
   f [] i os,
   List.map (fun ({ pats } as case) -> { case with pats= f [] i pats }) matrix
-
-let pp_osmatrix ppf (os, matrix) =
-  let open Format in
-  fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) ->
-      fprintf ppf "%s" & Ident.name id)) os;
-  List.iter (function
-      | { pats; guard= None; action= i } ->
-          eprintf "| %a -> %d@."
-            (list ", " pp_pat) pats
-            i
-      | { pats; guard= Some g; action= i } ->
-          eprintf "| %a when %d -> %d@."
-            (list ", " pp_pat) pats
-            g
-            i
-    ) matrix
 
 let rec cc os matrix = 
   Format.eprintf "compile: %a" pp_osmatrix (os, matrix);
@@ -286,34 +307,34 @@ let rec cc os matrix =
                               | TyOr (ty, _) -> ty
                               | _ -> assert false
                             in
-                            [ create_var "l", ty ]
+                            [ create_ident "l", ty ]
                         | CRight -> 
                             let ty = match vty.desc with
                               | TyOr (_, ty) -> ty
                               | _ -> assert false
                             in
-                            [ create_var "r", ty ]
+                            [ create_ident "r", ty ]
                         | CPair -> 
                             let ty1,ty2 = match vty.desc with
                               | TyPair (ty1, ty2) -> ty1, ty2
                               | _ -> assert false
                             in
-                            [ create_var "l", ty1 ; 
-                              create_var "r", ty2 ]
+                            [ create_ident "l", ty1 ; 
+                              create_ident "r", ty2 ]
                         | CCons -> 
                             let ty = match vty.desc with
                               | TyList ty -> ty
                               | _ -> assert false
                             in
-                            [ create_var "hd", ty 
-                            ; create_var "tl", vty
+                            [ create_ident "hd", ty 
+                            ; create_ident "tl", vty
                             ]
                         | CSome -> 
                             let ty = match vty.desc with
                               | TyOption ty -> ty
                               | _ -> assert false
                             in
-                            [ create_var "x", ty ]
+                            [ create_ident "x", ty ]
 
                         | CNil | CNone | CBool _ | CConstant _ (* int/nat/tz *)
                         | CUnit -> []
@@ -446,14 +467,14 @@ let compile_match e (cases : (pat * IML.t option * IML.t) list) =
   (* actions as functions *)
   let acts = 
     List.mapi (fun i (pat, _g, action) -> 
-        let v = create_var (Printf.sprintf "case%d" i) in
+        let v = create_ident (Printf.sprintf "case%d" i) in
         let patvars = IdTys.elements & patvars pat in
         match patvars with
         | [] ->
             (* if [patvars = []], we need a [fun () ->].
                Think about the case of [| _ -> assert false].
             *)
-            let pvar = mkp Type.tyUnit & create_var "unit" in
+            let pvar = mkp Type.tyUnit & create_ident "unit" in
             let f = 
              mke (Type.tyLambda (Type.tyUnit, action.typ))
                (Fun (Type.tyUnit, action.typ, pvar, action))
@@ -485,7 +506,7 @@ let compile_match e (cases : (pat * IML.t option * IML.t) list) =
     List.rev cases, List.rev guards
   in
     
-  let v = create_var "v" in
+  let v = create_ident "v" in
 
   let typ = (match List.hd cases with (e,_,_) -> e).typ in
 
