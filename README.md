@@ -1,6 +1,6 @@
 # SCaml, Smart Contract Abstract Machine Language.
 
-> A scam never calls itself a scam.
+> Scam never calls itself scam.
 
 Small and Simple Strict Subset of OCaml for Smart contracts.
 
@@ -25,7 +25,7 @@ The following OCaml features are **not** supported:
 * Product types other than a pair: `t1 * t2`.
 * Modules.
 * Labeled functions.
-* Nested patterns. Constants in patterns. "Or" pattern.  Pattern guards.  Exception patterns.
+* Exception patterns.
 * Multi case in `function`
 * Partial applicaiton of primitives defined in `SCaml`.
 * Reference or mutable record fields.
@@ -46,16 +46,9 @@ type ('a, 'b) sum =
   | Right of 'b
 ```
 
-### No real pattern matching (yet)
+### Experimental: Pattern match
 
-For simplicity, the pattern match `match .. with ..` of OCaml 
-is hugely restricted in SCaml.
-
-* Constructors in patterns are restricted to `Left`, `Right`, `::`, `[]`, `Some` and `None.
-* Constructors in patterns can take only variables as their arguments.  No nested pattern is allowed.
-
-This means that for now SCaml's `match .. with ..` is just a syntactic sugar of 
-Michelson conditional opcodes `IF_LEFT`, `IF_CONS` and `IF_NONE`.
+Full pattern matching for `match` is recently added as an experimental feature.  It is not yet fully tested.
 
 ## Design
 
