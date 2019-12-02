@@ -8,6 +8,9 @@ module M = Michelson
 open M.Type
 module C = M.Constant
 
+let dummy_loc = 
+  { Location.loc_start= Lexing.dummy_pos; loc_end= Lexing.dummy_pos; loc_ghost= true }   
+
 type ('desc, 'attr) with_loc_and_type =
   { desc : 'desc
   ; loc : Location.t
@@ -285,6 +288,13 @@ let rec type_expr tenv ty =
   | Ttuple [t1; t2] -> 
       type_expr tenv t1 >>= fun t1 ->
       type_expr tenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
+  | Ttuple tys -> 
+      Result.mapM (type_expr tenv) tys >>| fun tys -> 
+      let rec f = function
+        | Binplace.Leaf ty -> ty
+        | Branch (t1,t2) -> tyPair (f t1, f t2)
+      in 
+      f & Binplace.place tys
   | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
   | Tconstr (p, [t], _) when p = Predef.path_list -> 
       type_expr tenv t >>= fun t -> Ok (tyList t)
@@ -319,19 +329,37 @@ let rec type_expr tenv ty =
         | Some "Bytes.t", [] -> Ok (tyBytes)
         | Some "Chain_id.t", [] -> Ok (tyChainID)
         | Some _, _ -> Error (Unsupported_data_type p)
-        | None, _ -> Error (Unsupported_data_type p)
+        | None, _ -> 
+            try
+              match Env.find_type_descrs p tenv with
+              | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
+              | [], labels ->
+                  let tys = 
+                    List.map (fun label ->
+                        let _, ty_arg, ty_res = 
+                          Ctype.instance_label false (* XXX I do not know what it is *)
+                            label
+                        in
+                        Ctype.unify tenv ty ty_res; (* XXX should succeed *)
+                        ty_arg
+                      ) labels
+                  in
+                  Result.mapM (type_expr tenv) tys >>| fun tys ->
+                  let tree = Binplace.place tys in
+                  let rec f = function
+                    | Binplace.Leaf x -> x
+                    | Branch (t1,t2) -> tyPair (f t1, f t2)
+                  in
+                  f tree
+                  
+              | _constrs, [] -> assert false (* XXX TODO *)
+              | _ -> assert false (* impossible *)
+            with
+            | _ -> Error (Unsupported_data_type p)
       end
 
   | Tpoly (ty, []) -> type_expr tenv ty
                         
-  | Ttuple tys -> 
-      Result.mapM (type_expr tenv) tys >>| fun tys -> 
-      let rec f = function
-        | Binplace.Leaf ty -> ty
-        | Branch (t1,t2) -> tyPair (f t1, f t2)
-      in 
-      f & Binplace.place tys
-
   | _ -> Error (Unsupported_type ty)
 
 let type_expr ~loc ?(this="This") tenv ty = 
@@ -444,7 +472,9 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
       let rec f = function
         | Binplace.Leaf x -> x
         | Branch (p1, p2) ->
-            mk (PConstr (CPair, [f p1; f p2]))
+            let p1 = f p1 in
+            let p2 = f p2 in
+            { loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
       in
       f tree
 
@@ -508,12 +538,52 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
             end
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
-            
         | n, _, _ ->  unsupported ~loc "pattern %s" n
       end
 
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
-  | Tpat_record _    -> unsupported ~loc "record pattern"
+
+  | Tpat_record (pfields, _) ->
+      (* fields are sorted, but omitted labels are not in it *)
+      begin match (Ctype.repr pat_type).desc with
+        | Tconstr (p, _, _) ->
+            begin match Env.find_type_descrs p pat_env with
+              | [], labels ->
+                  let labels = 
+                    List.map (fun label ->
+                        let _, arg, res = 
+                          Ctype.instance_label false (* XXX ? *) label 
+                        in
+                        Ctype.unify pat_env res pat_type;
+                        label.lbl_name, arg
+                      ) labels
+                  in
+                  let rec f labels pfields = match labels, pfields with
+                    | (n, _)::labels, (_, plabel, p)::pfields when n = plabel.Types.lbl_name ->
+                        patternx p :: f labels pfields
+                    | (_, typ)::labels, _ ->
+                        let typ = type_expr ~loc:dummy_loc pat_env typ in
+                        { loc; desc= PWild; typ; attr= () } :: f labels pfields
+                    | [], [] -> []
+                    | [], _ -> assert false
+                  in
+                  let pats = f labels pfields in
+                  let tree = Binplace.place pats in
+                  let rec f = function
+                    | Binplace.Leaf x -> x
+                    | Branch (p1, p2) -> 
+                        let p1 = f p1 in
+                        let p2 = f p2 in
+                        { loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
+                  in
+                  f tree
+                  
+
+              | _, _ -> assert false
+            end
+        | _ -> assert false
+      end
+
   | Tpat_array _     -> unsupported ~loc "array pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
 
@@ -869,7 +939,25 @@ let structure env str final =
         unsupported ~loc "if-then without else"
     | Texp_try _ -> unsupported ~loc "try-with"
     | Texp_variant _ -> unsupported ~loc "polymorphic variant"
-    | Texp_record _ -> unsupported ~loc "record"
+
+    | Texp_record { fields; extended_expression= None; _ } -> 
+        (* I believe fields are already sorted *)
+        let es = 
+          List.map (fun (_ldesc, ldef) -> match ldef with
+              | Overridden (_, e) -> expression env e
+              | Kept _ -> assert false) & Array.to_list fields
+        in
+        let tree = Binplace.place es in
+        let rec f = function
+          | Binplace.Leaf x -> x
+          | Branch (t1, t2) ->
+              make_constant & mk & Tuple (f t1, f t2)
+        in
+        f tree
+
+    | Texp_record _ -> assert false
+
+
     | Texp_field _ -> unsupported ~loc "record field access"
     | Texp_setfield _ -> unsupported ~loc "record field set"
     | Texp_array _ -> unsupported ~loc "array"
@@ -1133,9 +1221,6 @@ let check_self ty_self str =
     | _ -> assert false
     ) !selfs
 
-
-let dummy_loc = 
-  { Location.loc_start= Lexing.dummy_pos; loc_end= Lexing.dummy_pos; loc_ghost= true }   
 
 let compile_global_entry ty_storage ty_return node =
 
