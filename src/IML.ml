@@ -323,6 +323,15 @@ let rec type_expr tenv ty =
       end
 
   | Tpoly (ty, []) -> type_expr tenv ty
+                        
+  | Ttuple tys -> 
+      Result.mapM (type_expr tenv) tys >>| fun tys -> 
+      let rec f = function
+        | Binplace.Leaf ty -> ty
+        | Branch (t1,t2) -> tyPair (f t1, f t2)
+      in 
+      f & Binplace.place tys
+
   | _ -> Error (Unsupported_type ty)
 
 let type_expr ~loc ?(this="This") tenv ty = 
@@ -429,7 +438,15 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
 
   | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
 
-  | Tpat_tuple _ -> unsupported ~loc "tuple pattern (arity > 2)"
+  | Tpat_tuple ps -> 
+      let ps = List.map patternx ps in
+      let tree = Binplace.place ps in
+      let rec f = function
+        | Binplace.Leaf x -> x
+        | Branch (p1, p2) ->
+            mk (PConstr (CPair, [f p1; f p2]))
+      in
+      f tree
 
   | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
 
@@ -741,7 +758,16 @@ let structure env str final =
         let e2 = expression env e2 in
         (* tyPair (e1.typ, e2.typ) = typ *) 
         make_constant & mk & Tuple (e1, e2)
-    | Texp_tuple _ -> unsupported ~loc "tuple with more than 2 elems"
+    | Texp_tuple es ->
+        let es = List.map (expression env) es in
+        let tree = Binplace.place es in
+        let rec f = function
+          | Binplace.Leaf x -> x
+          | Branch (t1, t2) ->
+              make_constant & mk & Tuple (f t1, f t2)
+        in
+        f tree
+          
     | Texp_construct ({loc}, c, args) -> 
         construct ~loc env exp_env exp_type c args
   
