@@ -1030,7 +1030,7 @@ module Pmatch = struct
               cc o' matrix' (* xxx inefficient *)
             end
   
-  let mkv (id, typ) = mke typ & Var id
+  let mkvar (id, typ) = mke typ & Var id
   
   let build aty acts guards t = 
     let rec f = function
@@ -1038,13 +1038,13 @@ module Pmatch = struct
       | Leaf (binders, i) -> 
           List.fold_right (fun (v,(v',ty)) st ->
               mke aty (Let (mkp ty v,
-                            mkv (v',ty),
+                            mkvar (v',ty),
                             st))) binders
             (List.nth acts i)
       | Guard (binders, guard, case, otherwise) ->
           List.fold_right (fun (v,(v',ty)) st ->
               mke aty (Let (mkp ty v,
-                            mkv (v',ty),
+                            mkvar (v',ty),
                             st))) binders
           & mke aty & IfThenElse (List.nth guards guard, 
                                   List.nth acts case, 
@@ -1053,8 +1053,8 @@ module Pmatch = struct
       | Switch (_, [], _) -> assert false
       | Switch (v, [CPair, [v1,ty1; v2,ty2], t], None) ->
           let t = f t in
-          mke aty & Let (mkp ty1 v1, mkfst & mkv v, 
-                         mke aty & Let (mkp ty2 v2, mksnd & mkv v,
+          mke aty & Let (mkp ty1 v1, mkfst & mkvar v, 
+                         mke aty & Let (mkp ty2 v2, mksnd & mkvar v,
                                         t))
       | Switch (_, [CUnit, [], t], None) -> f t
       | Switch (v, ( [ CLeft, [vl,tyl], tl
@@ -1063,7 +1063,7 @@ module Pmatch = struct
                      ; CLeft, [vl,tyl], tl ] ), None) ->
           let tl = f tl in
           let tr = f tr in
-          mke aty & Switch_or (mkv v, 
+          mke aty & Switch_or (mkvar v, 
                                mkp tyl vl, tl,
                                mkp tyr vr, tr)
   
@@ -1073,7 +1073,7 @@ module Pmatch = struct
                       (CBool true), [], tt] ), None) ->
           let tt = f tt in
           let tf = f tf in
-          mke aty & IfThenElse (mkv v, tt, tf)
+          mke aty & IfThenElse (mkvar v, tt, tf)
   
       | Switch (v, ( [CSome, [vs,tys], ts;
                       CNone, [], tn]
@@ -1081,7 +1081,7 @@ module Pmatch = struct
                       CSome, [vs,tys], ts]), None) ->
           let ts = f ts in
           let tn = f tn in
-          mke aty & Switch_none (mkv v, tn, mkp tys vs, ts) 
+          mke aty & Switch_none (mkvar v, tn, mkp tys vs, ts) 
   
       | Switch (v, ( [CCons, [v1,ty1; v2,ty2], tc;
                       CNil, [], tn]
@@ -1089,7 +1089,7 @@ module Pmatch = struct
                       CCons, [v1,ty1; v2,ty2], tc]), None) ->
           let tc = f tc in
           let tn = f tn in
-          mke aty & Switch_cons (mkv v, 
+          mke aty & Switch_cons (mkvar v, 
                                  mkp ty1 v1, mkp ty2 v2, tc, tn)
   
       | Switch (_v, _cases, None) -> assert false
@@ -1106,7 +1106,7 @@ module Pmatch = struct
               match case with 
               | (CConstant c, [], t) ->
                   let t = f t in
-                  mke aty & IfThenElse (mkeq (mkv v) 
+                  mke aty & IfThenElse (mkeq (mkvar v) 
                                           (mke (snd v) & Const c),
                                         t, telse)
               | _ -> assert false) cases  & f d
@@ -1132,7 +1132,7 @@ module Pmatch = struct
               in
               (v, 
                f,
-               mke action.typ (App (mkv (v, f.typ),
+               mke action.typ (App (mkvar (v, f.typ),
                                     [mke Type.tyUnit Unit]))) 
           | _ -> 
               let f = List.fold_right (fun (v,ty) st ->
@@ -1140,7 +1140,7 @@ module Pmatch = struct
                     (Fun (ty, st.typ, mkp ty v, st))) vars action
               in
               let e = 
-                mke action.typ (App (mkv (v, f.typ), List.map mkv vars)) 
+                mke action.typ (App (mkvar (v, f.typ), List.map mkvar vars)) 
               in
               (v, f, e)) cases
     in
@@ -1500,36 +1500,28 @@ let structure str final =
                   desc= Let (v, def, e);
                   attr= [] } ) e rev_vbs
           with
-          | Location.Error _ as e -> raise e
-(*
+          | Location.Error _ ->
               (* let v = e and v' = e' in e''
                  =>
                  let v = e in match v with p ->
                  let v' = e' in match v' with p' -> e''
               *)
-              let rec f env = function
-                | [] -> expression env e
-                | vb::vbs ->
-                    let pat = vb.vb_pat in
-                    let exp = vb.vb_expr in
-                    let typ = type_expr ~loc:vb.vb_loc vb.vb_pat.pat_env pat.pat_type in
-                    let i = create_ident "x" in
-                    let v = { desc= i; typ; loc= dummy_loc; attr= () } in
-                    let ev = { desc= Var (i, typ); typ; loc= dummy_loc; attr= () } in
-                    let patx= patternx pat in
-                    let c_rhs= f (IdTys.to_list (P.vars patx) @ env) vbs in
-                    
-                    let m = 
-                      compile_match ((i, typ)::env) ev 
-                        [ (patternx pat, None, 
-                           { c_lhs= pat;
-                             c_guard= None (* XXX *);
-                             c_rhs }) ]
-                    in
-                    mke m.typ & Let (v, expression env exp, m)
-              in
-              f env vbs
-*)
+              List.fold_right (fun vb e' ->
+                  let { vb_pat= ({ pat_type; pat_env } as vb_pat)
+                      ; vb_expr
+                      ; vb_loc } = vb 
+                  in
+                  let typ = type_expr ~loc:vb_loc pat_env pat_type in
+                  let i = create_ident "x" in
+                  let v = { desc= i; typ; loc= dummy_loc; attr= () } in
+                  let ev = { desc= Var i; typ; loc= dummy_loc; attr= [] } in
+                  { desc= Let (v, expression vb_expr, 
+                               Pmatch.compile ev [(patternx vb_pat, None, e')])
+                  ; typ
+                  ; loc
+                  ; attr= [] 
+                  }
+                ) vbs & expression e
         end
   
     | Texp_apply (_, []) -> assert false
@@ -1701,10 +1693,6 @@ let structure str final =
   
   and compile_match e cases =
     let compile_case case = 
-(*
-      let p = patternx case.c_lhs in
-      let pvars = IdTys.elements & P.vars p in
-*)
       let guard = Option.fmap expression case.c_guard in
       (patternx case.c_lhs, guard, expression case.c_rhs)
     in
