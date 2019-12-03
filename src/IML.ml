@@ -37,6 +37,9 @@ let string_of_constr = function
   | CBool false -> "false"
   | CConstant c -> Format.sprintf "%a" C.pp c
 
+module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
+  
+
 module Pat = struct
   type desc =
     | Var of var
@@ -57,9 +60,19 @@ module Pat = struct
     | Alias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp p (Ident.name id)
     | Or (p1,p2) -> fprintf ppf "(@[%a@ | %a@])" pp p1 pp p2
         
-  type patvar = (Ident.t, unit) with_loc_and_type
+  type var = (Ident.t, unit) with_loc_and_type
   
-  let pp_patvar ppf patvar = pp ppf { patvar with desc= Var patvar.desc }
+  let pp_var ppf var = pp ppf { var with desc= Var var.desc }
+
+  let rec vars p =
+    let open IdTys in
+    match p.desc with
+    | Var id -> singleton (id, p.typ)
+    | Constr (_, []) -> empty
+    | Constr (_, p::ps) -> List.fold_left union (vars p) (List.map vars ps)
+    | Wild -> empty
+    | Alias (p, id, _) -> add (id, p.typ) & vars p
+    | Or (p1, p2) -> union (vars p1) (vars p2)
 end
 
 module P = Pat
@@ -86,15 +99,15 @@ and desc =
   | Pair of t * t
   | Assert of t
   | AssertFalse
-  | Fun of M.Type.t * M.Type.t * P.patvar * t
+  | Fun of M.Type.t * M.Type.t * P.var * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (M.Opcode.t list -> M.Opcode.t list) * t list
-  | Let of P.patvar * t * t
-  | Switch_or of t * P.patvar * t * P.patvar * t
-  | Switch_cons of t * P.patvar * P.patvar * t * t
-  | Switch_none of t * t * P.patvar * t
-  | Match of t * (P.t * t option * t) list
+  | Let of P.var * t * t
+  | Switch_or of t * P.var * t * P.var * t
+  | Switch_cons of t * P.var * P.var * t * t
+  | Switch_none of t * t * P.var * t
+  | Match of t * (P.t * t option * t) list (* XXX should be removed from t *)
 
 let almost_constant t = 
   match t.desc with
@@ -172,7 +185,7 @@ let pp ppf =
     | AssertFalse -> p "assert false"
     | Fun (_ty1, _ty2, pat, body) ->
         f "@[<2>(fun (%a) ->@ %a@ : %a)@]"
-          P.pp_patvar pat pp body M.Type.pp t.typ
+          P.pp_var pat pp body M.Type.pp t.typ
     | IfThenElse (t1, t2, t3) -> 
         f "(@[if %a@ then %a@ else %a@])"
           pp t1 pp t2 pp t3
@@ -184,24 +197,24 @@ let pp ppf =
           Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
     | Let (p, t1, t2) ->
         f "@[<2>(let %a =@ %a in@ %a)@]"
-          P.pp_patvar p pp t1 pp t2
+          P.pp_var p pp t1 pp t2
     | Switch_or (t, p1, t1, p2, t2) ->
         f "@[<2>(match %a with@ | Left %a -> %a@ | Right %a -> %a)@]"
           pp t
-          P.pp_patvar p1 pp t1 
-          P.pp_patvar p2 pp t2
+          P.pp_var p1 pp t1 
+          P.pp_var p2 pp t2
     | Switch_cons (t, p1, p2, t1, t2) ->
         f "@[<2>(match %a with@ | %a::%a -> %a@ | [] -> %a)@]"
           pp t
-          P.pp_patvar p1
-          P.pp_patvar p2
+          P.pp_var p1
+          P.pp_var p2
           pp t1 
           pp t2
     | Switch_none (t, t1, p2, t2) ->
         f "@[<2>(match %a with@ | None -> %a@ | Some (%a) -> %a)@]"
           pp t
           pp t1 
-          P.pp_patvar p2 pp t2
+          P.pp_var p2 pp t2
     | Match (t, cases) ->
         f "@[<2>(match %a with@ @[%a@])@]"
           pp t
@@ -271,22 +284,9 @@ let mkpright ty p =
     loc= dummy_loc;
     attr= () }
 
-module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
-
-let rec patvars p =
-  let open IdTys in
-  match p.desc with
-  | P.Var id -> singleton (id, p.typ)
-  | Constr (_, []) -> empty
-  | Constr (_, p::ps) -> List.fold_left union (patvars p) (List.map patvars ps)
-  | Wild -> empty
-  | Alias (p, id, _) -> add (id, p.typ) & patvars p
-  | Or (p1, p2) -> union (patvars p1) (patvars p2)
-    
-let patvars_var p = IdTys.singleton (p.desc, p.typ)
-    
 let rec freevars t = 
   let open IdTys in
+  let psingleton p = singleton (p.desc, p.typ) in
   match t.desc with
   | Const _ | Nil _  | IML_None _ | Unit -> empty
   | Cons (t1,t2) | Pair (t1,t2) -> union (freevars t1) (freevars t2)
@@ -299,24 +299,24 @@ let rec freevars t =
   | Prim (_,_,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty ts
   | Fun (_,_,pat,t) -> 
-      diff (freevars t) (patvars_var pat)
+      diff (freevars t) (psingleton pat)
   | Let (pat, t1, t2) ->
-      diff (union (freevars t1) (freevars t2)) (patvars_var pat)
+      diff (union (freevars t1) (freevars t2)) (psingleton pat)
   | Switch_or (t, p1, t1, p2, t2) ->
       union (freevars t)
         (union 
-           (diff (freevars t1) (patvars_var p1))
-           (diff (freevars t2) (patvars_var p2)))
+           (diff (freevars t1) (psingleton p1))
+           (diff (freevars t2) (psingleton p2)))
   | Switch_cons (t, p1, p2, t1, t2) ->
       union (freevars t)
         (union 
-           (diff (diff (freevars t1) (patvars_var p1)) (patvars_var p2))
+           (diff (diff (freevars t1) (psingleton p1)) (psingleton p2))
            (freevars t2))
   | Switch_none (t, t1, p2, t2) ->
       union (freevars t)
         (union 
            (freevars t1)
-           (diff (freevars t2) (patvars_var p2)))
+           (diff (freevars t2) (psingleton p2)))
   | Match (t, cases) ->
       union (freevars t)
         (List.fold_left (fun acc (p, g, t) ->
@@ -325,7 +325,7 @@ let rec freevars t =
                         (freevars t) 
                         (match g with 
                          | None -> empty
-                         | Some g -> freevars g)) (patvars p)))
+                         | Some g -> freevars g)) (P.vars p)))
             empty cases)
 
 type type_expr_error =
@@ -1205,7 +1205,7 @@ let structure env str final =
   and compile_match env e cases =
     let compile_case env case = 
       let p = patternx case.c_lhs in
-      let pvars = IdTys.elements & patvars p in
+      let pvars = IdTys.elements & P.vars p in
       let guard = Option.fmap (expression (pvars@env)) case.c_guard in
       (patternx case.c_lhs, guard, expression (pvars@env) case.c_rhs)
     in

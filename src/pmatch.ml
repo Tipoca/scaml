@@ -2,8 +2,7 @@ open Spotlib.Spot
 open IML
 open Tools
 module Type = Michelson.Type
-module C =Michelson.Constant
-
+module C = Michelson.Constant
 module P = IML.Pat
 
 let create_ident =
@@ -25,7 +24,7 @@ let transpose : 'p list list -> 'p list list = fun rows ->
 type id_ty = Ident.t * Type.t
 
 type case = 
-  { pats : Pat.t list
+  { pats : P.t list
   ; guard : int option
   ; action : int 
   ; bindings : (IML.var * id_ty) list
@@ -448,10 +447,10 @@ let compile_match e (cases : (P.t * IML.t option * IML.t) list) =
   let acts = 
     List.mapi (fun i (pat, _g, action) -> 
         let v = create_ident (Printf.sprintf "case%d" i) in
-        let patvars = IdTys.elements & patvars pat in
-        match patvars with
+        let vars = IdTys.elements & P.vars pat in
+        match vars with
         | [] ->
-            (* if [patvars = []], we need a [fun () ->].
+            (* if [vars = []], we need a [fun () ->].
                Think about the case of [| _ -> assert false].
             *)
             let pvar = mkp Type.tyUnit & create_ident "unit" in
@@ -466,11 +465,11 @@ let compile_match e (cases : (P.t * IML.t option * IML.t) list) =
         | _ -> 
             let f = List.fold_right (fun (v,ty) st ->
                 mke (Type.tyLambda (ty, st.typ))
-                  (Fun (ty, st.typ, mkp ty v, st))) patvars action
+                  (Fun (ty, st.typ, mkp ty v, st))) vars action
             in
             let e = 
               mke action.typ (App (mke f.typ (Var (v, f.typ)),
-                                   List.map (fun (v,ty) -> mke ty (Var (v,ty))) patvars)) 
+                                   List.map (fun (v,ty) -> mke ty (Var (v,ty))) vars)) 
             in
             (v, f, e)) cases
   in

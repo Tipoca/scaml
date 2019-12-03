@@ -16,6 +16,8 @@ type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of b
    
 val string_of_constr : constr -> string
 
+module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
+
 module Pat : sig
   type desc =
     | Var of var
@@ -28,9 +30,11 @@ module Pat : sig
 
   val pp : Format.t -> t -> unit
       
-  type patvar = (Ident.t, unit) with_loc_and_type
+  type var = (Ident.t, unit) with_loc_and_type
   
-  val pp_patvar : Format.t -> patvar -> unit
+  val pp_var : Format.t -> var -> unit
+
+  val vars : t -> IdTys.t
 end
 
 type attr = 
@@ -53,14 +57,14 @@ and desc =
   | Pair of t * t
   | Assert of t
   | AssertFalse
-  | Fun of Michelson.Type.t * Michelson.Type.t * Pat.patvar * t
+  | Fun of Michelson.Type.t * Michelson.Type.t * Pat.var * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
-  | Let of Pat.patvar * t * t
-  | Switch_or of t * Pat.patvar * t * Pat.patvar * t
-  | Switch_cons of t * Pat.patvar * Pat.patvar * t * t
-  | Switch_none of t * t * Pat.patvar * t
+  | Let of Pat.var * t * t
+  | Switch_or of t * Pat.var * t * Pat.var * t
+  | Switch_cons of t * Pat.var * Pat.var * t * t
+  | Switch_none of t * t * Pat.var * t
   | Match of t * (Pat.t * t option * t) list
 
 val pp : Format.t -> t -> unit
@@ -72,10 +76,6 @@ val mkeq : t -> t -> t
   
 val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
 
-module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
-
-val patvars : Pat.t -> IdTys.t
-                       
 val freevars : t -> IdTys.t
 
 val optimize : t -> t
