@@ -37,28 +37,32 @@ let string_of_constr = function
   | CBool false -> "false"
   | CConstant c -> Format.sprintf "%a" C.pp c
 
-type pat_desc =
-  | PVar of var
-  | PConstr of constr * pat list
-  | PWild
-  | PAlias of pat * Ident.t * Location.t (* location of ident *)
-  | POr of pat * pat 
+module Pat = struct
+  type desc =
+    | Var of var
+    | Constr of constr * t list
+    | Wild
+    | Alias of t * Ident.t * Location.t (* location of ident *)
+    | Or of t * t 
 
-and pat = (pat_desc, unit) with_loc_and_type
+  and t = (desc, unit) with_loc_and_type
 
-let rec pp_pat ppf pat = 
-  let open Format in
-  match pat.desc with
-  | PVar i -> fprintf ppf "%s" (Ident.name i)
-  | PConstr (c, []) -> fprintf ppf "%s" (string_of_constr c)
-  | PConstr (c, ps) -> fprintf ppf "@[%s (%a)@]" (string_of_constr c) (Format.list ",@ " pp_pat) ps
-  | PWild -> string ppf "_"
-  | PAlias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp_pat p (Ident.name id)
-  | POr (p1,p2) -> fprintf ppf "(@[%a@ | %a@])" pp_pat p1 pp_pat p2
-      
-type patvar = (Ident.t, unit) with_loc_and_type
+  let rec pp ppf pat = 
+    let open Format in
+    match pat.desc with
+    | Var i -> fprintf ppf "%s" (Ident.name i)
+    | Constr (c, []) -> fprintf ppf "%s" (string_of_constr c)
+    | Constr (c, ps) -> fprintf ppf "@[%s (%a)@]" (string_of_constr c) (Format.list ",@ " pp) ps
+    | Wild -> string ppf "_"
+    | Alias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp p (Ident.name id)
+    | Or (p1,p2) -> fprintf ppf "(@[%a@ | %a@])" pp p1 pp p2
+        
+  type patvar = (Ident.t, unit) with_loc_and_type
+  
+  let pp_patvar ppf patvar = pp ppf { patvar with desc= Var patvar.desc }
+end
 
-let pp_patvar ppf patvar = pp_pat ppf { patvar with desc= PVar patvar.desc }
+module P = Pat
 
 type attr = 
   | Comment of string
@@ -82,15 +86,15 @@ and desc =
   | Pair of t * t
   | Assert of t
   | AssertFalse
-  | Fun of M.Type.t * M.Type.t * patvar * t
+  | Fun of M.Type.t * M.Type.t * P.patvar * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (M.Opcode.t list -> M.Opcode.t list) * t list
-  | Let of patvar * t * t
-  | Switch_or of t * patvar * t * patvar * t
-  | Switch_cons of t * patvar * patvar * t * t
-  | Switch_none of t * t * patvar * t
-  | Match of t * (pat * t option * t) list
+  | Let of P.patvar * t * t
+  | Switch_or of t * P.patvar * t * P.patvar * t
+  | Switch_cons of t * P.patvar * P.patvar * t * t
+  | Switch_none of t * t * P.patvar * t
+  | Match of t * (P.t * t option * t) list
 
 let almost_constant t = 
   match t.desc with
@@ -126,7 +130,6 @@ let make_constant t =
   | Some c -> { t with desc= Const c }
 
 let rec get_constant t = 
-  let module C = C in
   let open Result.Infix in
   match t.desc with
   | Unit -> Ok C.Unit
@@ -169,7 +172,7 @@ let pp ppf =
     | AssertFalse -> p "assert false"
     | Fun (_ty1, _ty2, pat, body) ->
         f "@[<2>(fun (%a) ->@ %a@ : %a)@]"
-          pp_patvar pat pp body M.Type.pp t.typ
+          P.pp_patvar pat pp body M.Type.pp t.typ
     | IfThenElse (t1, t2, t3) -> 
         f "(@[if %a@ then %a@ else %a@])"
           pp t1 pp t2 pp t3
@@ -181,24 +184,24 @@ let pp ppf =
           Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
     | Let (p, t1, t2) ->
         f "@[<2>(let %a =@ %a in@ %a)@]"
-          pp_patvar p pp t1 pp t2
+          P.pp_patvar p pp t1 pp t2
     | Switch_or (t, p1, t1, p2, t2) ->
         f "@[<2>(match %a with@ | Left %a -> %a@ | Right %a -> %a)@]"
           pp t
-          pp_patvar p1 pp t1 
-          pp_patvar p2 pp t2
+          P.pp_patvar p1 pp t1 
+          P.pp_patvar p2 pp t2
     | Switch_cons (t, p1, p2, t1, t2) ->
         f "@[<2>(match %a with@ | %a::%a -> %a@ | [] -> %a)@]"
           pp t
-          pp_patvar p1
-          pp_patvar p2
+          P.pp_patvar p1
+          P.pp_patvar p2
           pp t1 
           pp t2
     | Switch_none (t, t1, p2, t2) ->
         f "@[<2>(match %a with@ | None -> %a@ | Some (%a) -> %a)@]"
           pp t
           pp t1 
-          pp_patvar p2 pp t2
+          P.pp_patvar p2 pp t2
     | Match (t, cases) ->
         f "@[<2>(match %a with@ @[%a@])@]"
           pp t
@@ -206,10 +209,10 @@ let pp ppf =
              (fun ppf (p, guard, e) -> 
                 match guard with
                 | None -> Format.fprintf ppf "@[<2>%a ->@ %a@]"
-                            pp_pat p
+                            P.pp p
                             pp e
                 | Some g -> Format.fprintf ppf "@[<2>%a when %a ->@ %a@]"
-                            pp_pat p
+                            P.pp p
                             pp g
                             pp e
              )) cases
@@ -245,25 +248,25 @@ let mkeq e1 e2 =
 let mkpair e1 e2 = mke (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
 
 let mkppair p1 p2 = 
-  { loc=dummy_loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
+  { loc=dummy_loc; desc= P.Constr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
 
 
 let mkint n = mke tyInt (Const (M.Constant.Int (Z.of_int n)))
 
 let mkpint n = 
-  { desc= PConstr (CConstant (Michelson.Constant.Int (Z.of_int n)), []);
+  { desc= P.Constr (CConstant (Michelson.Constant.Int (Z.of_int n)), []);
     typ= tyInt;
     loc= dummy_loc;
     attr= () }
 
 let mkpleft ty p = 
-  { desc= PConstr (CLeft, [p]);
+  { desc= P.Constr (CLeft, [p]);
     typ= tyOr (p.typ, ty);
     loc= dummy_loc;
     attr= () }
 
 let mkpright ty p = 
-  { desc= PConstr (CRight, [p]);
+  { desc= P.Constr (CRight, [p]);
     typ= tyOr (ty, p.typ);
     loc= dummy_loc;
     attr= () }
@@ -273,12 +276,12 @@ module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (
 let rec patvars p =
   let open IdTys in
   match p.desc with
-  | PVar id -> singleton (id, p.typ)
-  | PConstr (_, []) -> empty
-  | PConstr (_, p::ps) -> List.fold_left union (patvars p) (List.map patvars ps)
-  | PWild -> empty
-  | PAlias (p, id, _) -> add (id, p.typ) & patvars p
-  | POr (p1, p2) -> union (patvars p1) (patvars p2)
+  | P.Var id -> singleton (id, p.typ)
+  | Constr (_, []) -> empty
+  | Constr (_, p::ps) -> List.fold_left union (patvars p) (List.map patvars ps)
+  | Wild -> empty
+  | Alias (p, id, _) -> add (id, p.typ) & patvars p
+  | Or (p1, p2) -> union (patvars p1) (patvars p2)
     
 let patvars_var p = IdTys.singleton (p.desc, p.typ)
     
@@ -528,35 +531,36 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   match pat_desc with
   | Tpat_array _     -> unsupported ~loc "array pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
+  | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
 
-  | Tpat_var (id, _) -> mk (PVar id)
+  | Tpat_var (id, _) -> mk (P.Var id)
 
   | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
       (* We transform (_ as x) in x if _ and x have the same location.
          The compiler transforms (x:t) into (_ as x : t).
          This avoids transforming a warning 27 into a 26.
        *)
-      mk (PVar id)
+      mk (P.Var id)
 
-  | Tpat_any         -> mk PWild
+  | Tpat_any         -> mk P.Wild
 
-  | Tpat_alias (p, id, {loc}) -> mk (PAlias (patternx p, id, loc))
+  | Tpat_alias (p, id, {loc}) -> mk (P.Alias (patternx p, id, loc))
 
-  | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
+  | Tpat_tuple [p1; p2] -> mk (P.Constr (CPair, [patternx p1; patternx p2]))
 
   | Tpat_tuple ps -> encode_by mkppair & List.map patternx ps
 
-  | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
+  | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk P.Wild
 
   | Tpat_constant (Const_string (s, None))  -> 
-      mk (PConstr (CConstant (C.String s), []))
+      mk (P.Constr (CConstant (C.String s), []))
                                                  
   | Tpat_constant (Const_string (_, Some _))  -> unsupported ~loc "quoted string"
 
   | Tpat_constant _ -> unsupported ~loc "constant pattern of type %s"
                          (Format.sprintf "%a" Printtyp.type_scheme mltyp)
 
-  | Tpat_or (p1, p2, None)   -> mk & POr (patternx p1, patternx p2)
+  | Tpat_or (p1, p2, None)   -> mk & P.Or (patternx p1, patternx p2)
 
   | Tpat_or (_, _, _)        -> unsupported ~loc "or pattern with row"
 
@@ -564,31 +568,31 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
       
       (* XXX should check the module path *)
       begin match cdesc.cstr_name, typ.desc, ps with
-        | "Left", TyOr _, [p] -> mk (PConstr (CLeft, [patternx p]))
-        | "Right", TyOr _, [p] -> mk (PConstr (CRight, [patternx p]))
-        | "Some", TyOption _, [p] -> mk (PConstr (CSome, [patternx p]))
-        | "None", TyOption _, [] -> mk (PConstr (CNone, []))
-        | "::", TyList _, [p1; p2] -> mk (PConstr (CCons, [patternx p1; patternx p2]))
-        | "[]", TyList _, [] -> mk (PConstr (CNil, []))
-        | "true", TyBool, [] -> mk (PConstr (CBool true, []))
-        | "false", TyBool, [] -> mk (PConstr (CBool false, []))
+        | "Left", TyOr _, [p] -> mk (P.Constr (CLeft, [patternx p]))
+        | "Right", TyOr _, [p] -> mk (P.Constr (CRight, [patternx p]))
+        | "Some", TyOption _, [p] -> mk (P.Constr (CSome, [patternx p]))
+        | "None", TyOption _, [] -> mk (P.Constr (CNone, []))
+        | "::", TyList _, [p1; p2] -> mk (P.Constr (CCons, [patternx p1; patternx p2]))
+        | "[]", TyList _, [] -> mk (P.Constr (CNil, []))
+        | "true", TyBool, [] -> mk (P.Constr (CBool true, []))
+        | "false", TyBool, [] -> mk (P.Constr (CBool false, []))
         | "Int", TyInt, [{pat_desc= Tpat_constant (Const_int n)}] ->
-            mk & PConstr (CConstant (C.Int (Z.of_int n)), [])
+            mk & P.Constr (CConstant (C.Int (Z.of_int n)), [])
         | "Int", TyInt, [_] -> errorf ~loc "Int can only take an integer constant"
         | "Nat", TyNat, [{pat_desc= Tpat_constant (Const_int n)}] ->
             if n < 0 then 
               errorf ~loc "Nat can only take a positive integer constant";
-            mk & PConstr (CConstant (C.Nat (Z.of_int n)), [])
+            mk & P.Constr (CConstant (C.Nat (Z.of_int n)), [])
         | "Nat", TyNat, [_] -> errorf ~loc "Nat can only take an integer constant"
         | _, TyMutez, [_] -> errorf ~loc "tz constant cannot be used as a pattern"
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
-            mk & PConstr (CConstant (C.String s), [])
+            mk & P.Constr (CConstant (C.String s), [])
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Key_hash", TyKeyHash, [_] -> unsupported ~loc "Key_hash can only take a string constant"
 
 
         | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
-            mk & PConstr (CConstant (C.String s), [])
+            mk & P.Constr (CConstant (C.String s), [])
         | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Address", TyAddress, [_] -> unsupported ~loc "Address can only take a string constant"
 
@@ -596,7 +600,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
             begin match parse_timestamp s with
               | Error _e -> errorf ~loc "straonge arguments for Timestamp" 
-              | Ok t -> mk & PConstr (CConstant t, [])
+              | Ok t -> mk & P.Constr (CConstant t, [])
             end
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
@@ -604,7 +608,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
             begin match parse_bytes s with
               | Error _e -> errorf ~loc "straonge arguments for Bytes" 
-              | Ok t -> mk & PConstr (CConstant t, [])
+              | Ok t -> mk & P.Constr (CConstant t, [])
             end
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
@@ -666,8 +670,6 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
             end
       end
 
-  | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
-
   | Tpat_record (pfields, _) ->
       (* fields are sorted, but omitted labels are not in it *)
       match repr_desc mltyp with
@@ -688,7 +690,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                       patternx p :: f labels pfields
                   | (_, typ)::labels, _ ->
                       let typ = type_expr ~loc:dummy_loc tyenv typ in
-                      { loc; desc= PWild; typ; attr= () } :: f labels pfields
+                      { loc; desc= P.Wild; typ; attr= () } :: f labels pfields
                   | [], [] -> []
                   | [], _ -> assert false
                 in

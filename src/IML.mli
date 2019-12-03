@@ -16,20 +16,22 @@ type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of b
    
 val string_of_constr : constr -> string
 
-type pat_desc =
-  | PVar of var
-  | PConstr of constr * pat list
-  | PWild
-  | PAlias of pat * Ident.t * Location.t (* location of ident *)
-  | POr of pat * pat
+module Pat : sig
+  type desc =
+    | Var of var
+    | Constr of constr * t list
+    | Wild
+    | Alias of t * Ident.t * Location.t (* location of ident *)
+    | Or of t * t
 
-and pat = (pat_desc, unit) with_loc_and_type
+  and t = (desc, unit) with_loc_and_type
 
-val pp_pat : Format.t -> pat -> unit
+  val pp : Format.t -> t -> unit
       
-type patvar = (Ident.t, unit) with_loc_and_type
-
-val pp_patvar : Format.t -> patvar -> unit
+  type patvar = (Ident.t, unit) with_loc_and_type
+  
+  val pp_patvar : Format.t -> patvar -> unit
+end
 
 type attr = 
   | Comment of string
@@ -51,15 +53,15 @@ and desc =
   | Pair of t * t
   | Assert of t
   | AssertFalse
-  | Fun of Michelson.Type.t * Michelson.Type.t * patvar * t
+  | Fun of Michelson.Type.t * Michelson.Type.t * Pat.patvar * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
-  | Let of patvar * t * t
-  | Switch_or of t * patvar * t * patvar * t
-  | Switch_cons of t * patvar * patvar * t * t
-  | Switch_none of t * t * patvar * t
-  | Match of t * (pat * t option * t) list
+  | Let of Pat.patvar * t * t
+  | Switch_or of t * Pat.patvar * t * Pat.patvar * t
+  | Switch_cons of t * Pat.patvar * Pat.patvar * t * t
+  | Switch_none of t * t * Pat.patvar * t
+  | Match of t * (Pat.t * t option * t) list
 
 val pp : Format.t -> t -> unit
 
@@ -72,7 +74,7 @@ val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michels
 
 module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
 
-val patvars : pat -> IdTys.t
+val patvars : Pat.t -> IdTys.t
                        
 val freevars : t -> IdTys.t
 

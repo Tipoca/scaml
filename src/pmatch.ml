@@ -4,6 +4,8 @@ open Tools
 module Type = Michelson.Type
 module C =Michelson.Constant
 
+module P = IML.Pat
+
 let create_ident =
   let cntr = ref 0 in
   fun n -> incr cntr; Ident.create & n ^ string_of_int !cntr
@@ -23,7 +25,7 @@ let transpose : 'p list list -> 'p list list = fun rows ->
 type id_ty = Ident.t * Type.t
 
 type case = 
-  { pats : pat list
+  { pats : Pat.t list
   ; guard : int option
   ; action : int 
   ; bindings : (IML.var * id_ty) list
@@ -91,58 +93,58 @@ let rec specialize o c (matrix : matrix) : matrix =
       | [] -> assert false
       | pat::pats ->
           let rec f pat = match c, pat.desc with
-            | _, PAlias (pat, i, _loc) -> 
+            | _, P.Alias (pat, i, _loc) -> 
                 let cases = f pat in
                 List.map (fun case -> { case with bindings = (i,o) :: case.bindings }) cases
-            | c, POr (p1, p2) ->
+            | c, P.Or (p1, p2) ->
                 specialize o c [{ case with pats= p1::pats }]
                 @ specialize o c [{ case with pats= p2::pats }]
-            | c, PConstr (c', ps) ->
+            | c, P.Constr (c', ps) ->
                 if c = c' then [{ case with pats= ps @ pats }] else []
 
             (* For wild, we need to build another wild with arg type. 
                XXX Currently we must code for each.  Ugh.
             *)
-            | CPair, PWild -> 
+            | CPair, P.Wild -> 
                 let ty1, ty2 = match pat.typ.desc with
                   | TyPair (ty1, ty2) -> ty1, ty2
                   | _ -> assert false
                 in
-                [{ case with pats= mkp ty1 PWild :: mkp ty2 PWild :: pats }]
+                [{ case with pats= mkp ty1 P.Wild :: mkp ty2 P.Wild :: pats }]
 
-            | CLeft, PWild -> 
+            | CLeft, P.Wild -> 
                 let typl = match pat.typ.desc with
                   | TyOr (typl, _typr) -> typl
                   | _ -> assert false
                 in
-                [{ case with pats= mkp typl PWild :: pats }]
+                [{ case with pats= mkp typl P.Wild :: pats }]
 
-            | CRight, PWild -> 
+            | CRight, P.Wild -> 
                 let typr = match pat.typ.desc with
                   | TyOr (_typl, typr) -> typr
                   | _ -> assert false
                 in
-                [{ case with pats= mkp typr PWild :: pats }]
+                [{ case with pats= mkp typr P.Wild :: pats }]
 
-            | CSome, PWild -> 
+            | CSome, P.Wild -> 
                 let typ = match pat.typ.desc with
                   | TyOption typ -> typ
                   | _ -> assert false
                 in
-                [{ case with pats= mkp typ PWild :: pats }]
+                [{ case with pats= mkp typ P.Wild :: pats }]
 
 
-            | CCons, PWild -> 
+            | CCons, P.Wild -> 
                 let typ = match pat.typ.desc with
                   | TyList typ -> typ
                   | _ -> assert false
                 in
-                [{ case with pats= mkp typ PWild :: mkp pat.typ PWild :: pats }]
+                [{ case with pats= mkp typ P.Wild :: mkp pat.typ P.Wild :: pats }]
 
-            | (CNone | CNil | CUnit | CBool _ | CConstant _), PWild -> 
+            | (CNone | CNil | CUnit | CBool _ | CConstant _), P.Wild -> 
                 [{ case with pats }]
 
-            | (_ , PVar v) -> [{ case with pats; bindings= (v, o) :: bindings }]
+            | (_ , P.Var v) -> [{ case with pats; bindings= (v, o) :: bindings }]
           in
           let cases = f pat in
           cases @ st
@@ -154,11 +156,11 @@ let pp_matrix ppf matrix =
   List.iter (function
       | { pats; guard= None; action= i } ->
           eprintf "| %a -> %d@."
-            (list ", " pp_pat) pats
+            (list ", " P.pp) pats
             i
       | { pats; guard= Some g; action= i } ->
           eprintf "| %a when %d -> %d@."
-            (list ", " pp_pat) pats
+            (list ", " P.pp) pats
             g
             i
     ) matrix
@@ -170,11 +172,11 @@ let pp_osmatrix ppf (os, matrix) =
   List.iter (function
       | { pats; guard= None; action= i } ->
           eprintf "| %a -> %d@."
-            (list ", " pp_pat) pats
+            (list ", " P.pp) pats
             i
       | { pats; guard= Some g; action= i } ->
           eprintf "| %a when %d -> %d@."
-            (list ", " pp_pat) pats
+            (list ", " P.pp) pats
             g
             i
     ) matrix
@@ -191,11 +193,11 @@ let rec default o (matrix : matrix) : matrix =
       | [] -> assert false
       | pat::pats ->
           let rec f pat = match pat.desc with
-            | PConstr (_, _) -> st
-            | PWild -> { case with pats } :: st
-            | PVar v -> { case with pats ; bindings= (v, o) :: case.bindings } :: st
-            | PAlias (pat, _id, _loc) -> f pat
-            | POr (p1, p2) ->
+            | P.Constr (_, _) -> st
+            | P.Wild -> { case with pats } :: st
+            | P.Var v -> { case with pats ; bindings= (v, o) :: case.bindings } :: st
+            | P.Alias (pat, _id, _loc) -> f pat
+            | P.Or (p1, p2) ->
                 default o [{ case with pats= p1::pats }]
                 @ default o [{ case with pats= p2::pats}]
                 @ st
@@ -219,18 +221,18 @@ let rec cc os matrix =
   | { pats=ps; guard= g; action= a; bindings }::_ ->
       if List.for_all (fun p -> 
           let rec f p = match p.desc with 
-            | PAlias (p, _, _) -> f p
-            | PWild | PVar _ -> true 
-            | PConstr _ -> false
-            | POr _ -> false
+            | P.Alias (p, _, _) -> f p
+            | P.Wild | P.Var _ -> true 
+            | P.Constr _ -> false
+            | P.Or _ -> false
           in
           f p ) ps 
       then 
         let bindings = List.fold_right2 (fun v p st -> 
             match p.desc with
-            | PWild -> st
-            | PVar v' -> (v',v)::st
-            | PAlias _ | PConstr _ | POr _ -> assert false) os ps bindings
+            | P.Wild -> st
+            | P.Var v' -> (v',v)::st
+            | P.Alias _ | P.Constr _ | P.Or _ -> assert false) os ps bindings
         in
         match g with
         | None -> Leaf (bindings, a)
@@ -246,10 +248,10 @@ let rec cc os matrix =
             List.find_all (fun (_i,c) ->
                 List.exists (fun p -> 
                     let rec f p = match p.desc with
-                      | PAlias (p, _, _) -> f p
-                      | PWild | PVar _ -> false
-                      | PConstr _ -> true
-                      | POr (p1, p2) -> f p1 || f p2
+                      | P.Alias (p, _, _) -> f p
+                      | P.Wild | P.Var _ -> false
+                      | P.Constr _ -> true
+                      | P.Or (p1, p2) -> f p1 || f p2
                     in
                     f p
                   ) c) icolumns
@@ -264,10 +266,10 @@ let rec cc os matrix =
             List.sort_uniq compare
             & List.fold_left (fun st p -> 
                 let rec f p = match p.desc with
-                  | PAlias (p, _, _) -> f p
-                  | PConstr (c, _) -> [c]
-                  | PWild | PVar _ -> []
-                  | POr (p1, p2) -> f p1 @ f p2
+                  | P.Alias (p, _, _) -> f p
+                  | P.Constr (c, _) -> [c]
+                  | P.Wild | P.Var _ -> []
+                  | P.Or (p1, p2) -> f p1 @ f p2
                 in
                 f p @ st
               ) [] column
@@ -440,7 +442,7 @@ let build aty acts guards t =
   in
   f t
         
-let compile_match e (cases : (pat * IML.t option * IML.t) list) =
+let compile_match e (cases : (P.t * IML.t option * IML.t) list) =
 
   (* actions as functions *)
   let acts = 
