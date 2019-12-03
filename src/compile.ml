@@ -82,7 +82,7 @@ and compile_desc env t =
       os @ [ RIGHT ty ]
   | Unit -> [ UNIT ]
 
-  | Var (id, _) -> compile_var ~loc env id
+  | Var id -> compile_var ~loc env id
 
   | Pair (t1, t2) ->
       let os2 = compile env t2 in

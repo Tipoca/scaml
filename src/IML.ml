@@ -24,8 +24,6 @@ type ('desc, 'attr) with_loc_and_type =
   ; attr : 'attr
   }
 
-type var = Ident.t
-
 type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of bool | CPair | CConstant of Michelson.Constant.t
 
 let string_of_constr = function
@@ -45,7 +43,7 @@ module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (
 
 module Pat = struct
   type desc =
-    | Var of var
+    | Var of Ident.t
     | Constr of constr * t list
     | Wild
     | Alias of t * Ident.t * Location.t (* location of ident *)
@@ -98,7 +96,7 @@ and desc =
   | Left of M.Type.t * t
   | Right of M.Type.t * t
   | Unit
-  | Var of Ident.t * M.Type.t
+  | Var of Ident.t
   | Pair of t * t
   | Assert of t
   | AssertFalse
@@ -181,7 +179,7 @@ let pp ppf =
     | Left (ty, t) -> f "Left (%a) (%a)" M.Type.pp ty pp t
     | Right (ty, t) -> f "Right (%a) (%a)" M.Type.pp ty pp t
     | Unit -> p "()"
-    | Var (id, _) -> f "%s" (Ident.name id)
+    | Var id -> f "%s" (Ident.name id)
     | Pair (t1, t2) -> f "(%a, %a)" pp t1 pp t2
     | Assert t -> f "assert (%a)" pp t
     | AssertFalse -> p "assert false"
@@ -280,7 +278,7 @@ let rec freevars t =
   | Cons (t1,t2) | Pair (t1,t2) -> union (freevars t1) (freevars t2)
   | Left (_,t) | Right (_,t) | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
-  | Var (id,ty) -> singleton (id,ty)
+  | Var id -> singleton (id, t.typ)
   | IfThenElse (t1,t2,t3) -> union (freevars t1) (union (freevars t2) (freevars t3))
   | App (t,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty (t::ts)
@@ -703,7 +701,7 @@ module Pmatch = struct
     { pats : P.t list
     ; guard : int option
     ; action : int 
-    ; bindings : (var * id_ty) list
+    ; bindings : (Ident.t * id_ty) list
     }
   
   type matrix = case list
@@ -1032,7 +1030,7 @@ module Pmatch = struct
               cc o' matrix' (* xxx inefficient *)
             end
   
-  let mkv (id, typ) = mke typ & Var (id, typ)
+  let mkv (id, typ) = mke typ & Var id
   
   let build aty acts guards t = 
     let rec f = function
@@ -1040,13 +1038,13 @@ module Pmatch = struct
       | Leaf (binders, i) -> 
           List.fold_right (fun (v,(v',ty)) st ->
               mke aty (Let (mkp ty v,
-                            mke ty (Var (v', ty)),
+                            mkv (v',ty),
                             st))) binders
             (List.nth acts i)
       | Guard (binders, guard, case, otherwise) ->
           List.fold_right (fun (v,(v',ty)) st ->
               mke aty (Let (mkp ty v,
-                            mke ty (Var (v', ty)),
+                            mkv (v',ty),
                             st))) binders
           & mke aty & IfThenElse (List.nth guards guard, 
                                   List.nth acts case, 
@@ -1134,7 +1132,7 @@ module Pmatch = struct
               in
               (v, 
                f,
-               mke action.typ (App (mke f.typ (Var (v, f.typ)),
+               mke action.typ (App (mkv (v, f.typ),
                                     [mke Type.tyUnit Unit]))) 
           | _ -> 
               let f = List.fold_right (fun (v,ty) st ->
@@ -1142,8 +1140,7 @@ module Pmatch = struct
                     (Fun (ty, st.typ, mkp ty v, st))) vars action
               in
               let e = 
-                mke action.typ (App (mke f.typ (Var (v, f.typ)),
-                                     List.map (fun (v,ty) -> mke ty (Var (v,ty))) vars)) 
+                mke action.typ (App (mkv (v, f.typ), List.map mkv vars)) 
               in
               (v, f, e)) cases
     in
@@ -1451,7 +1448,7 @@ let structure str final =
     let typ = type_expr ~loc tyenv mltyp in
     let mk desc = { loc; typ; desc; attr= [] } in
     match exp_desc with
-    | Texp_ident (Path.Pident id, {loc=_}, _vd) -> mk & Var (id, typ)
+    | Texp_ident (Path.Pident id, {loc=_}, _vd) -> mk & Var id
     | Texp_ident (p, {loc}, _vd) ->
         begin match Path.is_scaml p with
           | Some n -> mk & primitive ~loc typ n []
@@ -1575,7 +1572,7 @@ let structure str final =
           | _ -> assert false
         in
         let var = { desc= i; typ= targ; loc= dummy_loc; attr= () } in
-        let evar = { desc= Var (i, targ); typ= targ; loc= dummy_loc; attr= [] } in
+        let evar = { desc= Var i; typ= targ; loc= dummy_loc; attr= [] } in
         let t = compile_match evar cases in
         mk & Fun (targ, tret, var, t)
   
@@ -1923,7 +1920,7 @@ let compile_global_entry ty_storage ty_return node =
 
   let id_storage = Ident.create "storage" in
   let mk desc typ = { desc; typ; loc= dummy_loc; attr= [] } in
-  let mk_var id typ =  mk (Var (id, typ)) typ in
+  let mk_var id typ =  mk (Var id) typ in
   let mk_pat desc typ = { desc; typ; loc= dummy_loc; attr= () } in
 
   let pat_storage = mk_pat id_storage ty_storage in
@@ -1981,7 +1978,7 @@ let count_variables t =
     | Some n -> VMap.add v (n+1) st
   in
   let rec f t st = match t.desc with
-    | Var (id, _) -> incr id st
+    | Var id -> incr id st
 
     | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> st
 
@@ -2005,7 +2002,7 @@ let subst id t1 t2 =
   let rec f t = 
     let mk desc = { t with desc } in
     match t.desc with
-    | Var (id', _) when id = id' -> 
+    | Var id' when id = id' -> 
         add_attrs t.attr t1 (* t1 never contains id *)
     | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
 

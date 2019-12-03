@@ -9,8 +9,6 @@ type ('desc, 'attr) with_loc_and_type =
 
 val dummy_loc : Location.t
                  
-type var = Ident.t
-
 type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of bool | CPair | CConstant of Michelson.Constant.t
 (* Glitch: Unit, true, false, None, [] are not CConstant *) 
    
@@ -20,7 +18,7 @@ module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
 
 module Pat : sig
   type desc =
-    | Var of var
+    | Var of Ident.t
     | Constr of constr * t list
     | Wild
     | Alias of t * Ident.t * Location.t (* location of ident *)
@@ -53,7 +51,7 @@ and desc =
   | Left of Michelson.Type.t * t
   | Right of Michelson.Type.t * t
   | Unit
-  | Var of Tools.Ident.t * Michelson.Type.t
+  | Var of Ident.t
   | Pair of t * t
   | Assert of t
   | AssertFalse
