@@ -8,9 +8,11 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
 
   IML.save (outputprefix ^ ".iml0") t;
 
+(*
   let t = Pmatch.compile t in
 
   IML.save (outputprefix ^ ".iml1") t;
+*)
 
   let t = IML.optimize t in
 

@@ -65,7 +65,9 @@ and desc =
   | Switch_or of t * Pat.var * t * Pat.var * t
   | Switch_cons of t * Pat.var * Pat.var * t * t
   | Switch_none of t * t * Pat.var * t
-  | Match of t * (Pat.t * t option * t) list
+ (*
+ | Match of t * (Pat.t * t option * t) list
+*)
 
 val pp : Format.t -> t -> unit
 

@@ -199,8 +199,6 @@ and compile_desc env t =
       List.fold_left (fun ofun arg ->
           let oarg = compile env arg in
           ofun @ oarg @ [ EXEC ]) ofun args
-  | Match _ -> assert false (* must be compiled down to switches *)
-
 
 let split_entry_point t =
   let rec f st t = match t.IML.desc with
