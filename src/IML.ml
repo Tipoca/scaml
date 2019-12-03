@@ -242,6 +242,10 @@ let mkeq e1 e2 =
 
 let mkpair e1 e2 = mke (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
 
+let mkppair p1 p2 = 
+  { loc=dummy_loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
+
+
 let mkint n = mke tyInt (Const (M.Constant.Int (Z.of_int n)))
 
 let mkpint n = 
@@ -338,11 +342,10 @@ let rec type_expr tenv ty =
       type_expr tenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
   | Ttuple tys -> 
       Result.mapM (type_expr tenv) tys >>| fun tys -> 
-      let rec f = function
-        | Binplace.Leaf ty -> ty
-        | Branch (t1,t2) -> tyPair (f t1, f t2)
-      in 
-      f & Binplace.place tys
+      Binplace.fold 
+        ~leaf:(fun ty -> ty) 
+        ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
+      & Binplace.place tys
   | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
   | Tconstr (p, [t], _) when p = Predef.path_list -> 
       type_expr tenv t >>= fun t -> Ok (tyList t)
@@ -392,12 +395,10 @@ let rec type_expr tenv ty =
                     ) labels
                 in
                 Result.mapM (type_expr tenv) tys >>| fun tys ->
-                let tree = Binplace.place tys in
-                let rec f = function
-                  | Binplace.Leaf x -> x
-                  | Branch (t1,t2) -> tyPair (f t1, f t2)
-                in
-                f tree
+                Binplace.fold 
+                  ~leaf:(fun ty -> ty) 
+                  ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2)) 
+                & Binplace.place tys
 
             | constrs, [] ->
                 let consts, non_consts =
@@ -417,20 +418,15 @@ let rec type_expr tenv ty =
                       in
                       Result.mapM (Result.mapM (type_expr tenv)) tys_list >>| fun tys_list ->
                       let ty_list = List.map (fun tys ->
-                          let tree = Binplace.place tys in
-                          let rec f = function
-                            | Binplace.Leaf x -> x
-                            | Branch (t1, t2) -> tyPair (f t1, f t2)
-                          in
-                          f tree) tys_list
+                          Binplace.fold 
+                            ~leaf:(fun ty -> ty) 
+                            ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
+                          & Binplace.place tys) tys_list
                       in
-
-                      let tree = Binplace.place ty_list in
-                      let rec f = function
-                        | Binplace.Leaf x -> x
-                        | Branch (t1, t2) -> tyOr (f t1, f t2)
-                      in
-                      Some (f tree)
+                      Some (Binplace.fold
+                              ~leaf:(fun ty -> ty)
+                              ~branch:(fun ty1 ty2 -> tyOr (ty1, ty2))
+                            & Binplace.place ty_list)
                 in
                 non_consts >>| fun non_consts ->
                 begin match consts, non_consts with
@@ -555,16 +551,10 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
 
   | Tpat_tuple ps -> 
-      let ps = List.map patternx ps in
-      let tree = Binplace.place ps in
-      let rec f = function
-        | Binplace.Leaf x -> x
-        | Branch (p1, p2) ->
-            let p1 = f p1 in
-            let p2 = f p2 in
-            { loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
-      in
-      f tree
+      Binplace.fold
+        ~leaf:(fun p -> p)
+        ~branch:mkppair
+      & Binplace.place & List.map patternx ps
 
   | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
 
@@ -655,20 +645,15 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
                               in
                               let tys_list = List.map (List.map (type_expr ~loc pat_env)) tys_list in
                               let ty_list = List.map (fun tys ->
-                                  let tree = Binplace.place tys in
-                                  let rec f = function
-                                    | Binplace.Leaf x -> x
-                                    | Branch (t1, t2) -> tyPair (f t1, f t2)
-                                  in
-                                  f tree) tys_list
+                                  Binplace.fold
+                                    ~leaf:(fun ty -> ty)
+                                    ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
+                                  & Binplace.place tys) tys_list
                               in
-
-                              let tree = Binplace.place ty_list in
-                              let rec f = function
-                                | Binplace.Leaf x -> x
-                                | Branch (t1, t2) -> tyOr (f t1, f t2)
-                              in
-                              Some (f tree)
+                              Some (Binplace.fold
+                                      ~leaf:(fun ty -> ty)
+                                      ~branch:(fun ty1 ty2 -> tyOr (ty1, ty2))
+                                      & Binplace.place ty_list)
                         in
                         let rec find_constr i = function
                           | [] -> assert false
@@ -685,16 +670,11 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
                             let i = find_constr 0 non_consts in
                             let sides = Binplace.path i (List.length non_consts) in
                             let arg = 
-                              let args = List.map patternx ps in
-                              let tree = Binplace.place args in
-                              let rec f = function
-                                | Binplace.Leaf x -> x
-                                | Branch (t1, t2) -> 
-                                    let p1 = f t1 in
-                                    let p2 = f t2 in
-                                    { loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
-                              in
-                              f tree
+                              Binplace.fold
+                                ~leaf:(fun p -> p)
+                                ~branch:mkppair
+                              & Binplace.place
+                              & List.map patternx ps
                             in
                             let rec f ty sides = match ty.M.Type.desc, sides with
                               | _, [] -> arg
@@ -736,18 +716,11 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
                     | [], [] -> []
                     | [], _ -> assert false
                   in
-                  let pats = f labels pfields in
-                  let tree = Binplace.place pats in
-                  let rec f = function
-                    | Binplace.Leaf x -> x
-                    | Branch (p1, p2) -> 
-                        let p1 = f p1 in
-                        let p2 = f p2 in
-                        { loc; desc= PConstr (CPair, [p1; p2]); 
-                          typ= tyPair (p1.typ, p2.typ); attr= () }
-                  in
-                  f tree
-                  
+                  Binplace.fold
+                    ~leaf:(fun p -> p)
+                    ~branch:mkppair
+                  & Binplace.place 
+                  & f labels pfields
 
               | _, _ -> assert false
             end
@@ -987,20 +960,15 @@ let structure env str final =
                     in
                     let tys_list = List.map (List.map (type_expr ~loc exp_env)) tys_list in
                     let ty_list = List.map (fun tys ->
-                        let tree = Binplace.place tys in
-                        let rec f = function
-                          | Binplace.Leaf x -> x
-                          | Branch (t1, t2) -> tyPair (f t1, f t2)
-                        in
-                        f tree) tys_list
+                        Binplace.fold 
+                          ~leaf:(fun ty -> ty)
+                          ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
+                          & Binplace.place tys) tys_list
                     in
-
-                    let tree = Binplace.place ty_list in
-                    let rec f = function
-                      | Binplace.Leaf x -> x
-                      | Branch (t1, t2) -> tyOr (f t1, f t2)
-                    in
-                    Some (f tree)
+                    Some (Binplace.fold
+                            ~leaf:(fun ty -> ty)
+                            ~branch:(fun ty1 ty2 -> tyOr (ty1, ty2))
+                          & Binplace.place ty_list)
               in
               let rec find_constr i = function
                 | [] -> assert false
@@ -1017,13 +985,11 @@ let structure env str final =
                   let i = find_constr 0 non_consts in
                   let sides = Binplace.path i (List.length non_consts) in
                   let arg = 
-                    let args = List.map (expression env) args in
-                    let tree = Binplace.place args in
-                    let rec f = function
-                      | Binplace.Leaf x -> x
-                      | Branch (t1, t2) -> mkpair (f t1) (f t2)
-                    in
-                    f tree
+                    Binplace.fold 
+                      ~leaf:(fun e -> e)
+                      ~branch:mkpair
+                    & Binplace.place 
+                    & List.map (expression env) args 
                   in
                   let rec f ty sides = match ty.M.Type.desc, sides with
                     | _, [] -> arg
@@ -1072,14 +1038,12 @@ let structure env str final =
         (* tyPair (e1.typ, e2.typ) = typ *) 
         make_constant & mk & Pair (e1, e2)
     | Texp_tuple es ->
-        let es = List.map (expression env) es in
-        let tree = Binplace.place es in
-        let rec f = function
-          | Binplace.Leaf x -> x
-          | Branch (t1, t2) ->
-              make_constant & mk & Pair (f t1, f t2)
-        in
-        f tree
+        Binplace.fold
+          ~leaf:(fun c -> c)
+          ~branch:(fun c1 c2 ->
+              make_constant & mk & Pair (c1, c2))
+          & Binplace.place 
+          & List.map (expression env) es
           
     | Texp_construct ({loc}, c, args) -> 
         construct ~loc env exp_env exp_type c args
@@ -1190,12 +1154,11 @@ let structure env str final =
               | Overridden (_, e) -> expression env e
               | Kept _ -> assert false) & Array.to_list fields
         in
-        let tree = Binplace.place es in
-        let rec f = function
-          | Binplace.Leaf x -> x
-          | Branch (t1, t2) -> make_constant & mk & Pair (f t1, f t2)
-        in
-        f tree
+        Binplace.fold
+          ~leaf:(fun c -> c)
+          ~branch:(fun c1 c2 ->
+              make_constant & mk & Pair (c1, c2))
+        & Binplace.place es
 
     | Texp_record { fields; extended_expression= Some e; } ->
         (* optimal code, I hope *)
