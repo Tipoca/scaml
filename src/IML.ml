@@ -8,13 +8,15 @@ module M = Michelson
 open M.Type
 module C = M.Constant
 
+let repr_desc ty = (Ctype.repr ty).desc
+
 let dummy_loc = 
   { Location.loc_start= Lexing.dummy_pos; loc_end= Lexing.dummy_pos; loc_ghost= true }   
 
 type ('desc, 'attr) with_loc_and_type =
   { desc : 'desc
-  ; loc : Location.t
-  ; typ : M.Type.t
+  ; loc  : Location.t
+  ; typ  : M.Type.t
   ; attr : 'attr
   }
 
@@ -276,7 +278,7 @@ let rec patvars p =
   | PConstr (_, p::ps) -> List.fold_left union (patvars p) (List.map patvars ps)
   | PWild -> empty
   | PAlias (p, id, _) -> add (id, p.typ) & patvars p
- | POr (p1, p2) -> union (patvars p1) (patvars p2)
+  | POr (p1, p2) -> union (patvars p1) (patvars p2)
     
 let patvars_var p = IdTys.singleton (p.desc, p.typ)
     
@@ -328,29 +330,32 @@ type type_expr_error =
   | Unsupported_type of Types.type_expr
   | Unsupported_data_type of Path.t
 
-let rec type_expr tenv ty = 
+let encode_by branch xs =
+  Binplace.fold 
+      ~leaf:(fun x -> x) 
+      ~branch
+    & Binplace.place xs
+
+let rec type_expr tyenv ty = 
   let open Result.Infix in
-  let ty = Ctype.expand_head tenv ty in
+  let ty = Ctype.expand_head tyenv ty in
   match ty.desc with
   | Tvar _ -> Error (Type_variable ty)
   | Tarrow (Nolabel, f, t, _) -> 
-      type_expr tenv f >>= fun f ->
-      type_expr tenv t >>= fun t -> 
+      type_expr tyenv f >>= fun f ->
+      type_expr tyenv t >>= fun t -> 
       Ok (tyLambda (f, t))
   | Ttuple [t1; t2] -> 
-      type_expr tenv t1 >>= fun t1 ->
-      type_expr tenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
+      type_expr tyenv t1 >>= fun t1 ->
+      type_expr tyenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
   | Ttuple tys -> 
-      Result.mapM (type_expr tenv) tys >>| fun tys -> 
-      Binplace.fold 
-        ~leaf:(fun ty -> ty) 
-        ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
-      & Binplace.place tys
+      Result.mapM (type_expr tyenv) tys 
+      >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
   | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
   | Tconstr (p, [t], _) when p = Predef.path_list -> 
-      type_expr tenv t >>= fun t -> Ok (tyList t)
+      type_expr tyenv t >>= fun t -> Ok (tyList t)
   | Tconstr (p, [t], _) when p = Predef.path_option -> 
-      type_expr tenv t >>= fun t -> Ok (tyOption t)
+      type_expr tyenv t >>= fun t -> Ok (tyOption t)
   | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
   | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
   | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes)
@@ -358,7 +363,7 @@ let rec type_expr tenv ty =
       let rec f res = function
         | [] -> Ok (List.rev res)
         | ty::tys ->
-            type_expr tenv ty >>= fun ty -> 
+            type_expr tyenv ty >>= fun ty -> 
             f (ty::res) tys
       in
       f [] tys >>= fun tys ->
@@ -381,24 +386,19 @@ let rec type_expr tenv ty =
         | Some "Chain_id.t"  , []         -> Ok (tyChainID)
         | Some _, _ -> Error (Unsupported_data_type p)
         | None, _ -> 
-            match Env.find_type_descrs p tenv with
+            match Env.find_type_descrs p tyenv with
             | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
             | [], labels ->
-                let tys = 
-                  List.map (fun label ->
-                      let _, ty_arg, ty_res = 
-                        Ctype.instance_label false (* XXX I do not know what it is *)
-                          label
-                      in
-                      Ctype.unify tenv ty ty_res; (* XXX should succeed *)
-                      ty_arg
-                    ) labels
+                let tys = List.map (fun label ->
+                    let _, ty_arg, ty_res = 
+                      Ctype.instance_label false (* XXX I do not know what it is *)
+                        label
+                    in
+                    Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
+                    ty_arg) labels
                 in
-                Result.mapM (type_expr tenv) tys >>| fun tys ->
-                Binplace.fold 
-                  ~leaf:(fun ty -> ty) 
-                  ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2)) 
-                & Binplace.place tys
+                Result.mapM (type_expr tyenv) tys 
+                >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
 
             | constrs, [] ->
                 let consts, non_consts =
@@ -412,21 +412,13 @@ let rec type_expr tenv ty =
                       let tys_list = 
                         List.map (fun constr ->
                             let ty_args, ty_res = Ctype.instance_constructor constr in
-                            Ctype.unify tenv ty ty_res; (* XXX should succeed *)
+                            Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
                             ty_args
                           ) non_consts
                       in
-                      Result.mapM (Result.mapM (type_expr tenv)) tys_list >>| fun tys_list ->
-                      let ty_list = List.map (fun tys ->
-                          Binplace.fold 
-                            ~leaf:(fun ty -> ty) 
-                            ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
-                          & Binplace.place tys) tys_list
-                      in
-                      Some (Binplace.fold
-                              ~leaf:(fun ty -> ty)
-                              ~branch:(fun ty1 ty2 -> tyOr (ty1, ty2))
-                            & Binplace.place ty_list)
+                      Result.mapM (Result.mapM (type_expr tyenv)) tys_list >>| fun tys_list ->
+                      let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
+                      Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
                 in
                 non_consts >>| fun non_consts ->
                 begin match consts, non_consts with
@@ -440,12 +432,11 @@ let rec type_expr tenv ty =
             | exception _ -> Error (Unsupported_data_type p)
       end
 
-  | Tpoly (ty, []) -> type_expr tenv ty
+  | Tpoly (ty, []) -> type_expr tyenv ty
                         
   | _ -> Error (Unsupported_type ty)
 
-let type_expr ~loc ?(this="This") tenv ty = 
-  match type_expr tenv ty with
+let type_expr ~loc ?(this="This") tyenv ty = match type_expr tyenv ty with
   | Ok x -> x
   | Error (Type_variable ty') -> 
       errorf ~loc "%s has type %a, which has too generic type %a for SCaml."
@@ -502,8 +493,8 @@ let constructions_by_string =
 
 (* This is old function which must be removed once
    [let] and [function] use [patternx] *)
-let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } = 
-  let typ = type_expr ~loc pat_env pat_type in
+let pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
+  let typ = type_expr ~loc tyenv mltyp in
   let mk loc id typ = { loc; desc=id; typ; attr= () } in
   let mk_dummy loc typ = { loc; desc=Ident.dummy; typ; attr= () } in
   match pat_desc with
@@ -531,10 +522,13 @@ let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_or _        -> unsupported ~loc "or pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
 
-let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } = 
-  let typ = type_expr ~loc pat_env pat_type in
+let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
+  let typ = type_expr ~loc tyenv mltyp in
   let mk desc = { loc; desc; typ; attr= () } in
   match pat_desc with
+  | Tpat_array _     -> unsupported ~loc "array pattern"
+  | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
+
   | Tpat_var (id, _) -> mk (PVar id)
 
   | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
@@ -550,11 +544,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
 
   | Tpat_tuple [p1; p2] -> mk (PConstr (CPair, [patternx p1; patternx p2]))
 
-  | Tpat_tuple ps -> 
-      Binplace.fold
-        ~leaf:(fun p -> p)
-        ~branch:mkppair
-      & Binplace.place & List.map patternx ps
+  | Tpat_tuple ps -> encode_by mkppair & List.map patternx ps
 
   | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk PWild
 
@@ -564,7 +554,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_constant (Const_string (_, Some _))  -> unsupported ~loc "quoted string"
 
   | Tpat_constant _ -> unsupported ~loc "constant pattern of type %s"
-                         (Format.sprintf "%a" Printtyp.type_scheme pat_type)
+                         (Format.sprintf "%a" Printtyp.type_scheme mltyp)
 
   | Tpat_or (p1, p2, None)   -> mk & POr (patternx p1, patternx p2)
 
@@ -621,9 +611,9 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
                                      
         | _, _, _ ->
             
-            begin match (Ctype.repr pat_type).desc with
+            begin match repr_desc mltyp with
               | Tconstr (p, _, _) ->
-                  begin match Env.find_type_descrs p pat_env with
+                  begin match Env.find_type_descrs p tyenv with
                     | [], [] -> 
                         errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
                     | [], _::_ -> assert false (* record cannot come here *)
@@ -639,21 +629,13 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
                               let tys_list = 
                                 List.map (fun constr ->
                                     let ty_args, ty_res = Ctype.instance_constructor constr in
-                                    Ctype.unify pat_env pat_type ty_res; (* XXX should succeed *)
+                                    Ctype.unify tyenv mltyp ty_res; (* XXX should succeed *)
                                     ty_args
                                   ) non_consts
                               in
-                              let tys_list = List.map (List.map (type_expr ~loc pat_env)) tys_list in
-                              let ty_list = List.map (fun tys ->
-                                  Binplace.fold
-                                    ~leaf:(fun ty -> ty)
-                                    ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
-                                  & Binplace.place tys) tys_list
-                              in
-                              Some (Binplace.fold
-                                      ~leaf:(fun ty -> ty)
-                                      ~branch:(fun ty1 ty2 -> tyOr (ty1, ty2))
-                                      & Binplace.place ty_list)
+                              let tys_list = List.map (List.map (type_expr ~loc tyenv)) tys_list in
+                              let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
+                              Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
                         in
                         let rec find_constr i = function
                           | [] -> assert false
@@ -669,13 +651,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
                         | _, _, Some ty ->
                             let i = find_constr 0 non_consts in
                             let sides = Binplace.path i (List.length non_consts) in
-                            let arg = 
-                              Binplace.fold
-                                ~leaf:(fun p -> p)
-                                ~branch:mkppair
-                              & Binplace.place
-                              & List.map patternx ps
-                            in
+                            let arg = encode_by mkppair & List.map patternx ps in
                             let rec f ty sides = match ty.M.Type.desc, sides with
                               | _, [] -> arg
                               | TyOr (ty1, ty2), Binplace.Left::sides -> mkpleft ty2 (f ty1 sides)
@@ -694,41 +670,33 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
 
   | Tpat_record (pfields, _) ->
       (* fields are sorted, but omitted labels are not in it *)
-      begin match (Ctype.repr pat_type).desc with
-        | Tconstr (p, _, _) ->
-            begin match Env.find_type_descrs p pat_env with
-              | [], labels ->
-                  let labels = 
-                    List.map (fun label ->
-                        let _, arg, res = 
-                          Ctype.instance_label false (* XXX ? *) label 
-                        in
-                        Ctype.unify pat_env res pat_type;
-                        label.lbl_name, arg
-                      ) labels
-                  in
-                  let rec f labels pfields = match labels, pfields with
-                    | (n, _)::labels, (_, plabel, p)::pfields when n = plabel.Types.lbl_name ->
-                        patternx p :: f labels pfields
-                    | (_, typ)::labels, _ ->
-                        let typ = type_expr ~loc:dummy_loc pat_env typ in
-                        { loc; desc= PWild; typ; attr= () } :: f labels pfields
-                    | [], [] -> []
-                    | [], _ -> assert false
-                  in
-                  Binplace.fold
-                    ~leaf:(fun p -> p)
-                    ~branch:mkppair
-                  & Binplace.place 
-                  & f labels pfields
+      match repr_desc mltyp with
+      | Tconstr (p, _, _) ->
+          begin match Env.find_type_descrs p tyenv with
+            | [], labels ->
+                let labels = 
+                  List.map (fun label ->
+                      let _, arg, res = 
+                        Ctype.instance_label false (* XXX ? *) label 
+                      in
+                      Ctype.unify tyenv res mltyp;
+                      label.lbl_name, arg
+                    ) labels
+                in
+                let rec f labels pfields = match labels, pfields with
+                  | (n, _)::labels, (_, plabel, p)::pfields when n = plabel.Types.lbl_name ->
+                      patternx p :: f labels pfields
+                  | (_, typ)::labels, _ ->
+                      let typ = type_expr ~loc:dummy_loc tyenv typ in
+                      { loc; desc= PWild; typ; attr= () } :: f labels pfields
+                  | [], [] -> []
+                  | [], _ -> assert false
+                in
+                encode_by mkppair & f labels pfields
 
-              | _, _ -> assert false
-            end
-        | _ -> assert false
-      end
-
-  | Tpat_array _     -> unsupported ~loc "array pattern"
-  | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
+            | _, _ -> assert false
+          end
+      | _ -> assert false
 
 let attr_has_entry_point = 
   List.find_map_opt (function
@@ -737,9 +705,9 @@ let attr_has_entry_point =
   
 let structure env str final =
 
-  let rec construct ~loc env exp_env exp_type ({Types.cstr_name} as cdesc) args =
+  let rec construct ~loc env tyenv exp_type ({Types.cstr_name} as cdesc) args =
     let make typ desc = { loc; typ; desc; attr= [] } in
-    match (Ctype.expand_head exp_env exp_type).Types.desc with
+    match (Ctype.expand_head tyenv exp_type).Types.desc with
     (* bool *)
     | Tconstr (p, [], _) when p = Predef.path_bool ->
         make tyBool (match cstr_name with
@@ -751,7 +719,7 @@ let structure env str final =
     | Tconstr (p, [ty], _) when p = Predef.path_list ->
         begin match cstr_name with
           | "[]" -> 
-              let ty = type_expr ~loc exp_env ty in
+              let ty = type_expr ~loc tyenv ty in
               make (tyList ty) (Nil ty)
           | "::" ->
               begin match args with
@@ -769,7 +737,7 @@ let structure env str final =
     | Tconstr (p, [ty], _) when p = Predef.path_option ->
         begin match cstr_name with
           | "None" -> 
-              let ty = type_expr ~loc exp_env ty in
+              let ty = type_expr ~loc tyenv ty in
               make (tyOption ty) (IML_None ty)
           | "Some" ->
               begin match args with
@@ -783,7 +751,7 @@ let structure env str final =
   
     (* sum *)
     | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
-        let typ = type_expr ~loc exp_env exp_type in
+        let typ = type_expr ~loc tyenv exp_type in
         let ty1, ty2 = match typ.desc with
           | TyOr (ty1, ty2) -> ty1, ty2
           | _ -> assert false
@@ -865,7 +833,7 @@ let structure env str final =
   
     (* set *)
     | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
-        let typ = type_expr ~loc exp_env exp_type in
+        let typ = type_expr ~loc tyenv exp_type in
         let _ty = match typ.desc with
           | TySet ty-> ty
           | _ -> assert false
@@ -888,7 +856,7 @@ let structure env str final =
   
     (* map *)
     | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "Map.t" -> true | _ -> false) ->
-        let typ = type_expr ~loc exp_env exp_type in
+        let typ = type_expr ~loc tyenv exp_type in
         let _ty1, _ty2 = match typ.desc with
           | TyMap (ty1, ty2) -> ty1, ty2
           | _ -> assert false
@@ -937,7 +905,7 @@ let structure env str final =
         end
 
     | Tconstr (p, [], _) when Path.is_scaml p = None ->
-        begin match Env.find_type_descrs p exp_env with
+        begin match Env.find_type_descrs p tyenv with
           | [], [] -> 
               errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
           | [], _::_ -> assert false (* record cannot come here *)
@@ -954,21 +922,13 @@ let structure env str final =
                     let tys_list = 
                       List.map (fun constr ->
                           let ty_args, ty_res = Ctype.instance_constructor constr in
-                          Ctype.unify exp_env exp_type ty_res; (* XXX should succeed *)
+                          Ctype.unify tyenv exp_type ty_res; (* XXX should succeed *)
                           ty_args
                         ) non_consts
                     in
-                    let tys_list = List.map (List.map (type_expr ~loc exp_env)) tys_list in
-                    let ty_list = List.map (fun tys ->
-                        Binplace.fold 
-                          ~leaf:(fun ty -> ty)
-                          ~branch:(fun ty1 ty2 -> tyPair (ty1, ty2))
-                          & Binplace.place tys) tys_list
-                    in
-                    Some (Binplace.fold
-                            ~leaf:(fun ty -> ty)
-                            ~branch:(fun ty1 ty2 -> tyOr (ty1, ty2))
-                          & Binplace.place ty_list)
+                    let tys_list = List.map (List.map (type_expr ~loc tyenv)) tys_list in
+                    let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
+                    Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
               in
               let rec find_constr i = function
                 | [] -> assert false
@@ -984,13 +944,7 @@ let structure env str final =
               | _, _, Some ty ->
                   let i = find_constr 0 non_consts in
                   let sides = Binplace.path i (List.length non_consts) in
-                  let arg = 
-                    Binplace.fold 
-                      ~leaf:(fun e -> e)
-                      ~branch:mkpair
-                    & Binplace.place 
-                    & List.map (expression env) args 
-                  in
+                  let arg = encode_by mkpair & List.map (expression env) args in
                   let rec f ty sides = match ty.M.Type.desc, sides with
                     | _, [] -> arg
                     | TyOr (ty1, ty2), Binplace.Left::sides -> mkleft ty2 (f ty1 sides)
@@ -1004,7 +958,7 @@ let structure env str final =
 
     | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false
   
-  and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes } =
+  and expression env { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_extra=_; exp_attributes } =
     (* wildly ignores extra *)
     (* if exp_extra <> [] then unsupported ~loc "expression extra"; *)
     begin match attr_has_entry_point exp_attributes with
@@ -1012,7 +966,7 @@ let structure env str final =
       | Some loc ->
           errorf ~loc "entry declaration is only allowed for the toplevel definitions";
     end;
-    let typ = type_expr ~loc exp_env exp_type in
+    let typ = type_expr ~loc tyenv mltyp in
     let mk desc = { loc; typ; desc; attr= [] } in
     match exp_desc with
     | Texp_ident (Path.Pident id, {loc=_}, _vd) -> 
@@ -1046,7 +1000,7 @@ let structure env str final =
           & List.map (expression env) es
           
     | Texp_construct ({loc}, c, args) -> 
-        construct ~loc env exp_env exp_type c args
+        construct ~loc env tyenv mltyp c args
   
     | Texp_assert e ->
         begin match e.exp_desc with
@@ -1354,12 +1308,12 @@ let type_check_entry templ vb =
   in
   unify templ vb.vb_pat.pat_type
 
-let type_check_entries tenv vbs =
+let type_check_entries tyenv vbs =
   let ty_storage = Ctype.newvar () in
   let ty_operations = 
     let path =
       Env.lookup_type (*~loc: *)
-        (Longident.(Ldot (Lident "SCaml", "operations"))) tenv
+        (Longident.(Ldot (Lident "SCaml", "operations"))) tyenv
     in
     Ctype.newconstr path []
   in
@@ -1399,10 +1353,10 @@ let unite_entries pvbs =
   in
   split pvbs
 
-let global_parameter_type tenv node =
+let global_parameter_type tyenv node =
   let path =
     Env.lookup_type (*~loc: *)
-      (Longident.(Ldot (Lident "SCaml", "sum"))) tenv
+      (Longident.(Ldot (Lident "SCaml", "sum"))) tyenv
   in
   let rec f = function
     | `Leaf (param_ty, _) -> param_ty
@@ -1442,13 +1396,13 @@ let check_self ty_self str =
   List.iter (fun self ->
     let unify ty ty' =
       let open Ctype in
-      let env = self.exp_env in
+      let tyenv = self.exp_env in
       let loc = self.exp_loc in
-      try unify env ty ty' with
+      try unify tyenv ty ty' with
       | Unify trace ->
-          raise(Typecore.Error(loc, env, Expr_type_clash(trace, None)))
+          raise(Typecore.Error(loc, tyenv, Expr_type_clash(trace, None)))
       | Tags(l1,l2) ->
-          raise(Typetexp.Error(loc, env, Typetexp.Variant_tags (l1, l2)))
+          raise(Typetexp.Error(loc, tyenv, Typetexp.Variant_tags (l1, l2)))
       | e -> 
           prerr_endline "unify raised something unfamiliar"; raise e
     in
@@ -1654,16 +1608,16 @@ let implementation sourcefile str =
       errorf ~loc:(Location.in_file sourcefile)
         "SCaml needs at least one value definition for an entry point"
   | vbs ->
-      let tenv = str.str_final_env in
+      let tyenv = str.str_final_env in
       let pvbs, ty_storage = type_check_entries str.str_final_env vbs in
       let node = unite_entries pvbs in
 
       (* self *)
-      let ty_param = global_parameter_type tenv node in
+      let ty_param = global_parameter_type tyenv node in
       let self_type = 
         let path =
           Env.lookup_type (*~loc: *)
-            (Longident.(Ldot (Lident "SCaml", "contract"))) tenv
+            (Longident.(Ldot (Lident "SCaml", "contract"))) tyenv
         in
         Ctype.newconstr path [ty_param]
       in
@@ -1677,13 +1631,13 @@ let implementation sourcefile str =
           in
           Ctype.newconstr path []
         in
-        type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tenv ty_operations
+        type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tyenv ty_operations
       in
 
-      let ty_storage = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract storage" tenv ty_storage in
+      let ty_storage = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract storage" tyenv ty_storage in
       let ty_return = tyPair (ty_operations, ty_storage) in
       let final = compile_global_entry ty_storage ty_return node in
-      let ty_param = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract global parameter" tenv ty_param in
+      let ty_param = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract global parameter" tyenv ty_param in
       let ty_param = 
         match node with
         | `Leaf _ (* sole entry point *) -> ty_param
