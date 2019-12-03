@@ -33,13 +33,16 @@ let rec path i len =
   assert (i < len);
   if len = 1 then []
   else
+    (* XXX code duplicated. fragile against modifications *)
     let rec bits bs =
       if bs * 2 > len then bs
       else bits (bs * 2)
     in
     let bs = bits 2 in
-    let nrights = min (len - bs) bs in
+    let nrights = (len - bs) + bs / 2 in
     let nlefts = len - nrights in
+    assert (nrights > 0);
+    assert (nlefts > 0);
     if i <= nlefts then Left :: path i nlefts
     else Right :: path (i - nlefts) nrights
 

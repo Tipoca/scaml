@@ -8,7 +8,6 @@ let create_ident =
   let cntr = ref 0 in
   fun n -> incr cntr; Ident.create & n ^ string_of_int !cntr
 
-let mke typ desc = { typ; desc; loc= IML.dummy_loc; attr= [] }
 let mkp typ desc = { typ; desc; loc= IML.dummy_loc; attr= () }
 
 (* rows <-> columns *)
@@ -358,27 +357,6 @@ let rec cc os matrix =
   
   
 
-let mkfst e =
-  let ty = match e.typ.desc with
-    | TyPair (ty, _) -> ty
-    | _ -> assert false
-  in
-  let prim = snd (List.assoc "fst" Primitives.primitives) e.typ (* XXX wrong. this should be e.typ -> ty *) in
-  mke ty (Prim ("fst", prim, [e]))
-
-let mksnd e =
-  let ty = match e.typ.desc with
-    | TyPair (_, ty) -> ty
-    | _ -> assert false
-  in
-  let prim = snd (List.assoc "snd" Primitives.primitives) e.typ (* XXX wrong. this should be e.typ -> ty *) in
-  mke ty (Prim ("snd", prim, [e]))
-
-let mkeq e1 e2 =
-  let prim = snd (List.assoc "=" Primitives.primitives) 
-             & Type.tyLambda (e1.typ, Type.tyLambda (e2.typ, Type.tyBool)) in
-  mke Type.tyBool (Prim ("=", prim, [e1; e2]))
-
 let mkv (id, typ) = mke typ & Var (id, typ)
 
 let build aty acts guards t = 
@@ -547,7 +525,7 @@ let rec compile e =
   | IML_Some t -> mk & IML_Some (compile t)
   | Left (ty, t) -> mk & Left (ty, compile t)
   | Right (ty, t) -> mk & Right (ty, compile t)
-  | Tuple (t1, t2) -> mk & Tuple (compile t1, compile t2)
+  | Pair (t1, t2) -> mk & Pair (compile t1, compile t2)
   | Assert t -> mk & Assert (compile t)
   | Fun (ty1, ty2, patvar, t) -> mk & Fun (ty1, ty2, patvar, compile t)
   | IfThenElse (t1, t2, t3) -> mk & IfThenElse (compile t1, compile t2, compile t3)

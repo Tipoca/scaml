@@ -77,7 +77,7 @@ and desc =
   | Right of M.Type.t * t
   | Unit
   | Var of Ident.t * M.Type.t
-  | Tuple of t * t
+  | Pair of t * t
   | Assert of t
   | AssertFalse
   | Fun of M.Type.t * M.Type.t * patvar * t
@@ -114,7 +114,7 @@ let make_constant t =
           | _ -> assert false
         end
     | IML_Some t -> almost_constant t >>= fun c -> Some (C.Option (Some c))
-    | Tuple (t1, t2) -> 
+    | Pair (t1, t2) -> 
         almost_constant t1 >>= fun c1 ->
         almost_constant t2 >>= fun c2 ->
         Some (C.Pair (c1, c2))
@@ -133,7 +133,7 @@ let rec get_constant t =
   | IML_Some t -> get_constant t >>= fun c -> Ok (C.Option (Some c))
   | Left (_, t) -> get_constant t >>= fun t -> Ok (C.Left t)
   | Right (_, t) -> get_constant t >>= fun t -> Ok (C.Right t)
-  | Tuple (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (C.Pair (t1, t2))
+  | Pair (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (C.Pair (t1, t2))
   | Nil _ -> Ok (C.List [])
   | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
       begin match t2 with
@@ -162,7 +162,7 @@ let pp ppf =
     | Right (ty, t) -> f "Right (%a) (%a)" M.Type.pp ty pp t
     | Unit -> p "()"
     | Var (id, _) -> f "%s" (Ident.name id)
-    | Tuple (t1, t2) -> f "(%a, %a)" pp t1 pp t2
+    | Pair (t1, t2) -> f "(%a, %a)" pp t1 pp t2
     | Assert t -> f "assert (%a)" pp t
     | AssertFalse -> p "assert false"
     | Fun (_ty1, _ty2, pat, body) ->
@@ -214,6 +214,31 @@ let pp ppf =
   in
   pp ppf
 
+let mke typ desc = { typ; desc; loc= dummy_loc; attr= [] }
+
+let mkfst e =
+  let ty = match e.typ.desc with
+    | TyPair (ty, _) -> ty
+    | _ -> assert false
+  in
+  let prim = snd (List.assoc "fst" Primitives.primitives) e.typ (* XXX wrong. this should be e.typ -> ty *) in
+  mke ty (Prim ("fst", prim, [e]))
+
+let mksnd e =
+  let ty = match e.typ.desc with
+    | TyPair (_, ty) -> ty
+    | _ -> assert false
+  in
+  let prim = snd (List.assoc "snd" Primitives.primitives) e.typ (* XXX wrong. this should be e.typ -> ty *) in
+  mke ty (Prim ("snd", prim, [e]))
+
+let mkeq e1 e2 =
+  let prim = snd (List.assoc "=" Primitives.primitives) 
+             & tyLambda (e1.typ, tyLambda (e2.typ, tyBool)) in
+  mke tyBool (Prim ("=", prim, [e1; e2]))
+
+let mkpair e1 e2 = mke (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
+
 module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
 
 let rec patvars p =
@@ -232,7 +257,7 @@ let rec freevars t =
   let open IdTys in
   match t.desc with
   | Const _ | Nil _  | IML_None _ | Unit -> empty
-  | Cons (t1,t2) | Tuple (t1,t2) -> union (freevars t1) (freevars t2)
+  | Cons (t1,t2) | Pair (t1,t2) -> union (freevars t1) (freevars t2)
   | Left (_,t) | Right (_,t) | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
   | Var (id,ty) -> singleton (id,ty)
@@ -418,6 +443,8 @@ let constructions_by_string =
                       fun x -> Ok (C.String x)))
   ]
 
+(* This is old function which must be removed once
+   [let] and [function] use [patternx] *)
 let pattern { pat_desc; pat_loc=loc; pat_type; pat_env } = 
   let typ = type_expr ~loc pat_env pat_type in
   let mk loc id typ = { loc; desc=id; typ; attr= () } in
@@ -827,14 +854,14 @@ let structure env str final =
         let e1 = expression env e1 in
         let e2 = expression env e2 in
         (* tyPair (e1.typ, e2.typ) = typ *) 
-        make_constant & mk & Tuple (e1, e2)
+        make_constant & mk & Pair (e1, e2)
     | Texp_tuple es ->
         let es = List.map (expression env) es in
         let tree = Binplace.place es in
         let rec f = function
           | Binplace.Leaf x -> x
           | Branch (t1, t2) ->
-              make_constant & mk & Tuple (f t1, f t2)
+              make_constant & mk & Pair (f t1, f t2)
         in
         f tree
           
@@ -951,14 +978,48 @@ let structure env str final =
         let rec f = function
           | Binplace.Leaf x -> x
           | Branch (t1, t2) ->
-              make_constant & mk & Tuple (f t1, f t2)
+              make_constant & mk & Pair (f t1, f t2)
         in
         f tree
 
-    | Texp_record _ -> assert false
+    | Texp_record { fields; extended_expression= Some e; } ->
+        (* optimal code, I hope *)
+        (* I believe fields are already sorted *)
+        let es = 
+          List.map (fun (_ldesc, ldef) -> match ldef with
+              | Overridden (_, e) -> Some (expression env e)
+              | Kept _ -> None) & Array.to_list fields
+        in
+        let tree = Binplace.place es in
+        let rec simplify = function
+          | Binplace.Leaf x as t -> t, x = None
+          | Branch (t1, t2) -> 
+              let t1, b1 = simplify t1 in
+              let t2, b2 = simplify t2 in
+              if b1 && b2 then Leaf None, true
+              else Branch (t1, t2), false
+        in
+        let rec f e = function
+          | Binplace.Leaf None -> e (* no override *)
+          | Leaf (Some e) -> e
+          | Branch (t1, t2) ->
+              let e1 = f (mkfst e) t1 in
+              let e2 = f (mksnd e) t2 in
+              make_constant & mkpair e1 e2
+        in
+        f (expression env e) & fst & simplify tree
 
-
-    | Texp_field _ -> unsupported ~loc "record field access"
+    | Texp_field (e, _, label) ->
+        let pos = label.lbl_pos in
+        let nfields = Array.length label.lbl_all in
+        let e = expression env e in
+        let rec f = function
+          | [] -> e
+          | Binplace.Left :: dirs -> mkfst & f dirs (* XXX mkfst, mnsnd should be somewhere else *)
+          | Binplace.Right :: dirs -> mksnd & f dirs
+        in
+        f & Binplace.path pos nfields
+        
     | Texp_setfield _ -> unsupported ~loc "record field set"
     | Texp_array _ -> unsupported ~loc "array"
     | Texp_sequence _ -> unsupported ~loc "sequence"
@@ -1291,7 +1352,7 @@ let count_variables t =
     | IML_Some t | Left (_, t) | Right (_, t) | Assert t
     | Fun (_, _, _, t) -> f t st
 
-    | Let (_, t1, t2) | Cons (t1, t2) | Tuple (t1, t2) -> f t1 & f t2 st
+    | Let (_, t1, t2) | Cons (t1, t2) | Pair (t1, t2) -> f t1 & f t2 st
 
     | IfThenElse (t1, t2, t3) 
     | Switch_or (t1, _, t2, _, t3)
@@ -1325,7 +1386,7 @@ let subst id t1 t2 =
     | Fun (a, b, pat, t) -> mk & Fun (a, b, pat, f t)
     | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
     | Cons (t1, t2) -> mk & Cons (f t1, f t2)
-    | Tuple (t1, t2) -> mk & Tuple (f t1, f t2)
+    | Pair (t1, t2) -> mk & Pair (f t1, f t2)
     | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
     | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
     | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
@@ -1389,7 +1450,7 @@ let optimize t =
       | Assert t -> mk & Assert (f t)
       | Fun (a, b, c, t) -> mk & Fun (a, b, c, f t)
       | Cons (t1, t2) -> mk & Cons (f t1, f t2)
-      | Tuple (t1, t2) -> mk & Tuple (f t1, f t2)
+      | Pair (t1, t2) -> mk & Pair (f t1, f t2)
       | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
       | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
       | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)

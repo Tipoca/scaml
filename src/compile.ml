@@ -84,7 +84,7 @@ and compile_desc env t =
 
   | Var (id, _) -> compile_var ~loc env id
 
-  | Tuple (t1, t2) ->
+  | Pair (t1, t2) ->
       let os2 = compile env t2 in
       let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
       os2 @ os1 @ [ PAIR ]

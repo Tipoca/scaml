@@ -48,7 +48,7 @@ and desc =
   | Right of Michelson.Type.t * t
   | Unit
   | Var of Tools.Ident.t * Michelson.Type.t
-  | Tuple of t * t
+  | Pair of t * t
   | Assert of t
   | AssertFalse
   | Fun of Michelson.Type.t * Michelson.Type.t * patvar * t
@@ -63,6 +63,11 @@ and desc =
 
 val pp : Format.t -> t -> unit
 
+val mke : Michelson.Type.t -> desc -> t
+val mkfst : t -> t
+val mksnd : t -> t
+val mkeq : t -> t -> t
+  
 val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
 
 module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
