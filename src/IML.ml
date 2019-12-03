@@ -232,12 +232,35 @@ let mksnd e =
   let prim = snd (List.assoc "snd" Primitives.primitives) e.typ (* XXX wrong. this should be e.typ -> ty *) in
   mke ty (Prim ("snd", prim, [e]))
 
+let mkleft ty e = mke (tyOr (e.typ, ty)) (Left (ty, e))
+let mkright ty e = mke (tyOr (ty, e.typ)) (Right (ty, e))
+
 let mkeq e1 e2 =
   let prim = snd (List.assoc "=" Primitives.primitives) 
              & tyLambda (e1.typ, tyLambda (e2.typ, tyBool)) in
   mke tyBool (Prim ("=", prim, [e1; e2]))
 
 let mkpair e1 e2 = mke (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
+
+let mkint n = mke tyInt (Const (M.Constant.Int (Z.of_int n)))
+
+let mkpint n = 
+  { desc= PConstr (CConstant (Michelson.Constant.Int (Z.of_int n)), []);
+    typ= tyInt;
+    loc= dummy_loc;
+    attr= () }
+
+let mkpleft ty p = 
+  { desc= PConstr (CLeft, [p]);
+    typ= tyOr (p.typ, ty);
+    loc= dummy_loc;
+    attr= () }
+
+let mkpright ty p = 
+  { desc= PConstr (CRight, [p]);
+    typ= tyOr (ty, p.typ);
+    loc= dummy_loc;
+    attr= () }
 
 module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
 
@@ -340,47 +363,85 @@ let rec type_expr tenv ty =
         | Some "sum", [t1; t2] -> Ok (tyOr (t1, t2))
         | Some "int", [] -> Ok (tyInt)
         | Some "nat", [] -> Ok (tyNat)
-        | Some "tz", [] -> Ok (tyMutez)
-        | Some "Set.t", [ty] -> Ok (tySet ty)
-        | Some "Map.t", [ty1; ty2] -> Ok (tyMap (ty1, ty2))
-        | Some "BigMap.t", [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
-        | Some "Operation.t", [] -> Ok (tyOperation)
-        | Some "Contract.t", [ty] -> Ok (tyContract ty)
-        | Some "Timestamp.t", [] -> Ok (tyTimestamp)
-        | Some "Address.t", [] -> Ok (tyAddress)
-        | Some "Key.t", [] -> Ok (tyKey)
-        | Some "Signature.t", [] -> Ok (tySignature)
-        | Some "Key_hash.t", [] -> Ok (tyKeyHash)
-        | Some "Bytes.t", [] -> Ok (tyBytes)
-        | Some "Chain_id.t", [] -> Ok (tyChainID)
+        | Some "tz",  [] -> Ok (tyMutez)
+        | Some "Set.t"       , [ty]       -> Ok (tySet ty)
+        | Some "Map.t"       , [ty1; ty2] -> Ok (tyMap (ty1, ty2))
+        | Some "BigMap.t"    , [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
+        | Some "Operation.t" , []         -> Ok (tyOperation)
+        | Some "Contract.t"  , [ty]       -> Ok (tyContract ty)
+        | Some "Timestamp.t" , []         -> Ok (tyTimestamp)
+        | Some "Address.t"   , []         -> Ok (tyAddress)
+        | Some "Key.t"       , []         -> Ok (tyKey)
+        | Some "Signature.t" , []         -> Ok (tySignature)
+        | Some "Key_hash.t"  , []         -> Ok (tyKeyHash)
+        | Some "Bytes.t"     , []         -> Ok (tyBytes)
+        | Some "Chain_id.t"  , []         -> Ok (tyChainID)
         | Some _, _ -> Error (Unsupported_data_type p)
         | None, _ -> 
-            try
-              match Env.find_type_descrs p tenv with
-              | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
-              | [], labels ->
-                  let tys = 
-                    List.map (fun label ->
-                        let _, ty_arg, ty_res = 
-                          Ctype.instance_label false (* XXX I do not know what it is *)
-                            label
-                        in
-                        Ctype.unify tenv ty ty_res; (* XXX should succeed *)
-                        ty_arg
-                      ) labels
-                  in
-                  Result.mapM (type_expr tenv) tys >>| fun tys ->
-                  let tree = Binplace.place tys in
-                  let rec f = function
-                    | Binplace.Leaf x -> x
-                    | Branch (t1,t2) -> tyPair (f t1, f t2)
-                  in
-                  f tree
-                  
-              | _constrs, [] -> assert false (* XXX TODO *)
-              | _ -> assert false (* impossible *)
-            with
-            | _ -> Error (Unsupported_data_type p)
+            match Env.find_type_descrs p tenv with
+            | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
+            | [], labels ->
+                let tys = 
+                  List.map (fun label ->
+                      let _, ty_arg, ty_res = 
+                        Ctype.instance_label false (* XXX I do not know what it is *)
+                          label
+                      in
+                      Ctype.unify tenv ty ty_res; (* XXX should succeed *)
+                      ty_arg
+                    ) labels
+                in
+                Result.mapM (type_expr tenv) tys >>| fun tys ->
+                let tree = Binplace.place tys in
+                let rec f = function
+                  | Binplace.Leaf x -> x
+                  | Branch (t1,t2) -> tyPair (f t1, f t2)
+                in
+                f tree
+
+            | constrs, [] ->
+                let consts, non_consts =
+                  List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
+                in
+                (* XXX use cstr_consts and cstr_nonconsts *)
+                let non_consts =
+                  match non_consts with
+                  | [] -> Ok None
+                  | _ ->
+                      let tys_list = 
+                        List.map (fun constr ->
+                            let ty_args, ty_res = Ctype.instance_constructor constr in
+                            Ctype.unify tenv ty ty_res; (* XXX should succeed *)
+                            ty_args
+                          ) non_consts
+                      in
+                      Result.mapM (Result.mapM (type_expr tenv)) tys_list >>| fun tys_list ->
+                      let ty_list = List.map (fun tys ->
+                          let tree = Binplace.place tys in
+                          let rec f = function
+                            | Binplace.Leaf x -> x
+                            | Branch (t1, t2) -> tyPair (f t1, f t2)
+                          in
+                          f tree) tys_list
+                      in
+
+                      let tree = Binplace.place ty_list in
+                      let rec f = function
+                        | Binplace.Leaf x -> x
+                        | Branch (t1, t2) -> tyOr (f t1, f t2)
+                      in
+                      Some (f tree)
+                in
+                non_consts >>| fun non_consts ->
+                begin match consts, non_consts with
+                 | [], None -> assert false
+                 | [], Some t -> t
+                 | _::_, None -> tyInt
+                 | _::_, Some t -> tyOr (tyInt, t)
+                end
+
+            | _ -> assert false (* impossible *)
+            | exception _ -> Error (Unsupported_data_type p)
       end
 
   | Tpoly (ty, []) -> type_expr tenv ty
@@ -520,6 +581,8 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
   | Tpat_or (_, _, _)        -> unsupported ~loc "or pattern with row"
 
   | Tpat_construct (_, cdesc, ps) ->
+      
+      (* XXX should check the module path *)
       begin match cdesc.cstr_name, typ.desc, ps with
         | "Left", TyOr _, [p] -> mk (PConstr (CLeft, [patternx p]))
         | "Right", TyOr _, [p] -> mk (PConstr (CRight, [patternx p]))
@@ -565,7 +628,86 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
             end
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
-        | n, _, _ ->  unsupported ~loc "pattern %s" n
+                                     
+        | _, _, _ ->
+            
+            begin match (Ctype.repr pat_type).desc with
+              | Tconstr (p, _, _) ->
+                  begin match Env.find_type_descrs p pat_env with
+                    | [], [] -> 
+                        errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
+                    | [], _::_ -> assert false (* record cannot come here *)
+                    | _::_, _::_ -> assert false
+                    | constrs, [] -> 
+                        let consts, non_consts =
+                          List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
+                        in
+                        let non_consts_ty =
+                          match non_consts with
+                          | [] -> None
+                          | _ ->
+                              let tys_list = 
+                                List.map (fun constr ->
+                                    let ty_args, ty_res = Ctype.instance_constructor constr in
+                                    Ctype.unify pat_env pat_type ty_res; (* XXX should succeed *)
+                                    ty_args
+                                  ) non_consts
+                              in
+                              let tys_list = List.map (List.map (type_expr ~loc pat_env)) tys_list in
+                              let ty_list = List.map (fun tys ->
+                                  let tree = Binplace.place tys in
+                                  let rec f = function
+                                    | Binplace.Leaf x -> x
+                                    | Branch (t1, t2) -> tyPair (f t1, f t2)
+                                  in
+                                  f tree) tys_list
+                              in
+
+                              let tree = Binplace.place ty_list in
+                              let rec f = function
+                                | Binplace.Leaf x -> x
+                                | Branch (t1, t2) -> tyOr (f t1, f t2)
+                              in
+                              Some (f tree)
+                        in
+                        let rec find_constr i = function
+                          | [] -> assert false
+                          | c::_ when c.Types.cstr_name = cdesc.cstr_name -> i
+                          | _::consts -> find_constr (i+1) consts
+                        in
+                        match cdesc.cstr_arity, consts, non_consts_ty with
+                        | _, [], None -> assert false
+                        | 0, [], _ -> assert false
+                        | 0, _, None  -> mkpint & find_constr 0 consts
+                        | 0, _, Some ty -> mkpleft ty & mkpint & find_constr 0 consts
+                        | _, _, None -> assert false
+                        | _, _, Some ty ->
+                            let i = find_constr 0 non_consts in
+                            let sides = Binplace.path i (List.length non_consts) in
+                            let arg = 
+                              let args = List.map patternx ps in
+                              let tree = Binplace.place args in
+                              let rec f = function
+                                | Binplace.Leaf x -> x
+                                | Branch (t1, t2) -> 
+                                    let p1 = f t1 in
+                                    let p2 = f t2 in
+                                    { loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
+                              in
+                              f tree
+                            in
+                            let rec f ty sides = match ty.M.Type.desc, sides with
+                              | _, [] -> arg
+                              | TyOr (ty1, ty2), Binplace.Left::sides -> mkpleft ty2 (f ty1 sides)
+                              | TyOr (ty1, ty2), Right::sides -> mkpright ty1 (f ty2 sides)
+                              | _ -> assert false
+                            in
+                            match consts with
+                            | [] -> f ty sides
+                            | _ -> mkpright tyInt & f ty sides
+                  end
+            | _ ->  unsupported ~loc "pattern %s" cdesc.cstr_name
+            end
       end
 
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
@@ -601,7 +743,8 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type; pat_env } =
                     | Branch (p1, p2) -> 
                         let p1 = f p1 in
                         let p2 = f p2 in
-                        { loc; desc= PConstr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
+                        { loc; desc= PConstr (CPair, [p1; p2]); 
+                          typ= tyPair (p1.typ, p2.typ); attr= () }
                   in
                   f tree
                   
@@ -621,12 +764,12 @@ let attr_has_entry_point =
   
 let structure env str final =
 
-  let rec construct ~loc env exp_env exp_type {Types.cstr_name} args =
+  let rec construct ~loc env exp_env exp_type ({Types.cstr_name} as cdesc) args =
     let make typ desc = { loc; typ; desc; attr= [] } in
     match (Ctype.expand_head exp_env exp_type).Types.desc with
     (* bool *)
     | Tconstr (p, [], _) when p = Predef.path_bool ->
-        make (tyBool) (match cstr_name with
+        make tyBool (match cstr_name with
             | "true" -> Const (C.Bool true)
             | "false" -> Const (C.Bool false)
             | s -> internal_error ~loc "strange bool constructor %s" s)
@@ -634,19 +777,19 @@ let structure env str final =
     (* list *)
     | Tconstr (p, [ty], _) when p = Predef.path_list ->
         begin match cstr_name with
-            | "[]" -> 
-                let ty = type_expr ~loc exp_env ty in
-                make (tyList ty) (Nil ty)
-            | "::" ->
-                begin match args with
-                  | [e1; e2] ->
-                      let e1 = expression env e1 in
-                      let e2 = expression env e2 in
-                      (* tyList e1.typ = e2.typ *)
-                      make_constant & make e2.typ & Cons (e1, e2)
-                  | _ -> internal_error ~loc "strange cons"
-                end
-            | s -> internal_error ~loc "strange list constructor %s" s
+          | "[]" -> 
+              let ty = type_expr ~loc exp_env ty in
+              make (tyList ty) (Nil ty)
+          | "::" ->
+              begin match args with
+                | [e1; e2] ->
+                    let e1 = expression env e1 in
+                    let e2 = expression env e2 in
+                    (* tyList e1.typ = e2.typ *)
+                    make_constant & make e2.typ & Cons (e1, e2)
+                | _ -> internal_error ~loc "strange cons"
+              end
+          | s -> internal_error ~loc "strange list constructor %s" s
         end
   
     (* option *)
@@ -820,6 +963,79 @@ let structure env str final =
                       | _ -> errorf ~loc "%s only takes a string literal" cname
         end
 
+    | Tconstr (p, [], _) when Path.is_scaml p = None ->
+        begin match Env.find_type_descrs p exp_env with
+          | [], [] -> 
+              errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
+          | [], _::_ -> assert false (* record cannot come here *)
+          | _::_, _::_ -> assert false
+
+          | constrs, [] -> 
+              let consts, non_consts =
+                List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
+              in
+              let non_consts_ty =
+                match non_consts with
+                | [] -> None
+                | _ ->
+                    let tys_list = 
+                      List.map (fun constr ->
+                          let ty_args, ty_res = Ctype.instance_constructor constr in
+                          Ctype.unify exp_env exp_type ty_res; (* XXX should succeed *)
+                          ty_args
+                        ) non_consts
+                    in
+                    let tys_list = List.map (List.map (type_expr ~loc exp_env)) tys_list in
+                    let ty_list = List.map (fun tys ->
+                        let tree = Binplace.place tys in
+                        let rec f = function
+                          | Binplace.Leaf x -> x
+                          | Branch (t1, t2) -> tyPair (f t1, f t2)
+                        in
+                        f tree) tys_list
+                    in
+
+                    let tree = Binplace.place ty_list in
+                    let rec f = function
+                      | Binplace.Leaf x -> x
+                      | Branch (t1, t2) -> tyOr (f t1, f t2)
+                    in
+                    Some (f tree)
+              in
+              let rec find_constr i = function
+                | [] -> assert false
+                | c::_ when c.Types.cstr_name = cstr_name -> i
+                | _::consts -> find_constr (i+1) consts
+              in
+              match cdesc.cstr_arity, consts, non_consts_ty with
+              | _, [], None -> assert false
+              | 0, [], _ -> assert false
+              | 0, _, None  -> mkint & find_constr 0 consts
+              | 0, _, Some ty -> mkleft ty & mkint & find_constr 0 consts
+              | _, _, None -> assert false
+              | _, _, Some ty ->
+                  let i = find_constr 0 non_consts in
+                  let sides = Binplace.path i (List.length non_consts) in
+                  let arg = 
+                    let args = List.map (expression env) args in
+                    let tree = Binplace.place args in
+                    let rec f = function
+                      | Binplace.Leaf x -> x
+                      | Branch (t1, t2) -> mkpair (f t1) (f t2)
+                    in
+                    f tree
+                  in
+                  let rec f ty sides = match ty.M.Type.desc, sides with
+                    | _, [] -> arg
+                    | TyOr (ty1, ty2), Binplace.Left::sides -> mkleft ty2 (f ty1 sides)
+                    | TyOr (ty1, ty2), Right::sides -> mkright ty1 (f ty2 sides)
+                    | _ -> assert false
+                  in
+                  match consts with
+                  | [] -> f ty sides
+                  | _ -> mkright tyInt & f ty sides
+        end
+
     | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false
   
   and expression env { exp_desc; exp_loc=loc; exp_type; exp_env; exp_extra=_; exp_attributes } =
@@ -977,8 +1193,7 @@ let structure env str final =
         let tree = Binplace.place es in
         let rec f = function
           | Binplace.Leaf x -> x
-          | Branch (t1, t2) ->
-              make_constant & mk & Pair (f t1, f t2)
+          | Branch (t1, t2) -> make_constant & mk & Pair (f t1, f t2)
         in
         f tree
 
