@@ -55,7 +55,7 @@ let rec compile env t =
   let comments = 
     List.filter_map (function
         | IML.Comment s -> Some s
-        (* | _ -> None *)) t.IML.attr
+        (* | _ -> None *)) t.IML.attrs
   in
   match comments with
   | [] -> os

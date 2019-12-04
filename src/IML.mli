@@ -1,25 +1,25 @@
 open Spotlib.Spot
 
-type ('desc, 'attr) with_loc_and_type =
-  { desc : 'desc
-  ; loc  : Location.t
-  ; typ  : Michelson.Type.t
-  ; attr : 'attr
+type ('desc, 'attrs) with_loc_and_type =
+  { desc  : 'desc
+  ; loc   : Location.t
+  ; typ   : Michelson.Type.t
+  ; attrs : 'attrs
   }
 
-val dummy_loc : Location.t
-                 
-type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of bool | CPair | CConstant of Michelson.Constant.t
-(* Glitch: Unit, true, false, None, [] are not CConstant *) 
+module Constructor : sig
+  type t = Left | Right | Some | None | Cons | Nil | Unit | Bool of bool | Pair | Constant of Michelson.Constant.t
+  (* Glitch: Unit, true, false, None, [] are not Constant *) 
    
-val string_of_constr : constr -> string
+  val to_string : t -> string
+end
 
 module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
 
 module Pat : sig
   type desc =
     | Var of Ident.t
-    | Constr of constr * t list
+    | Constr of Constructor.t * t list
     | Wild
     | Alias of t * Ident.t * Location.t (* location of ident *)
     | Or of t * t

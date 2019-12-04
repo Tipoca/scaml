@@ -58,6 +58,11 @@ module Path = struct
     | _ -> false
 end
 
+module Location = struct
+  include Location
+  let ghost t = { t with loc_ghost= true } 
+end
+    
 let errorf = Location.raise_errorf
 let unsupported ~loc fmt = Printf.ksprintf (fun s -> errorf ~loc "SCaml does not support %s" s) fmt
 exception Not_yet_implemented

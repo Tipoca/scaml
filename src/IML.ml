@@ -14,37 +14,38 @@ let create_ident =
   let cntr = ref 0 in
   fun n -> incr cntr; Ident.create & n ^ string_of_int !cntr
   
-let dummy_loc = 
-  { Location.loc_start= Lexing.dummy_pos; loc_end= Lexing.dummy_pos; loc_ghost= true }   
-
-type ('desc, 'attr) with_loc_and_type =
-  { desc : 'desc
-  ; loc  : Location.t
-  ; typ  : M.Type.t
-  ; attr : 'attr
+type ('desc, 'attrs) with_loc_and_type =
+  { desc  : 'desc
+  ; loc   : Location.t
+  ; typ   : M.Type.t
+  ; attrs : 'attrs
   }
 
-type constr = CLeft | CRight | CSome | CNone | CCons | CNil | CUnit | CBool of bool | CPair | CConstant of Michelson.Constant.t
+module Constructor = struct
+  type t = Left | Right | Some | None | Cons | Nil | Unit | Bool of bool | Pair | Constant of Michelson.Constant.t
+  
+  let to_string = function
+    | Pair -> "(,)"
+    | Left -> "Left"
+    | Right -> "Right"
+    | Some -> "Some"
+    | None -> "None"
+    | Cons -> "(::)"
+    | Nil -> "[]"
+    | Unit -> "()"
+    | Bool true -> "true"
+    | Bool false -> "false"
+    | Constant c -> Format.sprintf "%a" C.pp c
+end
 
-let string_of_constr = function
-  | CPair -> "(,)"
-  | CLeft -> "Left"
-  | CRight -> "Right"
-  | CSome -> "Some"
-  | CNone -> "None"
-  | CCons -> "(::)"
-  | CNil -> "[]"
-  | CUnit -> "()"
-  | CBool true -> "true"
-  | CBool false -> "false"
-  | CConstant c -> Format.sprintf "%a" C.pp c
+module Cnstr = Constructor
 
 module IdTys = Set.Make(struct type t = Ident.t * M.Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
 
 module Pat = struct
   type desc =
     | Var of Ident.t
-    | Constr of constr * t list
+    | Constr of Constructor.t * t list
     | Wild
     | Alias of t * Ident.t * Location.t (* location of ident *)
     | Or of t * t 
@@ -55,8 +56,8 @@ module Pat = struct
     let open Format in
     match pat.desc with
     | Var i -> fprintf ppf "%s" (Ident.name i)
-    | Constr (c, []) -> fprintf ppf "%s" (string_of_constr c)
-    | Constr (c, ps) -> fprintf ppf "@[%s (%a)@]" (string_of_constr c) (Format.list ",@ " pp) ps
+    | Constr (c, []) -> fprintf ppf "%s" (Constructor.to_string c)
+    | Constr (c, ps) -> fprintf ppf "@[%s (%a)@]" (Constructor.to_string c) (Format.list ",@ " pp) ps
     | Wild -> string ppf "_"
     | Alias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp p (Ident.name id)
     | Or (p1,p2) -> fprintf ppf "(@[%a@ | %a@])" pp p1 pp p2
@@ -83,7 +84,7 @@ type attr =
 
 type attrs = attr list
 
-let add_attr a t = { t with attr= a :: t.attr }
+let add_attr a t = { t with attrs= a :: t.attrs }
 
 type t = (desc, attrs) with_loc_and_type
 
@@ -109,62 +110,11 @@ and desc =
   | Switch_cons of t * P.var * P.var * t * t
   | Switch_none of t * t * P.var * t
 
-let almost_constant t = 
-  match t.desc with
-  | Const c -> Some c
-  | Nil ty when ty.desc <> TyOperation -> 
-     (* We cannot PUSH (list operation) {}. We get
-        "operation type forbidden in parameter, storage and constants" *)
-      Some (C.List [])
-  | IML_None _ -> Some (C.Option None)
-  | Unit -> Some C.Unit
-  | _ -> None
-
-let make_constant t = 
-  match
-    let (>>=) = Option.bind in
-    match t.desc with
-    | Const c -> Some c
-    | Nil _ | IML_None _ | Unit -> None (* let's keep it *)
-    | Cons (t1, t2) ->
-        begin almost_constant t1 >>= fun c1 ->
-          almost_constant t2 >>= function 
-          |C.List c2 -> Some (C.List (c1 :: c2))
-          | _ -> assert false
-        end
-    | IML_Some t -> almost_constant t >>= fun c -> Some (C.Option (Some c))
-    | Pair (t1, t2) -> 
-        almost_constant t1 >>= fun c1 ->
-        almost_constant t2 >>= fun c2 ->
-        Some (C.Pair (c1, c2))
-    | _ -> None
-  with
-  | None -> t
-  | Some c -> { t with desc= Const c }
-
-let rec get_constant t = 
-  let open Result.Infix in
-  match t.desc with
-  | Unit -> Ok C.Unit
-  | Const c -> Ok c
-  | IML_None _ -> Ok (C.Option None)
-  | IML_Some t -> get_constant t >>= fun c -> Ok (C.Option (Some c))
-  | Left (_, t) -> get_constant t >>= fun t -> Ok (C.Left t)
-  | Right (_, t) -> get_constant t >>= fun t -> Ok (C.Right t)
-  | Pair (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Ok (C.Pair (t1, t2))
-  | Nil _ -> Ok (C.List [])
-  | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
-      begin match t2 with
-        | C.List t2 -> Ok (C.List (t1::t2))
-        | _ -> assert false
-      end
-  | _ -> Error t.loc
-
 let pp ppf = 
   let p = Format.pp_print_string ppf in
   let f fmt = Format.fprintf ppf fmt in
   let rec pp _ppf t =
-    f "%a %a" desc t attr t.attr
+    f "%a %a" desc t attr t.attrs
 
   and attr _ppf attrs = 
     List.iter (function
@@ -218,7 +168,59 @@ let pp ppf =
   in
   pp ppf
 
-let mke typ desc = { typ; desc; loc= dummy_loc; attr= [] }
+let almost_constant t = 
+  match t.desc with
+  | Const c -> Some c
+  | Nil ty when ty.desc <> TyOperation -> 
+     (* We cannot PUSH (list operation) {}. If we do, we get:
+        "operation type forbidden in parameter, storage and constants" *)
+      Some (C.List [])
+  | IML_None _ -> Some (C.Option None)
+  | Unit -> Some C.Unit
+  | _ -> None
+
+let make_constant t = 
+  match
+    let (>>=) = Option.bind in
+    match t.desc with
+    | Const c -> Some c
+    | Nil _ | IML_None _ | Unit -> 
+        None (* They have special opcodes to push.  Let's keep as they are. *)
+    | Cons (t1, t2) ->
+        begin almost_constant t1 >>= fun c1 ->
+          almost_constant t2 >>= function 
+          | C.List c2 -> Some (C.List (c1 :: c2))
+          | _ -> assert false
+        end
+    | IML_Some t -> almost_constant t >>= fun c -> Some (C.Option (Some c))
+    | Pair (t1, t2) -> 
+        almost_constant t1 >>= fun c1 ->
+        almost_constant t2 >>= fun c2 ->
+        Some (C.Pair (c1, c2))
+    | _ -> None
+  with
+  | None -> t
+  | Some c -> { t with desc= Const c }
+
+let rec get_constant t = 
+  let (>>=) = Option.bind in
+  match t.desc with
+  | Unit -> Some C.Unit
+  | Const c -> Some c
+  | IML_None _ -> Some (C.Option None)
+  | IML_Some t -> get_constant t >>= fun c -> Some (C.Option (Some c))
+  | Left (_, t) -> get_constant t >>= fun t -> Some (C.Left t)
+  | Right (_, t) -> get_constant t >>= fun t -> Some (C.Right t)
+  | Pair (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Some (C.Pair (t1, t2))
+  | Nil _ -> Some (C.List [])
+  | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
+      begin match t2 with
+        | C.List t2 -> Some (C.List (t1::t2))
+        | _ -> assert false
+      end
+  | _ -> None
+
+let mke typ desc = { typ; desc; loc= Location.none; attrs= [] }
 
 let mkfst e =
   let ty = match e.typ.desc with
@@ -247,28 +249,28 @@ let mkeq e1 e2 =
 let mkpair e1 e2 = mke (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
 
 let mkppair p1 p2 = 
-  { loc=dummy_loc; desc= P.Constr (CPair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attr= () }
+  { loc=Location.none; desc= P.Constr (Cnstr.Pair, [p1; p2]); typ= tyPair (p1.typ, p2.typ); attrs= () }
 
 
 let mkint n = mke tyInt (Const (M.Constant.Int (Z.of_int n)))
 
 let mkpint n = 
-  { desc= P.Constr (CConstant (Michelson.Constant.Int (Z.of_int n)), []);
+  { desc= P.Constr (Cnstr.Constant (Michelson.Constant.Int (Z.of_int n)), []);
     typ= tyInt;
-    loc= dummy_loc;
-    attr= () }
+    loc= Location.none;
+    attrs= () }
 
 let mkpleft ty p = 
-  { desc= P.Constr (CLeft, [p]);
+  { desc= P.Constr (Cnstr.Left, [p]);
     typ= tyOr (p.typ, ty);
-    loc= dummy_loc;
-    attr= () }
+    loc= Location.none;
+    attrs= () }
 
 let mkpright ty p = 
-  { desc= P.Constr (CRight, [p]);
+  { desc= P.Constr (Cnstr.Right, [p]);
     typ= tyOr (ty, p.typ);
-    loc= dummy_loc;
-    attr= () }
+    loc= Location.none;
+    attrs= () }
 
 let rec freevars t = 
   let open IdTys in
@@ -309,12 +311,20 @@ type type_expr_error =
   | Unsupported_type of Types.type_expr
   | Unsupported_data_type of Path.t
 
+let pp_type_expr_error ppf = function
+  | Type_variable ty -> 
+      Format.fprintf ppf "type variable %a is not supported in SCaml." Printtyp.type_expr ty
+  | Unsupported_type ty ->
+      Format.fprintf ppf "type %a is not supported in SCaml." Printtyp.type_expr ty
+  | Unsupported_data_type p ->
+      Format.fprintf ppf "data type %s is not supported in SCaml." (Path.name p)
+
 let encode_by branch xs =
   Binplace.fold 
       ~leaf:(fun x -> x) 
       ~branch
-    & Binplace.place xs
-
+  & Binplace.place xs
+      
 let rec type_expr tyenv ty = 
   let open Result.Infix in
   let ty = Ctype.expand_head tyenv ty in
@@ -413,24 +423,6 @@ let rec type_expr tyenv ty =
   | Tpoly (ty, []) -> type_expr tyenv ty
   | _ -> Error (Unsupported_type ty)
 
-let type_expr ~loc ?(this="This") tyenv ty = match type_expr tyenv ty with
-  | Ok x -> x
-  | Error (Type_variable ty') -> 
-      errorf ~loc "%s has type %a, which has too generic type %a for SCaml."
-        this
-        Printtyp.type_expr ty
-        Printtyp.type_expr ty'
-  | Error (Unsupported_type ty') ->
-      errorf ~loc "%s has type %a, which has unsupported type %a in SCaml"
-        this
-        Printtyp.type_expr ty
-        Printtyp.type_expr ty'
-  | Error (Unsupported_data_type p) ->
-      errorf ~loc "%s has type %a, which has unsupported data type %s in SCaml"
-        this
-        Printtyp.type_expr ty
-        (Path.name p)
-
 (* Literals *)
 
 let parse_timestamp s = match Ptime.of_rfc3339 s with
@@ -467,31 +459,27 @@ let constructions_by_string =
                       fun x -> Ok (C.String x)))
   ]
 
-(* This is old function which must be removed once
-   [let] and [function] use [patternx] *)
-let pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
-  let typ = type_expr ~loc tyenv mltyp in
-  let mk loc id typ = { loc; desc=id; typ; attr= () } in
-  let mk_dummy loc typ = { loc; desc=Ident.dummy; typ; attr= () } in
+let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
+  let typ = 
+    Result.at_Error (fun e -> errorf ~loc "This pattern has type %a.  It contains %a" Printtyp.type_expr mltyp pp_type_expr_error e) 
+    & type_expr tyenv mltyp 
+  in
+  let mk loc id typ = { loc; desc=id; typ; attrs= () } in
+  let mk_dummy loc typ = mk loc Ident.dummy typ in
   match pat_desc with
   | Tpat_var (id, {loc}) -> [mk loc id typ]
-
-  | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
-      (* We transform (_ as x) in x if _ and x have the same location.
+  | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> 
+      (* We transform (_ as x) to x if _ and x have the same location.
          The compiler transforms (x:t) into (_ as x : t).
          This avoids transforming a warning 27 into a 26.
        *)
       [mk loc id typ]
-
   | Tpat_any         -> [mk_dummy loc typ]
-
+  | Tpat_construct ({loc}, _, []) when typ.desc = TyUnit -> [mk_dummy loc typ]
+  | Tpat_construct _ -> unsupported ~loc "variant pattern"
   | Tpat_alias _     -> unsupported ~loc "alias pattern"
   | Tpat_constant _  -> unsupported ~loc "constant pattern"
   | Tpat_tuple _     -> unsupported ~loc "tuple pattern"
-
-  | Tpat_construct ({loc}, _, []) when typ.desc = TyUnit -> [mk_dummy loc typ]
-
-  | Tpat_construct _ -> unsupported ~loc "variant pattern"
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
   | Tpat_record _    -> unsupported ~loc "record pattern"
   | Tpat_array _     -> unsupported ~loc "array pattern"
@@ -499,8 +487,11 @@ let pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
 
 let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
-  let typ = type_expr ~loc tyenv mltyp in
-  let mk desc = { loc; desc; typ; attr= () } in
+  let typ = 
+    Result.at_Error (fun e -> errorf ~loc "This pattern has type %a.  It contains %a" Printtyp.type_expr mltyp pp_type_expr_error e) 
+    & type_expr tyenv mltyp 
+  in
+  let mk desc = { loc; desc; typ; attrs= () } in
   match pat_desc with
   | Tpat_array _     -> unsupported ~loc "array pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
@@ -519,14 +510,14 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
   | Tpat_alias (p, id, {loc}) -> mk (P.Alias (patternx p, id, loc))
 
-  | Tpat_tuple [p1; p2] -> mk (P.Constr (CPair, [patternx p1; patternx p2]))
+  | Tpat_tuple [p1; p2] -> mk (P.Constr (Cnstr.Pair, [patternx p1; patternx p2]))
 
   | Tpat_tuple ps -> encode_by mkppair & List.map patternx ps
 
   | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk P.Wild
 
   | Tpat_constant (Const_string (s, None))  -> 
-      mk (P.Constr (CConstant (C.String s), []))
+      mk (P.Constr (Cnstr.Constant (C.String s), []))
                                                  
   | Tpat_constant (Const_string (_, Some _))  -> unsupported ~loc "quoted string"
 
@@ -541,31 +532,31 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
       
       (* XXX should check the module path *)
       begin match cdesc.cstr_name, typ.desc, ps with
-        | "Left", TyOr _, [p] -> mk (P.Constr (CLeft, [patternx p]))
-        | "Right", TyOr _, [p] -> mk (P.Constr (CRight, [patternx p]))
-        | "Some", TyOption _, [p] -> mk (P.Constr (CSome, [patternx p]))
-        | "None", TyOption _, [] -> mk (P.Constr (CNone, []))
-        | "::", TyList _, [p1; p2] -> mk (P.Constr (CCons, [patternx p1; patternx p2]))
-        | "[]", TyList _, [] -> mk (P.Constr (CNil, []))
-        | "true", TyBool, [] -> mk (P.Constr (CBool true, []))
-        | "false", TyBool, [] -> mk (P.Constr (CBool false, []))
+        | "Left", TyOr _, [p] -> mk (P.Constr (Cnstr.Left, [patternx p]))
+        | "Right", TyOr _, [p] -> mk (P.Constr (Cnstr.Right, [patternx p]))
+        | "Some", TyOption _, [p] -> mk (P.Constr (Cnstr.Some, [patternx p]))
+        | "None", TyOption _, [] -> mk (P.Constr (Cnstr.None, []))
+        | "::", TyList _, [p1; p2] -> mk (P.Constr (Cnstr.Cons, [patternx p1; patternx p2]))
+        | "[]", TyList _, [] -> mk (P.Constr (Cnstr.Nil, []))
+        | "true", TyBool, [] -> mk (P.Constr (Cnstr.Bool true, []))
+        | "false", TyBool, [] -> mk (P.Constr (Cnstr.Bool false, []))
         | "Int", TyInt, [{pat_desc= Tpat_constant (Const_int n)}] ->
-            mk & P.Constr (CConstant (C.Int (Z.of_int n)), [])
+            mk & P.Constr (Cnstr.Constant (C.Int (Z.of_int n)), [])
         | "Int", TyInt, [_] -> errorf ~loc "Int can only take an integer constant"
         | "Nat", TyNat, [{pat_desc= Tpat_constant (Const_int n)}] ->
             if n < 0 then 
               errorf ~loc "Nat can only take a positive integer constant";
-            mk & P.Constr (CConstant (C.Nat (Z.of_int n)), [])
+            mk & P.Constr (Cnstr.Constant (C.Nat (Z.of_int n)), [])
         | "Nat", TyNat, [_] -> errorf ~loc "Nat can only take an integer constant"
         | _, TyMutez, [_] -> errorf ~loc "tz constant cannot be used as a pattern"
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
-            mk & P.Constr (CConstant (C.String s), [])
+            mk & P.Constr (Cnstr.Constant (C.String s), [])
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Key_hash", TyKeyHash, [_] -> unsupported ~loc "Key_hash can only take a string constant"
 
 
         | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
-            mk & P.Constr (CConstant (C.String s), [])
+            mk & P.Constr (Cnstr.Constant (C.String s), [])
         | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Address", TyAddress, [_] -> unsupported ~loc "Address can only take a string constant"
 
@@ -573,7 +564,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
             begin match parse_timestamp s with
               | Error _e -> errorf ~loc "straonge arguments for Timestamp" 
-              | Ok t -> mk & P.Constr (CConstant t, [])
+              | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
@@ -581,7 +572,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
             begin match parse_bytes s with
               | Error _e -> errorf ~loc "straonge arguments for Bytes" 
-              | Ok t -> mk & P.Constr (CConstant t, [])
+              | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
@@ -610,7 +601,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                                     ty_args
                                   ) non_consts
                               in
-                              let tys_list = List.map (List.map (type_expr ~loc tyenv)) tys_list in
+                              let tys_list = List.map (List.map (fun ty -> from_Ok & type_expr tyenv ty)) tys_list in
                               let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
                               Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
                         in
@@ -662,8 +653,8 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                   | (n, _)::labels, (_, plabel, p)::pfields when n = plabel.Types.lbl_name ->
                       patternx p :: f labels pfields
                   | (_, typ)::labels, _ ->
-                      let typ = type_expr ~loc:dummy_loc tyenv typ in
-                      { loc; desc= P.Wild; typ; attr= () } :: f labels pfields
+                      let typ = from_Ok & type_expr tyenv typ in
+                      { loc; desc= P.Wild; typ; attrs= () } :: f labels pfields
                   | [], [] -> []
                   | [], _ -> assert false
                 in
@@ -683,7 +674,7 @@ module Pmatch = struct
   open Tools
   module Type = Michelson.Type
   
-  let mkp typ desc = { typ; desc; loc= dummy_loc; attr= () }
+  let mkp typ desc = { typ; desc; loc= Location.none; attrs= () }
   
   (* rows <-> columns *)
   let transpose : 'p list list -> 'p list list = fun rows ->
@@ -709,7 +700,7 @@ module Pmatch = struct
   type tree = 
     | Fail
     | Leaf of (Ident.t * id_ty) list * int
-    | Switch of id_ty * (constr * id_ty list * tree) list * tree option (* default *)
+    | Switch of id_ty * (Constructor.t * id_ty list * tree) list * tree option (* default *)
     | Guard of (Ident.t * id_ty) list (* binder *)
                * int (* guard *)
                * int (* case *)
@@ -735,7 +726,7 @@ module Pmatch = struct
                  f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.name x) vs
                in
                fun (c, vs, t) ->
-                 f "%s %a (%a)" (string_of_constr c) pvs vs pp_tree t
+                 f "%s %a (%a)" (Constructor.to_string c) pvs vs pp_tree t
              )) xs
     | Switch (v, xs, Some d) ->
         f "@[<2>Switch %s@ [ @[%a@] default %a]@]"
@@ -746,7 +737,7 @@ module Pmatch = struct
                  f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.name x) vs
                in
                fun (c, vs, t) ->
-                 f "%s %a (%a)" (string_of_constr c) pvs vs pp_tree t
+                 f "%s %a (%a)" (Constructor.to_string c) pvs vs pp_tree t
              )) xs
           pp_tree d
     | Guard (binders, guard, case, otherwise) ->
@@ -778,28 +769,28 @@ module Pmatch = struct
               (* For wild, we need to build another wild with arg type. 
                  XXX Currently we must code for each.  Ugh.
               *)
-              | CPair, P.Wild -> 
+              | Cnstr.Pair, P.Wild -> 
                   let ty1, ty2 = match pat.typ.desc with
                     | TyPair (ty1, ty2) -> ty1, ty2
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ty1 P.Wild :: mkp ty2 P.Wild :: pats }]
   
-              | CLeft, P.Wild -> 
+              | Left, P.Wild -> 
                   let typl = match pat.typ.desc with
                     | TyOr (typl, _typr) -> typl
                     | _ -> assert false
                   in
                   [{ case with pats= mkp typl P.Wild :: pats }]
   
-              | CRight, P.Wild -> 
+              | Right, P.Wild -> 
                   let typr = match pat.typ.desc with
                     | TyOr (_typl, typr) -> typr
                     | _ -> assert false
                   in
                   [{ case with pats= mkp typr P.Wild :: pats }]
   
-              | CSome, P.Wild -> 
+              | Some, P.Wild -> 
                   let typ = match pat.typ.desc with
                     | TyOption typ -> typ
                     | _ -> assert false
@@ -807,14 +798,14 @@ module Pmatch = struct
                   [{ case with pats= mkp typ P.Wild :: pats }]
   
   
-              | CCons, P.Wild -> 
+              | Cons, P.Wild -> 
                   let typ = match pat.typ.desc with
                     | TyList typ -> typ
                     | _ -> assert false
                   in
                   [{ case with pats= mkp typ P.Wild :: mkp pat.typ P.Wild :: pats }]
   
-              | (CNone | CNil | CUnit | CBool _ | CConstant _), P.Wild -> 
+              | (None | Nil | Unit | Bool _ | Constant _), P.Wild -> 
                   [{ case with pats }]
   
               | (_ , P.Var v) -> [{ case with pats; bindings= (v, o) :: bindings }]
@@ -951,20 +942,20 @@ module Pmatch = struct
                think constructors are always full *)
             let constructors = 
               match constructors with
-              | [CLeft] | [CRight] -> [CLeft; CRight]
-              | [CSome] | [CNone] -> [CSome; CNone]
-              | [CCons] | [CNil] -> [CCons; CNil]
-              | [(CBool _)] -> [(CBool true) ; (CBool false)]
+              | [Left] | [Right] -> [Cnstr.Left; Right]
+              | [Some] | [None] -> [Some; None]
+              | [Cons] | [Nil] -> [Cons; Nil]
+              | [(Bool _)] -> [(Bool true) ; (Bool false)]
               | _ -> constructors
             in
             (* XXX weak. this depends on the above code *)
             let is_signature = 
               match constructors with
-              | [CLeft; CRight]
-              | [CSome; CNone]
-              | [CCons; CNil]
-              | [CPair]
-              | [(CBool true) ; (CBool false)] -> true
+              | [Left; Right]
+              | [Some; None]
+              | [Cons; Nil]
+              | [Pair]
+              | [(Bool true) ; (Bool false)] -> true
               | _ -> false
             in
             assert (constructors <> []);
@@ -976,26 +967,26 @@ module Pmatch = struct
                         let os = List.tl os in
                         let vs = 
                           match c with
-                          | CLeft -> 
+                          | Cnstr.Left -> 
                               let ty = match vty.desc with
                                 | TyOr (ty, _) -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "l", ty ]
-                          | CRight -> 
+                          | Right -> 
                               let ty = match vty.desc with
                                 | TyOr (_, ty) -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "r", ty ]
-                          | CPair -> 
+                          | Pair -> 
                               let ty1,ty2 = match vty.desc with
                                 | TyPair (ty1, ty2) -> ty1, ty2
                                 | _ -> assert false
                               in
                               [ create_ident "l", ty1 ; 
                                 create_ident "r", ty2 ]
-                          | CCons -> 
+                          | Cons -> 
                               let ty = match vty.desc with
                                 | TyList ty -> ty
                                 | _ -> assert false
@@ -1003,20 +994,20 @@ module Pmatch = struct
                               [ create_ident "hd", ty 
                               ; create_ident "tl", vty
                               ]
-                          | CSome -> 
+                          | Some -> 
                               let ty = match vty.desc with
                                 | TyOption ty -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "x", ty ]
   
-                          | CNil | CNone | CBool _ | CConstant _ (* int/nat/tz *)
-                          | CUnit -> []
+                          | Nil | None | Bool _ | Constant _ (* int/nat/tz *)
+                          | Unit -> []
   
                         in
                         c, 
                         vs, 
-                        (prerr_endline ("specialize on " ^ string_of_constr c);
+                        (prerr_endline ("specialize on " ^ Constructor.to_string c);
                         cc (vs @ os) (specialize ivty c matrix))
                        ) constructors),
   
@@ -1051,42 +1042,42 @@ module Pmatch = struct
                                   f otherwise)
   
       | Switch (_, [], _) -> assert false
-      | Switch (v, [CPair, [v1,ty1; v2,ty2], t], None) ->
+      | Switch (v, [Pair, [v1,ty1; v2,ty2], t], None) ->
           let t = f t in
           mke aty & Let (mkp ty1 v1, mkfst & mkvar v, 
                          mke aty & Let (mkp ty2 v2, mksnd & mkvar v,
                                         t))
-      | Switch (_, [CUnit, [], t], None) -> f t
-      | Switch (v, ( [ CLeft, [vl,tyl], tl
-                     ; CRight, [vr,tyr], tr ]
-                   | [ CRight, [vr,tyr], tr 
-                     ; CLeft, [vl,tyl], tl ] ), None) ->
+      | Switch (_, [Unit, [], t], None) -> f t
+      | Switch (v, ( [ Left, [vl,tyl], tl
+                     ; Right, [vr,tyr], tr ]
+                   | [ Right, [vr,tyr], tr 
+                     ; Left, [vl,tyl], tl ] ), None) ->
           let tl = f tl in
           let tr = f tr in
           mke aty & Switch_or (mkvar v, 
                                mkp tyl vl, tl,
                                mkp tyr vr, tr)
   
-      | Switch (v, ( [(CBool true), [], tt ;
-                      (CBool false), [], tf]
-                   | [(CBool false), [], tf ;
-                      (CBool true), [], tt] ), None) ->
+      | Switch (v, ( [(Bool true), [], tt ;
+                      (Bool false), [], tf]
+                   | [(Bool false), [], tf ;
+                      (Bool true), [], tt] ), None) ->
           let tt = f tt in
           let tf = f tf in
           mke aty & IfThenElse (mkvar v, tt, tf)
   
-      | Switch (v, ( [CSome, [vs,tys], ts;
-                      CNone, [], tn]
-                   | [CNone, [], tn; 
-                      CSome, [vs,tys], ts]), None) ->
+      | Switch (v, ( [Some, [vs,tys], ts;
+                      None, [], tn]
+                   | [None, [], tn; 
+                      Some, [vs,tys], ts]), None) ->
           let ts = f ts in
           let tn = f tn in
           mke aty & Switch_none (mkvar v, tn, mkp tys vs, ts) 
   
-      | Switch (v, ( [CCons, [v1,ty1; v2,ty2], tc;
-                      CNil, [], tn]
-                   | [CNil, [], tn; 
-                      CCons, [v1,ty1; v2,ty2], tc]), None) ->
+      | Switch (v, ( [Cons, [v1,ty1; v2,ty2], tc;
+                      Nil, [], tn]
+                   | [Nil, [], tn; 
+                      Cons, [v1,ty1; v2,ty2], tc]), None) ->
           let tc = f tc in
           let tn = f tn in
           mke aty & Switch_cons (mkvar v, 
@@ -1096,15 +1087,15 @@ module Pmatch = struct
   
       | Switch (v, cases, Some d) ->
           (* all cases must be about constants with infinite members *)
-          if not & List.for_all (function (CConstant _, [], _) -> true
-                                        | (CConstant _, _, _) -> assert false
+          if not & List.for_all (function (Cnstr.Constant _, [], _) -> true
+                                        | (Constant _, _, _) -> assert false
                                         | (c, _, _) -> 
-                                            prerr_endline (string_of_constr c);
+                                            prerr_endline (Constructor.to_string c);
                                             false) cases
           then assert false;
           List.fold_right (fun case telse ->
               match case with 
-              | (CConstant c, [], t) ->
+              | (Cnstr.Constant c, [], t) ->
                   let t = f t in
                   mke aty & IfThenElse (mkeq (mkvar v) 
                                           (mke (snd v) & Const c),
@@ -1185,21 +1176,24 @@ end
 let structure str final =
 
   let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
-    let make typ desc = { loc; typ; desc; attr= [] } in
-    match (Ctype.expand_head tyenv exp_type).Types.desc with
+    let typ = 
+      Result.at_Error (fun e ->
+          errorf ~loc "This has type %a.  %a" Printtyp.type_expr exp_type pp_type_expr_error e)
+      & type_expr tyenv exp_type 
+    in
+    let make typ desc = { loc; typ; desc; attrs= [] } in
+    match (Ctype.expand_head tyenv exp_type).Types.desc, typ.desc with
     (* bool *)
-    | Tconstr (p, [], _) when p = Predef.path_bool ->
+    | Tconstr (p, [], _), _ when p = Predef.path_bool ->
         make tyBool (match cstr_name with
             | "true" -> Const (C.Bool true)
             | "false" -> Const (C.Bool false)
             | s -> internal_error ~loc "strange bool constructor %s" s)
   
     (* list *)
-    | Tconstr (p, [ty], _) when p = Predef.path_list ->
+    | Tconstr (p, [_], _), TyList ty when p = Predef.path_list ->
         begin match cstr_name with
-          | "[]" -> 
-              let ty = type_expr ~loc tyenv ty in
-              make (tyList ty) (Nil ty)
+          | "[]" -> make (tyList ty) (Nil ty)
           | "::" ->
               begin match args with
                 | [e1; e2] ->
@@ -1213,11 +1207,9 @@ let structure str final =
         end
   
     (* option *)
-    | Tconstr (p, [ty], _) when p = Predef.path_option ->
+    | Tconstr (p, [_], _), TyOption ty when p = Predef.path_option ->
         begin match cstr_name with
-          | "None" -> 
-              let ty = type_expr ~loc tyenv ty in
-              make (tyOption ty) (IML_None ty)
+          | "None" -> make (tyOption ty) (IML_None ty)
           | "Some" ->
               begin match args with
                 | [e1] ->
@@ -1229,12 +1221,7 @@ let structure str final =
         end
   
     (* sum *)
-    | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
-        let typ = type_expr ~loc tyenv exp_type in
-        let ty1, ty2 = match typ.desc with
-          | TyOr (ty1, ty2) -> ty1, ty2
-          | _ -> assert false
-        in
+    | Tconstr (p, [_; _], _), TyOr (ty1, ty2) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
         let arg = match args with [arg] -> arg | _ -> internal_error ~loc "strange sum arguments" in
         begin match cstr_name with
         | "Left" -> 
@@ -1248,11 +1235,11 @@ let structure str final =
         | s -> internal_error ~loc "strange sum constructor %s" s
         end
 
-    | Tconstr (p, _, _) when p = Predef.path_unit -> 
-        make (tyUnit) Unit
+    | Tconstr (p, _, _), TyUnit when p = Predef.path_unit -> 
+        make tyUnit Unit
   
-    | Tconstr (p, [], _) when Path.is_scaml_dot "int" p ->
-        make (tyInt) begin
+    | Tconstr (p, [], _), TyInt when Path.is_scaml_dot "int" p ->
+        make tyInt begin
           let arg = match args with
               | [arg] -> arg
               | _ -> internal_error ~loc "strange Int arguments"
@@ -1262,8 +1249,8 @@ let structure str final =
               | _ -> errorf ~loc "Int can only take an integer constant"
           end
   
-    | Tconstr (p, [], _) when Path.is_scaml_dot "nat" p ->
-        make (tyNat) begin 
+    | Tconstr (p, [], _), TyNat when Path.is_scaml_dot "nat" p ->
+        make tyNat begin 
           let arg = match args with
             | [arg] -> arg
             | _ -> internal_error ~loc "strange Nat arguments"
@@ -1276,8 +1263,8 @@ let structure str final =
             | _ -> errorf ~loc "Nat can only take an integer constant"
         end
   
-    | Tconstr (p, [], _) when Path.is_scaml_dot "tz" p ->
-        make (tyMutez) begin 
+    | Tconstr (p, [], _), TyMutez when Path.is_scaml_dot "tz" p ->
+        make tyMutez begin 
           let arg = match args with
             | [arg] -> arg
             | _ -> internal_error ~loc "strange Tz arguments"
@@ -1311,12 +1298,7 @@ let structure str final =
         end
   
     (* set *)
-    | Tconstr (p, [_], _) when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
-        let typ = type_expr ~loc tyenv exp_type in
-        let _ty = match typ.desc with
-          | TySet ty-> ty
-          | _ -> assert false
-        in
+    | Tconstr (p, [_], _), TySet _ when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
         (* XXX comparable type check *)
         if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
         begin match args with 
@@ -1324,22 +1306,17 @@ let structure str final =
               let e = expression arg in
               (* tyList ty = e.typ *)
               begin match get_constant e with
-              | Ok (List xs) -> 
+              | Some (List xs) -> 
                   (* XXX Uniqueness and sorting? *)
                   { e with typ; desc= Const (Set xs) }
-              | Error loc -> errorf ~loc "Elements of Set must be constants"
-              | Ok _ -> assert false
+              | None -> errorf ~loc:e.loc "Elements of Set must be constants"
+              | Some _ -> assert false
               end
           | _ -> internal_error ~loc "strange set arguments"
         end
   
     (* map *)
-    | Tconstr (p, [_; _], _) when (match Path.is_scaml p with Some "Map.t" -> true | _ -> false) ->
-        let typ = type_expr ~loc tyenv exp_type in
-        let _ty1, _ty2 = match typ.desc with
-          | TyMap (ty1, ty2) -> ty1, ty2
-          | _ -> assert false
-        in
+    | Tconstr (p, [_; _], _), TyMap _ when (match Path.is_scaml p with Some "Map.t" -> true | _ -> false) ->
         (* XXX comparable type check *)
         if cstr_name <> "Map" then internal_error ~loc "strange map constructor";
         begin match args with 
@@ -1347,20 +1324,20 @@ let structure str final =
               let e = expression arg in
               (* tyList (tyPair (ty1, ty2)) = e.typ *)
               begin match get_constant e with
-              | Ok (List xs) -> 
+              | Some (List xs) -> 
                   (* XXX Uniqueness and sorting? *)
                   let xs = List.map (function
                       | C.Pair (c1,c2) -> (c1,c2)
                       | _ -> assert false) xs in
                   { e with typ; desc= Const (Map xs) }
-              | Ok _ -> assert false
-              | Error loc -> errorf ~loc "Elements of Map must be constants"
+              | Some _ -> assert false
+              | None -> errorf ~loc:e.loc "Elements of Map must be constants"
               end
           | _ -> internal_error ~loc "strange map arguments"
         end
 
     (* C "string" style constants *)
-    | Tconstr (p, [], _) when (Path.is_scaml p <> None) ->
+    | Tconstr (p, [], _), _ when Path.is_scaml p <> None ->
         begin match Path.is_scaml p with
           | None -> assert false
           | Some n ->
@@ -1383,7 +1360,7 @@ let structure str final =
                       | _ -> errorf ~loc "%s only takes a string literal" cname
         end
 
-    | Tconstr (p, [], _) when Path.is_scaml p = None ->
+    | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
         begin match Env.find_type_descrs p tyenv with
           | [], [] -> 
               errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
@@ -1405,7 +1382,8 @@ let structure str final =
                           ty_args
                         ) non_consts
                     in
-                    let tys_list = List.map (List.map (type_expr ~loc tyenv)) tys_list in
+                    (* XXX Duped calculation ? *)
+                    let tys_list = List.map (List.map (fun ty -> from_Ok & type_expr tyenv ty)) tys_list in
                     let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
                     Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
               in
@@ -1445,8 +1423,11 @@ let structure str final =
       | Some loc ->
           errorf ~loc "entry declaration is only allowed for the toplevel definitions";
     end;
-    let typ = type_expr ~loc tyenv mltyp in
-    let mk desc = { loc; typ; desc; attr= [] } in
+    let typ = Result.at_Error (fun e ->
+        errorf ~loc "This expression has type %a.  %a" Printtyp.type_expr mltyp pp_type_expr_error e)
+        & type_expr tyenv mltyp 
+    in
+    let mk desc = { loc; typ; desc; attrs= [] } in
     match exp_desc with
     | Texp_ident (Path.Pident id, {loc=_}, _vd) -> mk & Var id
     | Texp_ident (p, {loc}, _vd) ->
@@ -1498,7 +1479,7 @@ let structure str final =
                 { loc; (* XXX inaccurate *)
                   typ= e.typ;
                   desc= Let (v, def, e);
-                  attr= [] } ) e rev_vbs
+                  attrs= [] } ) e rev_vbs
           with
           | Location.Error _ ->
               (* let v = e and v' = e' in e''
@@ -1508,18 +1489,17 @@ let structure str final =
               *)
               List.fold_right (fun vb e' ->
                   let { vb_pat= ({ pat_type; pat_env } as vb_pat)
-                      ; vb_expr
-                      ; vb_loc } = vb 
+                      ; vb_expr } = vb 
                   in
-                  let typ = type_expr ~loc:vb_loc pat_env pat_type in
+                  let typ = from_Ok & type_expr pat_env pat_type in
                   let i = create_ident "x" in
-                  let v = { desc= i; typ; loc= dummy_loc; attr= () } in
-                  let ev = { desc= Var i; typ; loc= dummy_loc; attr= [] } in
+                  let v = { desc= i; typ; loc= Location.none; attrs= () } in
+                  let ev = { desc= Var i; typ; loc= Location.none; attrs= [] } in
                   { desc= Let (v, expression vb_expr, 
                                Pmatch.compile ev [(patternx vb_pat, None, e')])
                   ; typ
                   ; loc
-                  ; attr= [] 
+                  ; attrs= [] 
                   }
                 ) vbs & expression e
         end
@@ -1530,23 +1510,25 @@ let structure str final =
             | (Nolabel, Some (e: Typedtree.expression)) -> expression e
             | _ -> unsupported ~loc "labeled arguments") args
         in
-        let _fty' = 
-          List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
-        in
-        let fty = type_expr ~loc:f.exp_loc f.exp_env f.exp_type in
-        (* fty = fty' *)
-  
         let name = match f with
           | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
           | _ -> None
         in
         (* only some fixed combinations *)
         begin match name with
-          | None -> 
-              let f = expression f in
-              (* f.typ = fty *)
-              mk & App (f, args)
-          | Some n -> mk & primitive ~loc:f.exp_loc fty n args
+          | None -> mk & App (expression f, args)
+          | Some n -> 
+              let _fty' = 
+                List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
+              in
+              let fty = Result.at_Error (fun e ->
+                  errorf ~loc:f.exp_loc "This primitive has type %a.  %a"
+                    Printtyp.type_expr f.exp_type
+                    pp_type_expr_error e)
+                  & type_expr f.exp_env f.exp_type 
+              in
+              (* fty = fty' *)
+              mk & primitive ~loc:f.exp_loc fty n args
         end
   
     | Texp_function { arg_label= (Labelled _ | Optional _) } ->
@@ -1563,8 +1545,8 @@ let structure str final =
           | TyLambda (targ, tret) -> targ, tret
           | _ -> assert false
         in
-        let var = { desc= i; typ= targ; loc= dummy_loc; attr= () } in
-        let evar = { desc= Var i; typ= targ; loc= dummy_loc; attr= [] } in
+        let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
+        let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
         let t = compile_match evar cases in
         mk & Fun (targ, tret, var, t)
   
@@ -1689,7 +1671,7 @@ let structure str final =
             App ({ loc; (* XXX inaccurate *)
                    typ;
                    desc= Prim (n, conv fty, args);
-                   attr= [] }, left)
+                   attrs= [] }, left)
   
   and compile_match e cases =
     let compile_case case = 
@@ -1700,7 +1682,7 @@ let structure str final =
   
   and value_binding { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
     (* currently we only handle very simple sole variable pattern *)
-    match pattern vb_pat with
+    match pattern_simple vb_pat with
     | [v] ->
         let e = expression vb_expr in
         (* ignore & unify v.typ e.typ; *)
@@ -1749,7 +1731,7 @@ let structure str final =
     (* This is if the entry point is alone and at the end *)
     let vbs = List.flatten & List.rev rev_vbss in
     List.fold_right (fun (_,v,b) x ->
-        { loc=Location.none; typ= tyUnit; desc= Let (v, b, x); attr= [] })
+        { loc=Location.none; typ= tyUnit; desc= Let (v, b, x); attrs= [] })
       vbs
       final
   in
@@ -1907,16 +1889,16 @@ let check_self ty_self str =
 let compile_global_entry ty_storage ty_return node =
 
   let id_storage = Ident.create "storage" in
-  let mk desc typ = { desc; typ; loc= dummy_loc; attr= [] } in
+  let mk desc typ = { desc; typ; loc= Location.none; attrs= [] } in
   let mk_var id typ =  mk (Var id) typ in
-  let mk_pat desc typ = { desc; typ; loc= dummy_loc; attr= () } in
+  let mk_pat desc typ = { desc; typ; loc= Location.none; attrs= () } in
 
   let pat_storage = mk_pat id_storage ty_storage in
   let e_storage = mk_var id_storage ty_storage in
 
   let rec f param_id node = match node with
     | `Leaf (_,vb) ->
-        let id, var = match pattern vb.vb_pat with
+        let id, var = match pattern_simple vb.vb_pat with
           | [p] -> p.desc, mk_var p.desc p.typ
           | _ -> assert false
         in
@@ -1958,7 +1940,7 @@ let compile_global_entry ty_storage ty_return node =
 
 module VMap = Map.Make(struct type t = Ident.t let compare = compare end)
 
-let add_attrs attrs t = { t with attr= attrs @ t.attr }
+let add_attrs attrs t = { t with attrs= attrs @ t.attrs }
 
 let count_variables t = 
   let incr v st = match VMap.find_opt v st with
@@ -1991,7 +1973,7 @@ let subst id t1 t2 =
     let mk desc = { t with desc } in
     match t.desc with
     | Var id' when id = id' -> 
-        add_attrs t.attr t1 (* t1 never contains id *)
+        add_attrs t.attrs t1 (* t1 never contains id *)
     | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> t
 
     | IML_Some t -> mk & IML_Some (f t)
@@ -2019,15 +2001,15 @@ let subst id t1 t2 =
 *)
 let optimize t = 
   let rec f t = 
-    let attrs = ref (Some t.attr) in
+    let attrs = ref (Some t.attrs) in
     let add_attrs t' = 
       match !attrs with
       | Some as_ ->
           attrs := None;
-          { t' with attr= as_ @ t'.attr } 
+          { t' with attrs= as_ @ t'.attrs } 
       | None -> assert false
     in
-    let mk desc = add_attrs & { t with desc; attr= [] } in
+    let mk desc = add_attrs & { t with desc; attrs= [] } in
     let res = match t.desc with
       | App (t, []) -> add_attrs & f t 
       | App (u, t::ts) -> 
@@ -2038,7 +2020,7 @@ let optimize t =
               f & mk & App ({ desc= Let (pat, t, body);
                               loc= t.loc; (* incorrect *)
                               typ= ty2;
-                              attr= [] },
+                              attrs= [] },
                             ts)
           | u -> mk & App (u, t::ts)
           end
@@ -2052,7 +2034,7 @@ let optimize t =
             | _ -> mk & Let (p, f t1, f t2)
           end
       | Var _ | Const _ | Nil _ | IML_None _ | Unit | AssertFalse -> 
-          add_attrs { t with attr= [] }
+          add_attrs { t with attrs= [] }
       | IML_Some t -> mk & IML_Some (f t)
       | Left (a, t) -> mk & Left (a, f t)
       | Right (a, t) -> mk & Right (a, f t)
@@ -2104,13 +2086,29 @@ let implementation sourcefile str =
           in
           Ctype.newconstr path []
         in
-        type_expr ~loc:(Location.in_file sourcefile) (* XXX *) tyenv ty_operations
+        Result.at_Error (fun e ->
+            errorf ~loc:(Location.in_file sourcefile) 
+              "SCaml.operations failed to be converted to Michelson type: %a"
+              pp_type_expr_error e)
+          & type_expr tyenv ty_operations
       in
 
-      let ty_storage = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract storage" tyenv ty_storage in
+      let ty_storage = 
+        Result.at_Error (fun e ->
+            errorf ~loc:(Location.in_file sourcefile) "Contract has storage type %a.  %a"
+              Printtyp.type_expr ty_storage
+              pp_type_expr_error e)
+          & type_expr tyenv ty_storage 
+      in
       let ty_return = tyPair (ty_operations, ty_storage) in
       let final = compile_global_entry ty_storage ty_return node in
-      let ty_param = type_expr ~loc:(Location.in_file sourcefile) ~this:"Contract global parameter" tyenv ty_param in
+      let ty_param = 
+        Result.at_Error (fun e ->
+            errorf ~loc:(Location.in_file sourcefile) "Contract has parameter type %a.  %a"
+              Printtyp.type_expr ty_param
+              pp_type_expr_error e)
+          & type_expr tyenv ty_param 
+      in
       let ty_param = 
         match node with
         | `Leaf _ (* sole entry point *) -> ty_param
@@ -2119,7 +2117,7 @@ let implementation sourcefile str =
             let rec add_annot ty node = match ty.desc, node with
               | _, `Leaf (_,vb) -> 
                   (* XXX dup *)
-                  let id = match pattern vb.vb_pat with
+                  let id = match pattern_simple vb.vb_pat with
                     | [p] -> p.desc
                     | _ -> assert false
                   in
