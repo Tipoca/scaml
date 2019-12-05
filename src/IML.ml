@@ -12,7 +12,10 @@ let repr_desc ty = (Ctype.repr ty).desc
 
 let create_ident =
   let cntr = ref 0 in
-  fun n -> incr cntr; Ident.create & n ^ "_" ^ string_of_int !cntr
+  (* XXX Variables start with __ must be rejected to avoid name crashes *)
+  fun n -> incr cntr; Ident.create & "__" ^ n ^ "_" ^ string_of_int !cntr
+
+let contract_self_id = create_ident "self"
   
 type ('desc, 'attrs) with_loc_and_type =
   { desc  : 'desc
@@ -115,54 +118,56 @@ let pp ppf =
   let p = Format.pp_print_string ppf in
   let f fmt = Format.fprintf ppf fmt in
   let rec pp _ppf t =
-    f "(%a %a : %a)" desc t attr t.attrs M.Type.pp t.typ
+    match t.attrs with
+    | [] -> f "(%a : %a)" desc t M.Type.pp t.typ
+    | _ -> f "(%a <%a> : %a)" desc t attr t.attrs M.Type.pp t.typ
 
   and attr _ppf attrs = 
     List.iter (function
         | Comment s -> f "/* %s */" s) attrs
                          
   and desc _ppf t = match t.desc with
-    | Const c -> f "(%a : %a)" C.pp c M.Type.pp t.typ
+    | Const c -> f "%a" C.pp c
     | Nil -> f "[]"
-    | Cons (t1, t2) -> f "(%a :: %a)" pp t1 pp t2
+    | Cons (t1, t2) -> f "%a :: %a" pp t1 pp t2
     | IML_None -> f "None"
-    | IML_Some t -> f "(Some %a)" pp t
-    | Left t -> f "Left (%a)" pp t
-    | Right t -> f "Right (%a)" pp t
+    | IML_Some t -> f "Some %a" pp t
+    | Left t -> f "Left %a" pp t
+    | Right t -> f "Right %a" pp t
     | Unit -> p "()"
     | Var id -> f "%s" (Ident.name id)
-    | Pair (t1, t2) -> f "(@[%a,@ %a@])" pp t1 pp t2
-    | Assert t -> f "assert (%a)" pp t
+    | Pair (t1, t2) -> f "@[%a,@ %a@]" pp t1 pp t2
+    | Assert t -> f "assert %a" pp t
     | AssertFalse -> p "assert false"
     | Fun (pat, body) ->
-        f "@[<2>(fun %a ->@ %a)@]"
+        f "@[<2>fun %a ->@ %a@]"
           P.pp_var pat pp body
     | IfThenElse (t1, t2, t3) -> 
-        f "(@[if %a@ then %a@ else %a@])"
+        f "@[if %a@ then %a@ else %a@]"
           pp t1 pp t2 pp t3
     | App (t1, ts) -> 
-        f "(%a %a : %a)" pp t1 Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts M.Type.pp t.typ
+        f "%a %a" pp t1 Format.(list " " (fun ppf t -> fprintf ppf "%a" pp t)) ts
     | Prim (n, _ops, ts) ->
-        f "(%s %a)" 
+        f "%s %a" 
           n
-          Format.(list " " (fun ppf t -> fprintf ppf "(%a)" pp t)) ts
+          Format.(list " " (fun ppf t -> fprintf ppf "%a" pp t)) ts
     | Let (p, t1, t2) ->
-        f "(@[@[<2>let %a@ = %a@]@ in@ %a@])"
+        f "@[@[<2>let %a@ = %a@]@ in@ %a@]"
           P.pp_var p pp t1 pp t2
     | Switch_or (t, p1, t1, p2, t2) ->
-        f "@[<2>(match %a with@ | Left %a -> %a@ | Right %a -> %a)@]"
+        f "@[<2>match %a with@ | Left %a -> %a@ | Right %a -> %a@]"
           pp t
           P.pp_var p1 pp t1 
           P.pp_var p2 pp t2
     | Switch_cons (t, p1, p2, t1, t2) ->
-        f "@[<2>(match %a with@ | %a::%a -> %a@ | [] -> %a)@]"
+        f "@[<2>match %a with@ | %a::%a -> %a@ | [] -> %a@]"
           pp t
           P.pp_var p1
           P.pp_var p2
           pp t1 
           pp t2
     | Switch_none (t, t1, p2, t2) ->
-        f "@[<2>(match %a with@ | None -> %a@ | Some (%a) -> %a)@]"
+        f "@[<2>match %a with@ | None -> %a@ | Some %a -> %a@]"
           pp t
           pp t1 
           P.pp_var p2 pp t2
@@ -277,6 +282,12 @@ let mkpright ty p =
     attrs= () }
 
 let mkfun pvar e = mke (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
+let mkcons h t = mke t.typ (Cons (h, t))
+let mksome t = mke (tyOption t.typ) (IML_Some t)
+let mkunit () = mke tyUnit Unit
+let mkassert t = mke tyUnit & Assert t
+let mklet p t1 t2 = mke t2.typ & Let (p, t1, t2)
+let mkvar (id, typ) = mke typ & Var id
 
 let rec freevars t = 
   let open IdTys in
@@ -1027,32 +1038,25 @@ module Pmatch = struct
               cc o' matrix' (* xxx inefficient *)
             end
   
-  let mkvar (id, typ) = mke typ & Var id
-  
   let build aty acts guards t = 
     let rec f = function
       | Fail -> assert false (* ? *)
       | Leaf (binders, i) -> 
           List.fold_right (fun (v,(v',ty)) st ->
-              mke aty (Let (mkp ty v,
-                            mkvar (v',ty),
-                            st))) binders
-            (List.nth acts i)
+              mklet (mkp ty v) (mkvar (v',ty)) st) 
+            binders (List.nth acts i)
       | Guard (binders, guard, case, otherwise) ->
           List.fold_right (fun (v,(v',ty)) st ->
-              mke aty (Let (mkp ty v,
-                            mkvar (v',ty),
-                            st))) binders
+              mklet (mkp ty v) (mkvar (v',ty)) st)
+            binders
           & mke aty & IfThenElse (List.nth guards guard, 
                                   List.nth acts case, 
                                   f otherwise)
-  
       | Switch (_, [], _) -> assert false
       | Switch (v, [Pair, [v1,ty1; v2,ty2], t], None) ->
           let t = f t in
-          mke aty & Let (mkp ty1 v1, mkfst & mkvar v, 
-                         mke aty & Let (mkp ty2 v2, mksnd & mkvar v,
-                                        t))
+          mklet (mkp ty1 v1) (mkfst & mkvar v)
+            & mklet (mkp ty2 v2) (mksnd & mkvar v) t
       | Switch (_, [Unit, [], t], None) -> f t
       | Switch (v, ( [ Left, [vl,tyl], tl
                      ; Right, [vr,tyr], tr ]
@@ -1126,8 +1130,7 @@ module Pmatch = struct
               let f = mkfun pvar action in 
               (v, 
                f,
-               mke action.typ (App (mkvar (v, f.typ),
-                                    [mke Type.tyUnit Unit]))) 
+               mke action.typ (App (mkvar (v, f.typ), [mkunit ()]))) 
           | _ -> 
               let f = List.fold_right (fun (v,ty) st ->
                   mkfun (mkp ty v) st) vars action
@@ -1155,9 +1158,9 @@ module Pmatch = struct
   
     (* let casei = fun ... in let v = e in ... *)
     let make x = 
-      let match_ = mke x.typ (Let (mkp e.typ v, e, x)) in
+      let match_ = mklet (mkp e.typ v) e x in
       List.fold_right (fun (v, f, _e) st ->
-          mke st.typ (Let (mkp f.typ v, f, st))) acts match_
+          mklet (mkp f.typ v) f st) acts match_
     in
   
     let matrix : matrix = 
@@ -1200,7 +1203,7 @@ let structure str final =
                     let e1 = expression e1 in
                     let e2 = expression e2 in
                     (* tyList e1.typ = e2.typ *)
-                    make_constant & make e2.typ & Cons (e1, e2)
+                    make_constant & mkcons e1 e2
                 | _ -> internal_error ~loc "strange cons"
               end
           | s -> internal_error ~loc "strange list constructor %s" s
@@ -1214,7 +1217,7 @@ let structure str final =
               begin match args with
                 | [e1] ->
                     let e1 = expression e1 in
-                    make_constant & make (tyOption e1.typ) & IML_Some e1
+                    make_constant & mksome e1
                 | _ -> internal_error ~loc "strange cons"
               end
           | s -> internal_error ~loc "strange list constructor %s" s
@@ -1461,8 +1464,7 @@ let structure str final =
         | Texp_construct (_, {cstr_name="false"}, []) ->
             (* assert false has type 'a *)
             mk AssertFalse
-        | _ -> 
-            mk & Assert (expression e)
+        | _ -> mkassert & expression e
         end
   
     | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
@@ -1644,34 +1646,40 @@ let structure str final =
     | Texp_unreachable -> unsupported ~loc "this type of expression"
 
   and primitive ~loc fty n args =
-    match List.assoc_opt n Primitives.primitives with
-    | None -> errorf ~loc "Unknown primitive SCaml.%s" n
-    | Some (arity, conv) ->
-        if arity > List.length args then
-          unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
-        let args, left = List.split_at arity args in
-        match left with
-        | [] -> 
-            (* Bit tricky.  fty will be unified and its closure info will be
-               modified.  The changes will be fixed when [conv fty] is used
-               in compile.ml
-            *)
-            Prim (n, conv fty, args)
-        | _ -> 
-            let typ = 
-              let rec f ty = function
-                | [] -> ty
-                | _arg::args ->
-                    match ty.M.Type.desc with
-                    | TyLambda (_,ty2) -> f ty2 args
-                    | _ -> assert false
-              in
-              f fty args
-            in
-            App ({ loc; (* XXX inaccurate *)
-                   typ;
-                   desc= Prim (n, conv fty, args);
-                   attrs= [] }, left)
+    match n with
+    | "Contract.self" ->
+        (* SELF cannot go into LAMBDA.  We have let contract_id = self in .. *)
+        assert (args = []);
+        Var contract_self_id
+    | _ -> 
+        match List.assoc_opt n Primitives.primitives with
+        | None -> errorf ~loc "Unknown primitive SCaml.%s" n
+        | Some (arity, conv) ->
+            if arity > List.length args then
+              unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
+            let args, left = List.split_at arity args in
+            match left with
+            | [] -> 
+                (* Bit tricky.  fty will be unified and its closure info will be
+                   modified.  The changes will be fixed when [conv fty] is used
+                   in compile.ml
+                *)
+                Prim (n, conv fty, args)
+            | _ -> 
+                let typ = 
+                  let rec f ty = function
+                    | [] -> ty
+                    | _arg::args ->
+                        match ty.M.Type.desc with
+                        | TyLambda (_,ty2) -> f ty2 args
+                        | _ -> assert false
+                  in
+                  f fty args
+                in
+                App ({ loc; (* XXX inaccurate *)
+                       typ;
+                       desc= Prim (n, conv fty, args);
+                       attrs= [] }, left)
   
   and compile_match e cases =
     let compile_case case = 
@@ -2019,7 +2027,8 @@ let optimize t =
           let vmap = count_variables t2 in
           begin match VMap.find_opt p.desc vmap with
             | None -> add_attrs & f t2
-            | Some 1 -> 
+            | Some 1 when p.desc <> contract_self_id -> 
+                (* contract_self_id must not be inlined into LAMBDAs *)
                 add_attrs 
                 & f & subst p.desc (add_attr (Comment ("= " ^ Ident.name p.desc)) t1) t2
             | _ -> mk & Let (p, f t1, f t2)
@@ -2046,6 +2055,14 @@ let optimize t =
     res
   in
   f t
+
+let add_self self_typ t =
+  (* let __contract_id = SELF in t *)
+  (* This variable must not be inlined *)
+  mklet 
+    { desc= contract_self_id; typ= self_typ; loc= Location.none; attrs= () }
+    (mke self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
+    t
 
 let implementation sourcefile str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
@@ -2149,7 +2166,7 @@ let implementation sourcefile str =
             in
             add_annot ty_param node
       in
-      ty_param, ty_storage, structure str final
+      ty_param, ty_storage, add_self (from_Ok & type_expr tyenv self_type) & structure str final
 
 let save path t = 
   let oc = open_out path in
