@@ -1,3 +1,4 @@
+[@@@SCaml iml_optimization=false]
 open SCaml
 open Timestamp
 let main (x:unit) y =

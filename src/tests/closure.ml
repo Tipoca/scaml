@@ -1,3 +1,4 @@
+[@@@SCaml iml_optimization=false]
 open SCaml
 let f b = 
   if b then fun (unit : unit) -> b

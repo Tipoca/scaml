@@ -1,3 +1,4 @@
+[@@@SCaml iml_optimization=false]
 open SCaml
 open Contract
 let main (x:unit) y =

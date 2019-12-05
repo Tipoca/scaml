@@ -171,11 +171,21 @@ module Options = Main_args.Make_bytecomp_options (struct
   let anonymous = anonymous
 end)
 
+let scaml_types = ref []
+let scaml_values = ref []
+
 let main () =
   Clflags.add_arguments __LOC__ Options.list;
   Clflags.add_arguments __LOC__
     ["-depend", Arg.Unit Makedepend.main_from_option,
-     "<options> Compute dependencies (use 'ocamlc -depend -help' for details)"];
+     "<options> Compute dependencies (use 'ocamlc -depend -help' for details)"
+    
+    (* SCaml *)
+    ; "-scaml-type", Arg.String (fun s -> scaml_types := s :: !scaml_types),
+      "<type> Encode an SCaml type to Michelson"
+    ; "-scaml-value", Arg.String (fun s -> scaml_values := s :: !scaml_values),
+      "<value> Encode an SCaml value to Michelson"
+    ];
   try
     readenv ppf Before_args;
     Clflags.parse_arguments anonymous usage;
@@ -187,6 +197,7 @@ let main () =
          Compile.interface,
          ".cmo",
          ".cma");
+      (* scaml_types_and_values () *)
     with Arg.Bad msg ->
       begin
         prerr_endline msg;

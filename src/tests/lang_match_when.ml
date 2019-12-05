@@ -1,3 +1,4 @@
+[@@@SCaml iml_optimization=false]
 open SCaml
 let main (main : unit) (storage : unit) =
   [],

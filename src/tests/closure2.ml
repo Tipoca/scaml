@@ -1,3 +1,4 @@
+[@@@SCaml iml_optimization=false]
 open SCaml
 let a = Int 1
 let f c = 

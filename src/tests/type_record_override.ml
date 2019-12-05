@@ -1,3 +1,4 @@
+[@@@SCaml iml_optimization=false]
 open SCaml
 
 type t = { int : int ; nat : nat ; tz : tz }

@@ -44,18 +44,18 @@ type t = (desc, attrs) with_loc_and_type
 
 and desc =
   | Const of Michelson.Opcode.constant
-  | Nil of Michelson.Type.t
+  | Nil
   | Cons of t * t
-  | IML_None of Michelson.Type.t
+  | IML_None
   | IML_Some of t
-  | Left of Michelson.Type.t * t
-  | Right of Michelson.Type.t * t
+  | Left of t
+  | Right of t
   | Unit
   | Var of Ident.t
   | Pair of t * t
   | Assert of t
   | AssertFalse
-  | Fun of Michelson.Type.t * Michelson.Type.t * Pat.var * t
+  | Fun of Pat.var * t
   | IfThenElse of t * t * t
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list

@@ -23,4 +23,6 @@ depends: [
   "tezos-error-monad"
   "tezos-micheline"
   "tezos-stdlib"
+  "camlon"
+  "ppx_meta_conv"
 ]

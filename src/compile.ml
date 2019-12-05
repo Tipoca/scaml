@@ -65,20 +65,38 @@ and compile_desc env t =
   let loc = t.IML.loc in
   match t.IML.desc with
   | IML.Const op -> [ PUSH (t.typ, op) ]
-  | Nil ty -> [ NIL ty ]
+  | Nil -> 
+      let ty = match t.typ.desc with
+        | TyList ty -> ty
+        | _ -> assert false
+      in
+      [ NIL ty ]
   | Cons (t1, t2) -> 
       let os2 = compile env t2 in
       let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
       os2 @ os1 @ [ CONS ]
-  | IML_None ty -> [ NONE ty ]
+  | IML_None -> 
+      let ty = match t.IML.typ.desc with
+        | TyOption ty -> ty
+        | _ -> assert false
+      in
+      [ NONE ty ]
   | IML_Some t1 -> 
       let os1 = compile env t1 in
       os1 @ [ SOME ]
-  | Left (ty, t) ->
-      let os = compile env t in
+  | Left t' ->
+      let ty = match t.typ.desc with
+        | TyOr (_, ty) -> ty
+        | _ -> assert false
+      in
+      let os = compile env t' in
       os @ [ LEFT ty ]
-  | Right (ty, t) -> 
-      let os = compile env t in
+  | Right t' -> 
+      let ty = match t.typ.desc with
+        | TyOr (ty, _) -> ty
+        | _ -> assert false
+      in
+      let os = compile env t' in
       os @ [ RIGHT ty ]
   | Unit -> [ UNIT ]
 
@@ -130,7 +148,7 @@ and compile_desc env t =
       let os1 = compile env t1 in
       let os2 = compile ((p2.desc,p2.typ)::env) t2 in
       os @ [IF_NONE (os1, os2 @ [DIP (1, [DROP 1])])]
-  | Fun (_ty1, _ty2, p, body) ->
+  | Fun (p, body) ->
       let fvars = IML.IdTys.elements & IML.freevars t in
       (*
       Format.eprintf "fvars: @[%a@] env: @[%a@]@." 
@@ -221,7 +239,7 @@ let compile_structure t =
 
   (* replace fun by let *)
   let rec get_abst t = match t.IML.desc with
-    | IML.Fun (_, _, p, t) -> p, t
+    | IML.Fun (p, t) -> p, t
     | Let (p, t1, t2) -> 
         let p', t2 = get_abst t2 in
         p', { t with desc= Let (p, t1, t2) }

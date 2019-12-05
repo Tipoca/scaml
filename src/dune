@@ -2,5 +2,7 @@
   (name main)
   (public_name scamlc)
   (flags -w A-4-9-40-41-42-44-45)
-  (libraries compiler-libs.common ocaml-migrate-parsetree spotlib
-  	     hex ptime zarith tezos-micheline))
+  (preprocess
+   (pps ppx_meta_conv.ppx))
+  (libraries compiler-libs.common ocaml-migrate-parsetree spotlib camlon
+  	     hex ptime zarith tezos-micheline ppx_meta_conv.ocaml))
