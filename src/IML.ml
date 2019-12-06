@@ -380,18 +380,18 @@ let rec type_expr tyenv ty =
         | Some "int", [] -> Ok (tyInt)
         | Some "nat", [] -> Ok (tyNat)
         | Some "tz",  [] -> Ok (tyMutez)
-        | Some "Set.t"       , [ty]       -> Ok (tySet ty)
-        | Some "Map.t"       , [ty1; ty2] -> Ok (tyMap (ty1, ty2))
-        | Some "BigMap.t"    , [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
-        | Some "Operation.t" , []         -> Ok (tyOperation)
-        | Some "Contract.t"  , [ty]       -> Ok (tyContract ty)
-        | Some "Timestamp.t" , []         -> Ok (tyTimestamp)
-        | Some "Address.t"   , []         -> Ok (tyAddress)
-        | Some "Key.t"       , []         -> Ok (tyKey)
-        | Some "Signature.t" , []         -> Ok (tySignature)
-        | Some "Key_hash.t"  , []         -> Ok (tyKeyHash)
-        | Some "Bytes.t"     , []         -> Ok (tyBytes)
-        | Some "Chain_id.t"  , []         -> Ok (tyChainID)
+        | Some "set"         , [ty]       -> Ok (tySet ty)
+        | Some "map"         , [ty1; ty2] -> Ok (tyMap (ty1, ty2))
+        | Some "big_map"     , [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
+        | Some "operation"   , []         -> Ok (tyOperation)
+        | Some "contract"    , [ty]       -> Ok (tyContract ty)
+        | Some "timestamp"   , []         -> Ok (tyTimestamp)
+        | Some "address"     , []         -> Ok (tyAddress)
+        | Some "key"         , []         -> Ok (tyKey)
+        | Some "signature"   , []         -> Ok (tySignature)
+        | Some "key_hash"    , []         -> Ok (tyKeyHash)
+        | Some "bytes"       , []         -> Ok (tyBytes)
+        | Some "chain_id"    , []         -> Ok (tyChainID)
         | Some _, _ -> Error (Unsupported_data_type p)
         | None, _ -> 
             match Env.find_type_descrs p tyenv with
@@ -462,20 +462,20 @@ let parse_bytes s =
   | _ -> Error "Bytes must take hex representation of bytes"
 
 let constructions_by_string =
-  [ ("Signature.t" , ("signature", "Signature", tySignature, 
-                      fun x -> Ok (C.String x)));
-    ("Key_hash.t"  , ("key_hash", "Key_hash", tyKeyHash, 
-                      fun x -> Ok (C.String x)));
-    ("Key.t"       , ("key", "Key", tyKey, 
-                      fun x -> Ok (C.String x)));
-    ("Address.t"   , ("address", "Address", tyAddress, 
-                      fun x -> Ok (C.String x)));
-    ("Timestamp.t" , ("timestamp", "Timestamp", tyTimestamp, 
-                      parse_timestamp));
-    ("Bytes.t"     , ("bytes", "Bytes", tyBytes, 
-                      parse_bytes));
-    ("Chain_id.t"  , ("chain_id", "Chain_id", tyChainID,
-                      fun x -> Ok (C.String x)))
+  [ ("signature" , ("signature", "Signature", tySignature, 
+                    fun x -> Ok (C.String x)));
+    ("key_hash"  , ("key_hash", "Key_hash", tyKeyHash, 
+                    fun x -> Ok (C.String x)));
+    ("key"       , ("key", "Key", tyKey, 
+                    fun x -> Ok (C.String x)));
+    ("address"   , ("address", "Address", tyAddress, 
+                    fun x -> Ok (C.String x)));
+    ("timestamp" , ("timestamp", "Timestamp", tyTimestamp, 
+                    parse_timestamp));
+    ("bytes"     , ("bytes", "Bytes", tyBytes, 
+                    parse_bytes));
+    ("chain_id"  , ("chain_id", "Chain_id", tyChainID,
+                    fun x -> Ok (C.String x)))
   ]
 
 let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
@@ -1310,7 +1310,7 @@ let structure str final =
         end
   
     (* set *)
-    | Tconstr (p, [_], _), TySet _ when (match Path.is_scaml p with Some "Set.t" -> true | _ -> false) ->
+    | Tconstr (p, [_], _), TySet _ when (match Path.is_scaml p with Some "set" -> true | _ -> false) ->
         (* XXX comparable type check *)
         if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
         begin match args with 
@@ -1328,7 +1328,7 @@ let structure str final =
         end
   
     (* map *)
-    | Tconstr (p, [_; _], _), TyMap _ when (match Path.is_scaml p with Some "Map.t" -> true | _ -> false) ->
+    | Tconstr (p, [_; _], _), TyMap _ when (match Path.is_scaml p with Some "map" -> true | _ -> false) ->
         (* XXX comparable type check *)
         if cstr_name <> "Map" then internal_error ~loc "strange map constructor";
         begin match args with 
@@ -1850,8 +1850,11 @@ let type_check_entries tyenv vbs =
   let ty_storage = Ctype.newvar () in
   let ty_operations = 
     let path =
-      Env.lookup_type (*~loc: *)
-        (Longident.(Ldot (Lident "SCaml", "operations"))) tyenv
+      try
+        Env.lookup_type (*~loc: *)
+          (Longident.(Ldot (Lident "SCaml", "operations"))) tyenv
+      with
+      | Not_found -> internal_error ~loc:Location.none "Type SCaml.operations is not defined.  Something wrong in your SCaml installation."
     in
     Ctype.newconstr path []
   in
@@ -1945,7 +1948,7 @@ let check_self ty_self str =
           prerr_endline "unify raised something unfamiliar"; raise e
     in
     match (Ctype.expand_head self.exp_env self.exp_type).Types.desc with
-    | Tconstr (p, [t], _) when Path.is_scaml p =  Some "Contract.t" ->
+    | Tconstr (p, [t], _) when Path.is_scaml p =  Some "contract" ->
         if t.level = Btype.generic_level then
           errorf ~loc:self.exp_loc "Contract.self cannot have a generic type, but it has type %a.  Please use a type constraint to instantiate its type." Printtyp.type_scheme self.exp_type;
         unify self.exp_type ty_self

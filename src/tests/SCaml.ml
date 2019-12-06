@@ -69,18 +69,21 @@ module List = struct
   let rev : 'a t -> 'a t = fun _ -> assert false
 end
 
+type 'a set = Set of 'a list
+
 module Set = struct
-  type 'a t = Set of 'a list
+  type 'a t = 'a set
   let empty : 'a t = Set []
   let length (Set xs) = Nat (Stdlib.List.length xs)
   let mem : 'a -> 'a t -> bool = fun _ -> assert false 
   let update : 'a -> bool -> 'a t -> 'a t = fun _ -> assert false
   let fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false
 end
-type 'a set = 'a Set.t = Set of 'a list
+
+type ('k, 'v) map = Map of ('k * 'v) list
 
 module Map = struct
-  type ('k, 'v) t = Map of ('k * 'v) list
+  type ('k, 'v) t = ('k, 'v) map
   let empty : ('k, 'v) t = Map []
   let length : ('k, 'v) t -> nat = fun _ -> assert false
   let map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t = fun _ -> assert false
@@ -89,22 +92,22 @@ module Map = struct
   let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
   let fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
 end
-type ('k, 'v) map = ('k, 'v) Map.t = Map of ('k * 'v) list
+
+type ('k, 'v) big_map
 
 module BigMap : sig
-  type ('k, 'v) t (* we cannot have a constant *)
+  type ('k, 'v) t = ('k, 'v) big_map
   val empty : ('k, 'v) t
   val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
 end = struct
-  type ('k, 'v) t = BigMap of ('k * 'v) list
-  let empty : ('k, 'v) t = BigMap []
+  type ('k, 'v) t = ('k, 'v) big_map
+  let empty : ('k, 'v) t = assert false
   let get : 'k -> ('k, 'v) t -> 'v option = fun _ -> assert false
   let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false
   let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
 end
-type ('k, 'v) big_map = ('k, 'v) BigMap.t
 
 module Loop = struct
   let left : ('a -> ('a, 'b) sum) -> 'a -> 'b = fun _ -> assert false
@@ -116,62 +119,75 @@ module String = struct
   let length : string -> nat = fun _ -> assert false
 end
 
+type bytes = Bytes of string
+
 module Bytes = struct
-  type t = Bytes of string
+  type t = bytes
   let concat : t -> t -> t = fun _ -> assert false
   let slice : nat -> nat -> t -> t option = fun _ -> assert false
   let length : t -> nat = fun _ -> assert false
 end
-type bytes = Bytes.t = Bytes of string
 
+type address = Address of string
 module Address = struct
-  type t = Address of string
+  type t = address
 end
-type address = Address.t = Address of string
 
+type key_hash = Key_hash of string
 module Key_hash = struct
-  type t = Key_hash of string
+  type t = key_hash
 end
-type key_hash = Key_hash.t = Key_hash of string
+
+type 'a contract
+type operation
+type operations = operation list
 
 module Contract : sig
-  type 'a t
+  type 'a t = 'a contract
   val self : 'a t
   val contract : address -> 'a t option
   val implicit_account : key_hash -> unit t
   val address : 'a t -> address
+
+  val create_raw : string -> key_hash option -> tz -> 'storage -> operation * address
+  (** Very raw interface for CREATE_CONTRACT.
+  
+      Michelson code must be given as a string literal.
+      The types of the contract and the initial storage are not checked 
+      by SCaml.
+      
+      Note that the Michelson code must be in string LITERAL.  
+      In Tezos you cannot generate contract code programically in a contract.
+  *)
 end = struct
-  type 'a t = Self
-  let self = Self
+  type 'a t = 'a contract
+  let self = assert false
   let contract = fun _ -> assert false
   let implicit_account = fun _ -> assert false
   let address _ = assert false
+  let create_raw _ = assert false
 end
-type 'a contract = 'a Contract.t
 
 module Operation = struct
-  type t
+  type t = operation
   let transfer_tokens : 'a -> tz -> 'a contract -> t = fun _ -> assert false
   let set_delegate : key_hash option -> t = fun _ -> assert false
 end
 
-type operation = Operation.t
-type operations = operation list
-
-let create_contract : ('param -> 'storage -> operations * 'storage) -> tz -> 'storage -> 'param -> operation * address = fun _ -> assert false
+type timestamp = Timestamp of string
 
 module Timestamp = struct
-  type t = Timestamp of string
+  type t = timestamp
   let add : t -> int -> t = fun _ -> assert false
   let sub : t -> int -> t = fun _ -> assert false
   let diff : t -> t -> int = fun _ -> assert false
 end
-type timestamp = Timestamp.t = Timestamp of string
+
+type chain_id = Chain_id of string
 
 module Chain_id = struct
-  type t = Chain_id of string
+  type t = chain_id
 end
-type chain_id = Chain_id.t = Chain_id of string
 
 (* maybe the place is not good *)
 module Global : sig
@@ -192,15 +208,17 @@ end = struct
   let get_chain_id _ = assert false
 end
 
+type key = Key of string
+
 module Key = struct
-  type t = Key of string
+  type t = key
 end
-type key = Key.t = Key of string
+
+type signature = Signature of string
 
 module Signature = struct
-  type t = Signature of string
+  type t = signature
 end
-type signature = Signature.t = Signature of string
 
 module Crypto = struct
   let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
