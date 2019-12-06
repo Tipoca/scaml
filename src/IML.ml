@@ -113,6 +113,7 @@ and desc =
   | Switch_or of t * P.var * t * P.var * t
   | Switch_cons of t * P.var * P.var * t * t
   | Switch_none of t * t * P.var * t
+  | Contract_create_raw of string
 
 let pp ppf = 
   let p = Format.pp_print_string ppf in
@@ -171,6 +172,8 @@ let pp ppf =
           pp t
           pp t1 
           P.pp_var p2 pp t2
+    | Contract_create_raw s ->
+        f "@[<2>Contract.create_raw@ %S@]" s
   in
   pp ppf
 
@@ -295,7 +298,7 @@ let rec freevars t =
   let open IdTys in
   let psingleton p = singleton (p.desc, p.typ) in
   match t.desc with
-  | Const _ | Nil | IML_None | Unit -> empty
+  | Const _ | Nil | IML_None | Unit | Contract_create_raw _ -> empty
   | Cons (t1,t2) | Pair (t1,t2) -> union (freevars t1) (freevars t2)
   | Left t | Right t | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
@@ -1448,6 +1451,11 @@ let structure str final =
     | Texp_ident (Path.Pident id, {loc=_}, _vd) -> mk & Var id
     | Texp_ident (p, {loc}, _vd) ->
         begin match Path.is_scaml p with
+          | Some "Contract.create_raw" ->
+              (* SCaml.Contract.create_raw must be always applied with a string literal.
+                 If we see it here, it is not.
+              *)
+              errorf ~loc "Contract.create_raw must be immediately applied with a string literal"
           | Some n -> mk & primitive ~loc typ n []
           | None -> unsupported ~loc "complex path %s" (Path.xname p)
         end
@@ -1518,6 +1526,26 @@ let structure str final =
         end
   
     | Texp_apply (_, []) -> assert false
+
+    | Texp_apply ({ exp_desc= Texp_ident (p, _, _vd) ; exp_loc= loc_create_raw },
+                  (Nolabel, Some { exp_desc= Texp_constant(Const_string (s, _)) }) 
+                  :: args ) when Path.is_scaml p = Some "Contract.create_raw" ->
+        (* Contract.create_raw <string literal> ... *)
+        let args = List.map (function
+            | (Nolabel, Some (e: Typedtree.expression)) -> expression e
+            | _ -> unsupported ~loc "labeled arguments") args
+        in
+        let retty = tyPair (tyOperation, tyAddress) in
+        let fty =
+          List.fold_right (fun arg ty -> tyLambda (arg.typ, ty)) args retty 
+        in
+        mk & App (
+          { desc= Contract_create_raw s;
+            loc= loc_create_raw;
+            typ= fty;
+            attrs= [] },
+          args )
+
     | Texp_apply (f, args) -> 
         let args = List.map (function
             | (Nolabel, Some (e: Typedtree.expression)) -> expression e
@@ -2009,6 +2037,7 @@ let count_variables t =
   let rec f t st = match t.desc with
     | Var id -> incr id st
 
+    | Contract_create_raw _
     | Const _ | Nil | IML_None | Unit | AssertFalse -> st
 
     | IML_Some t | Left t | Right t | Assert t
@@ -2033,7 +2062,8 @@ let subst id t1 t2 =
     match t.desc with
     | Var id' when id = id' -> 
         add_attrs t.attrs t1 (* t1 never contains id *)
-    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse -> t
+    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse 
+    | Contract_create_raw _ -> t
 
     | IML_Some t -> mk & IML_Some (f t)
     | Left t -> mk & Left (f t)
@@ -2094,7 +2124,7 @@ let optimize t =
                 & f & subst p.desc (add_attr (Comment ("= " ^ Ident.name p.desc)) t1) t2
             | _ -> mk & Let (p, f t1, f t2)
           end
-      | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse -> 
+      | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create_raw _ -> 
           add_attrs { t with attrs= [] }
       | IML_Some t -> mk & IML_Some (f t)
       | Left t -> mk & Left (f t)

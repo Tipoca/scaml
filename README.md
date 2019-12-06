@@ -67,7 +67,7 @@ Parsing is done by the original OCaml parser.
 ### Typing by OCaml
 
 Typing is done by the original OCaml type checker.
-Primitives defined in a module `SCaml` is referred.
+It uses module `SCaml` which defines primitive values and types for Michelson.
 
 ### SCaml typing 
 
@@ -83,9 +83,12 @@ IML is a simple typed purely functional language.
 
 Most of the unsupported features of OCaml are rejected here.
 
+Pattern matches are decomposed to simple switches in this phase.
+
 ### Compilation to Michelson
 
 `IML` AST is compiled down to Michelson.
+It is a trivial compilation from FP to stack VM.
 
 ## Features
 
