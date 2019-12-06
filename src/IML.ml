@@ -669,8 +669,15 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                 let rec f labels pfields = match labels, pfields with
                   | (n, _)::labels, (_, plabel, p)::pfields when n = plabel.Types.lbl_name ->
                       patternx p :: f labels pfields
-                  | (_, typ)::labels, _ ->
-                      let typ = from_Ok & type_expr tyenv typ in
+                  | (n, typ)::labels, _ ->
+                      let typ = 
+                        Result.at_Error (fun e -> 
+                            errorf ~loc "This pattern has a field %s with type %a.  %a" 
+                              n 
+                              Printtyp.type_expr typ
+                              pp_type_expr_error e) 
+                        & type_expr tyenv typ 
+                      in
                       { loc; desc= P.Wild; typ; attrs= () } :: f labels pfields
                   | [], [] -> []
                   | [], _ -> assert false
@@ -1382,11 +1389,15 @@ let structure str final =
                       List.map (fun constr ->
                           let ty_args, ty_res = Ctype.instance_constructor constr in
                           Ctype.unify tyenv exp_type ty_res; (* XXX should succeed *)
-                          ty_args
-                        ) non_consts
+                          List.map (fun ty -> 
+                              Result.at_Error (fun e ->
+                                  errorf ~loc "This expression has type %a.  One of its constructors %s has type %a.  %a" 
+                                    Printtyp.type_expr exp_type 
+                                    constr.cstr_name
+                                    Printtyp.type_expr ty
+                                    pp_type_expr_error e)
+                              & type_expr tyenv exp_type) ty_args) non_consts
                     in
-                    (* XXX Duped calculation ? *)
-                    let tys_list = List.map (List.map (fun ty -> from_Ok & type_expr tyenv ty)) tys_list in
                     let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
                     Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
               in
@@ -1469,41 +1480,39 @@ let structure str final =
   
     | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
     | Texp_let (Nonrecursive, vbs, e) ->
-        begin try
-            (* simple let x = e in e' *)
-            let rev_vbs =
-              List.fold_left (fun rev_vbs vb -> 
-                  let _, v, e = value_binding vb in
-                  (v, e) :: rev_vbs) [] vbs
-            in
-            let e = expression e in
-            List.fold_left (fun e (v,def) ->
-                { loc; (* XXX inaccurate *)
-                  typ= e.typ;
-                  desc= Let (v, def, e);
-                  attrs= [] } ) e rev_vbs
-          with
-          | Location.Error _ ->
-              (* let p = e and p' = e' in e''
-                 =>
-                 let x = e in match x with p ->
-                 let x' = e' in match x' with p' -> e''
-              *)
-              List.fold_right (fun vb e' ->
-                  let { vb_pat= ({ pat_type; pat_env } as vb_pat)
-                      ; vb_expr } = vb 
-                  in
-                  let typ = from_Ok & type_expr pat_env pat_type in
-                  let i = create_ident "x" in
-                  let x = { desc= i; typ; loc= Location.none; attrs= () } in
-                  let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
-                  { desc= Let (x, expression vb_expr, 
-                               Pmatch.compile ex [(patternx vb_pat, None, e')])
-                  ; typ= e'.typ
-                  ; loc
-                  ; attrs= [] 
-                  }
-                ) vbs & expression e
+        if not Flags.(!flags.iml_pattern_match) then begin
+          (* simple let x = e in e' *)
+          let rev_vbs =
+            List.fold_left (fun rev_vbs vb -> 
+                let _, v, e = value_binding vb in
+                (v, e) :: rev_vbs) [] vbs
+          in
+          let e = expression e in
+          List.fold_left (fun e (v,def) ->
+              { loc; (* XXX inaccurate *)
+                typ= e.typ;
+                desc= Let (v, def, e);
+                attrs= [] } ) e rev_vbs
+        end else begin
+          (* let p = e and p' = e' in e''
+             =>
+             let x = e in match x with p ->
+             let x' = e' in match x' with p' -> e''
+          *)
+          List.fold_right (fun vb e' ->
+              let { vb_pat; vb_expr } = vb in
+              let vb_expr = expression vb_expr in
+              let typ = vb_expr.typ in
+              let i = create_ident "x" in
+              let x = { desc= i; typ; loc= Location.none; attrs= () } in
+              let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
+              { desc= Let (x, vb_expr, 
+                           Pmatch.compile ex [(patternx vb_pat, None, e')])
+              ; typ= e'.typ
+              ; loc
+              ; attrs= [] 
+              }
+            ) vbs & expression e
         end
   
     | Texp_apply (_, []) -> assert false
@@ -1537,10 +1546,6 @@ let structure str final =
         unsupported ~loc "labeled arguments"
   
     | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
-        (* function case1 | .. | casen
-           =>
-           fun x -> match x with case1 | .. | casen 
-        *)
         if partial = Partial then errorf ~loc "Pattern match is partial";
         let i = create_ident "x" in
         let targ, _tret = match typ.desc with
@@ -1549,8 +1554,20 @@ let structure str final =
         in
         let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
         let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
-        let t = compile_match evar cases in
-        mk & Fun (var, t)
+        if not Flags.(!flags.iml_pattern_match) then begin
+          mkfun var & switch ~loc evar cases
+        end else begin
+          (* function case1 | .. | casen
+             =>
+             fun x -> match x with case1 | .. | casen 
+          *)
+          let compile_case case = 
+            let guard = Option.fmap expression case.c_guard in
+            (patternx case.c_lhs, guard, expression case.c_rhs)
+          in
+          let t = Pmatch.compile evar & List.map compile_case cases in
+          mkfun var t
+        end
   
     | Texp_ifthenelse (cond, then_, Some else_) -> 
         let econd = expression cond in
@@ -1567,10 +1584,16 @@ let structure str final =
         unsupported ~loc "non exhaustive pattern match"
         
     | Texp_match (e , cases, [], Total) -> 
-        (* mk & compile_match ~loc env e cases *)
-        (* Format.eprintf "match-e %a@." Printtyp.type_scheme e.exp_type; *)
-        compile_match (expression e) cases
-        
+        let e = expression e in
+        if not Flags.(!flags.iml_pattern_match) then begin
+          switch ~loc e cases
+        end else begin
+          let compile_case case = 
+            let guard = Option.fmap expression case.c_guard in
+            (patternx case.c_lhs, guard, expression case.c_rhs)
+          in
+          Pmatch.compile e (List.map compile_case cases)
+        end
     | Texp_ifthenelse (_, _, None) ->
         unsupported ~loc "if-then without else"
     | Texp_try _ -> unsupported ~loc "try-with"
@@ -1681,13 +1704,43 @@ let structure str final =
                        desc= Prim (n, conv fty, args);
                        attrs= [] }, left)
   
-  and compile_match e cases =
-    let compile_case case = 
-      let guard = Option.fmap expression case.c_guard in
-      (patternx case.c_lhs, guard, expression case.c_rhs)
+  and switch ~loc:loc0 e cases =
+    let ty = e.typ in
+    let compile_case case = match case.c_guard with
+      | Some e -> unsupported ~loc:e.exp_loc "guard"
+      | None -> 
+          match case.c_lhs.pat_desc with
+          | Tpat_construct (_, { cstr_name }, xs) -> cstr_name, xs, expression case.c_rhs
+          | _ -> unsupported ~loc:case.c_lhs.pat_loc "non variant pattern"
     in
-    Pmatch.compile e (List.map compile_case cases)
-  
+    let cases = 
+      List.sort (fun (n1,_,_) (n2,_,_) -> compare n1 n2) (List.map compile_case cases)
+    in
+    let mk desc = { desc; loc=loc0; typ= (let _, _, e = List.hd cases in e.typ); attrs= [] } in
+    match ty.desc, cases with
+    | TyOr (_ty1, _ty2), [("Left",[l],le); ("Right",[r],re)] ->
+        let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
+        let lv = get_var l in
+        let rv = get_var r in
+        mk & Switch_or (e,
+                        lv, le,
+                        rv, re)
+    | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
+    | TyList _ty1, [("::",[l1;l2],le); ("[]",[],re)] ->
+        let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
+        let lv1 = get_var l1 in
+        let lv2 = get_var l2 in
+        mk & Switch_cons (e,
+                          lv1, lv2, le,
+                          re)
+    | TyOption _ty1, [("None",[],le); ("Some",[r],re)] ->
+        let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
+        let rv = get_var r in
+        mk & Switch_none (e,
+                          le,
+                          rv, re)
+    | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
+
   and value_binding { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
     (* currently we only handle very simple sole variable pattern *)
     match pattern_simple vb_pat with
@@ -1745,6 +1798,8 @@ let structure str final =
       final
   in
   structure str
+
+ 
 
   
 (* parameter and storage types *)
@@ -2029,6 +2084,7 @@ let optimize t =
             | None -> add_attrs & f t2
             | Some 1 when p.desc <> contract_self_id -> 
                 (* contract_self_id must not be inlined into LAMBDAs *)
+                (* XXX This is adhoc *)
                 add_attrs 
                 & f & subst p.desc (add_attr (Comment ("= " ^ Ident.name p.desc)) t1) t2
             | _ -> mk & Let (p, f t1, f t2)
@@ -2166,7 +2222,9 @@ let implementation sourcefile str =
             in
             add_annot ty_param node
       in
-      ty_param, ty_storage, add_self (from_Ok & type_expr tyenv self_type) & structure str final
+      ty_param, 
+      ty_storage, 
+      add_self (tyContract ty_param) & structure str final
 
 let save path t = 
   let oc = open_out path in
