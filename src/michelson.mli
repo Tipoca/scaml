@@ -118,7 +118,7 @@ module Opcode : sig
     | GE
     | NEQ
     | IF of t list * t list
-    | ADD | SUB | MUL | EDIV | ABS | NEG | LSL | LSR 
+    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
     | AND | OR | XOR | NOT
     | EXEC
     | IF_NONE of t list * t list
