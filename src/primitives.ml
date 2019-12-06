@@ -59,6 +59,7 @@ let primitives =
   ; "xor"     , (2, simple [XOR])
   ; "not"     , (1, simple [NOT])
   ; "abs"     , (1, simple [ABS])
+  ; "isnat"   , (1, simple [ISNAT])
   ; "~-"      , (1, simple [NEG])
   ; "~-^"     , (1, simple [NEG])
 
