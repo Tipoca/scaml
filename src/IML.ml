@@ -25,7 +25,7 @@ type ('desc, 'attrs) with_loc_and_type =
   }
 
 module Constructor = struct
-  type t = Left | Right | Some | None | Cons | Nil | Unit | Bool of bool | Pair | Constant of Michelson.Constant.t
+  type t = Unit | Left | Right | Some | None | Cons | Nil | Bool of bool | Pair | Constant of Michelson.Constant.t
   
   let to_string = function
     | Pair -> "(,)"
@@ -82,15 +82,17 @@ end
 
 module P = Pat
 
-type attr = 
-  | Comment of string
+module Attr = struct
+  type t = 
+    | Comment of string
+  
+  type ts = t list
+  
+  let add a t = { t with attrs= a :: t.attrs }
+  let adds attrs t = { t with attrs= attrs @ t.attrs }
+end
 
-type attrs = attr list
-
-let add_attr a t = { t with attrs= a :: t.attrs }
-let add_attrs attrs t = { t with attrs= attrs @ t.attrs }
-
-type t = (desc, attrs) with_loc_and_type
+type t = (desc, Attr.ts) with_loc_and_type
 
 and desc =
   | Const of M.Opcode.constant
@@ -125,7 +127,7 @@ let pp ppf =
 
   and attr _ppf attrs = 
     List.iter (function
-        | Comment s -> f "/* %s */" s) attrs
+        | Attr.Comment s -> f "/* %s */" s) attrs
                          
   and desc _ppf t = match t.desc with
     | Const c -> f "%a" C.pp c
@@ -536,8 +538,6 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
   | Tpat_tuple ps -> encode_by mkppair & List.map patternx ps
 
-  | Tpat_construct (_, _, []) when typ.desc = TyUnit -> mk P.Wild
-
   | Tpat_constant (Const_string (s, None))  -> 
       mk (P.Constr (Cnstr.Constant (C.String s), []))
                                                  
@@ -554,6 +554,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
       
       (* XXX should check the module path *)
       begin match cdesc.cstr_name, typ.desc, ps with
+        | "()", TyUnit, [] -> mk (P.Constr (Cnstr.Unit, []))
         | "Left", TyOr _, [p] -> mk (P.Constr (Cnstr.Left, [patternx p]))
         | "Right", TyOr _, [p] -> mk (P.Constr (Cnstr.Right, [patternx p]))
         | "Some", TyOption _, [p] -> mk (P.Constr (Cnstr.Some, [patternx p]))
@@ -1996,6 +1997,7 @@ let compile_global_entry ty_storage ty_return node =
 
   let rec f param_id node = match node with
     | `Leaf (_,vb) ->
+        (* XXX top entry has poor pattern expressivity *)
         let id, var = match pattern_simple vb.vb_pat with
           | [p] -> p.desc, mk_var p.desc p.typ
           | _ -> assert false
@@ -2005,7 +2007,7 @@ let compile_global_entry ty_storage ty_return node =
           | _ -> assert false
         in
         let param_var = mk_var param_id param_type in
-        add_attr (Comment ("entry " ^ Ident.name id))
+        Attr.add (Attr.Comment ("entry " ^ Ident.name id))
         & mk (App (var, [param_var; e_storage])) ty_return,
         param_type
 
@@ -2061,7 +2063,7 @@ let subst id t1 t2 =
     let mk desc = { t with desc } in
     match t.desc with
     | Var id' when id = id' -> 
-        add_attrs t.attrs t1 (* t1 never contains id *)
+        Attr.adds t.attrs t1 (* t1 never contains id *)
     | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse 
     | Contract_create_raw _ -> t
 
@@ -2121,7 +2123,7 @@ let optimize t =
                 (* contract_self_id must not be inlined into LAMBDAs *)
                 (* XXX This is adhoc *)
                 add_attrs 
-                & f & subst p.desc (add_attr (Comment ("= " ^ Ident.name p.desc)) t1) t2
+                & f & subst p.desc (Attr.add (Attr.Comment ("= " ^ Ident.name p.desc)) t1) t2
             | _ -> mk & Let (p, f t1, f t2)
           end
       | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create_raw _ -> 

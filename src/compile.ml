@@ -5,7 +5,7 @@ module M = Michelson
 open M.Type
 open M.Opcode
 
-module MEnv : sig
+module Env : sig
   type t = (Ident.t * M.Type.t) list
   val find : Ident.t -> t -> (int * M.Type.t) option
   val pp : Format.formatter -> t -> unit
@@ -31,37 +31,28 @@ end = struct
 end
 
 (* Copy a value of the identifier from the deep of the stack to its top. *)
-let compile_var ~loc env id = match MEnv.find id env with
+let var ~loc env id = match Env.find id env with
   | None -> 
-      internal_error ~loc "variable not found: %s in %s" 
+      internal_error ~loc "Variable not found: %s in %s" 
         (Ident.unique_name id)
-        (Format.sprintf "%a" MEnv.pp env)
+        (Format.sprintf "%a" Env.pp env)
   | Some (0,_typ) ->
       [ COMMENT( "var " ^ Ident.name id, [ DUP ]) ] 
   | Some (n,_typ) ->
       [ COMMENT( "var " ^ Ident.name id, [ DIG n; DUP; DUG (n+1) ]) ] 
-(*
-      let rec f = function
-        | 0 -> [ DUP ]
-        | n -> 
-            assert (n > 0);
-            [ DIP (1, f (n-1)); SWAP ]
-      in
-      [ COMMENT( "var " ^ Ident.name id, f n ) ]
-*)
 
 let rec compile env t = 
-  let os = compile_desc env t in
+  let os = desc env t in
   let comments = 
     List.filter_map (function
-        | IML.Comment s -> Some s
-        (* | _ -> None *)) t.IML.attrs
+        | IML.Attr.Comment s -> Some s
+      ) t.IML.attrs
   in
   match comments with
   | [] -> os
   | _ -> [COMMENT (String.concat ", " comments, os)]
       
-and compile_desc env t =
+and desc env t =
   let loc = t.IML.loc in
   match t.IML.desc with
   | IML.Const op -> [ PUSH (t.typ, op) ]
@@ -100,7 +91,7 @@ and compile_desc env t =
       os @ [ RIGHT ty ]
   | Unit -> [ UNIT ]
 
-  | Var id -> compile_var ~loc env id
+  | Var id -> var ~loc env id
 
   | Pair (t1, t2) ->
       let os2 = compile env t2 in
@@ -203,7 +194,7 @@ and compile_desc env t =
                   let partial_apply =
                     (* Apply fvars from xn to x1 *)
                     List.fold_left (fun st (x,_ty) ->
-                        let o = compile_var ~loc ((Ident.dummy,tyUnit (* for lambda *))::env) x in
+                        let o = var ~loc ((Ident.dummy,tyUnit (* for lambda *))::env) x in
                         COMMENT ("partial app " ^ Ident.name x, o @ [APPLY]) :: st) [] fvars
                   in
                   lambda :: partial_apply
@@ -227,7 +218,7 @@ let split_entry_point t =
   in
   f [] t
 
-let compile_structure t =
+let structure t =
   let defs, t = split_entry_point t in
   let ops, env = 
     List.fold_left (fun (ops, env) (p,t) ->

@@ -6,41 +6,24 @@ type ('desc, 'attrs) with_loc_and_type =
   ; typ   : Michelson.Type.t
   ; attrs : 'attrs
   }
-
-module Constructor : sig
-  type t = Left | Right | Some | None | Cons | Nil | Unit | Bool of bool | Pair | Constant of Michelson.Constant.t
-  (* Glitch: Unit, true, false, None, [] are not Constant *) 
-   
-  val to_string : t -> string
-end
+(** AST nodes with type, location and attributes *)
 
 module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
+(** Set of idents and their types *)
 
 module Pat : sig
-  type desc =
-    | Var of Ident.t
-    | Constr of Constructor.t * t list
-    | Wild
-    | Alias of t * Ident.t * Location.t (* location of ident *)
-    | Or of t * t
-
-  and t = (desc, unit) with_loc_and_type
-
-  val pp : Format.t -> t -> unit
-      
   type var = (Ident.t, unit) with_loc_and_type
+  (** Pattern variable *)
   
   val pp_var : Format.t -> var -> unit
-
-  val vars : t -> IdTys.t
 end
 
-type attr = 
-  | Comment of string
+module Attr : sig
+  type t = Comment of string
+  type ts = t list
+end
 
-type attrs = attr list
-
-type t = (desc, attrs) with_loc_and_type
+type t = (desc, Attr.ts) with_loc_and_type
 
 and desc =
   | Const of Michelson.Opcode.constant
@@ -67,11 +50,6 @@ and desc =
 
 val pp : Format.t -> t -> unit
 
-val mke : Michelson.Type.t -> desc -> t
-val mkfst : t -> t
-val mksnd : t -> t
-val mkeq : t -> t -> t
-  
 val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
 
 val freevars : t -> IdTys.t
@@ -79,4 +57,4 @@ val freevars : t -> IdTys.t
 val optimize : t -> t
 
 val save : string -> t -> unit
-(* Print out IML AST to a file.  For debugging. *)
+(** Print out IML AST to a file.  For debugging. *)

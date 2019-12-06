@@ -174,8 +174,5 @@ end
 
 module Module : sig
   type t = Opcode.module_ = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
-(*
-  val to_micheline : t -> Mline.t
-*)
   val pp : Format.formatter -> t -> unit
 end

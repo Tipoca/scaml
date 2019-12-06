@@ -1,1 +1,1 @@
-val compile_structure : IML.t -> Michelson.Opcode.t list
+val structure : IML.t -> Michelson.Opcode.t list
