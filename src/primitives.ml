@@ -1,36 +1,11 @@
+(* We can omit the types here, since they are coded in SCaml.ml *)
+(* XXX We should consider to merge SCaml.ml and primitives.ml into one *)
+                                                
 module M = Michelson
 open M.Opcode
 open M.Type
 
-(*
-type code = 
-  | Nullary of (M.Type.t -> M.Opcode.t list)
-  | Unary   of (M.Type.t -> M.Opcode.t list -> M.Opcode.t list)
-  | Binary  of (M.Type.t -> M.Opcode.t list -> M.Opcode.t list -> M.Opcode.t list)
-  | Ternary of (M.Type.t -> M.Opcode.t list -> M.Opcode.t list -> M.Opcode.t list -> M.Opcode.t list)
-
-let arity = function
-  | Nullary _ -> 0
-  | Unary _ -> 1
-  | Binary _ -> 2
-  | Ternary _ -> 3
-*)
-
 let simple os = fun _ty pre -> pre @ os
-
-(* We can omit the types here, since they are coded in SCaml.ml *)
-
-(*
-(* EXEC for pure lambda and closure *)
-let exec = function
-  | false -> [ EXEC ]
-  | true -> [ DIP (1, [ DUP; CDR; DIP (1, [ CAR ]) ]); PAIR; EXEC ]
-
-let is_closure cli =
-  match (repr_closure_info cli).closure_desc with
-  | CLList xs -> xs <> []
-  | _ -> assert false
-*)
 
 let primitives = 
   [ "fst"     , (1, simple [CAR])
