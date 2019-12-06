@@ -139,7 +139,7 @@ Library functions are listed in `src/tests/SCaml.ml`.
 
 > "Road-map" is another expression of "promises almost never fulfilled in time". 
 
-### Pyramid (2020-01-01)
+### 1.0 Pyramid (2020-01-01)
 
 "Pyramid" will be the first official release of SCaml:
 
