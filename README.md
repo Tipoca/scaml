@@ -41,7 +41,7 @@ A contract must be written in one file.
 * Exceptions.
 * Classes, and objects.
 
-## Unsupported features of Michelson
+## Unsupported features of Michelson for now
 
 ### `CREATE_CONTRACT`
 
