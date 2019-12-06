@@ -1,4 +1,3 @@
-[@@@SCaml iml_optimization=false]
 (* The actual implementation of these API functions are given in
    primitives.ml as Michelson code.  This file is to give their ML types.
 *)
