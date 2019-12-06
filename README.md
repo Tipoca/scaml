@@ -11,7 +11,7 @@ All the valid SCaml programs are also valid as OCaml programs.
 This immediately leads to the following benefits:
 
 * Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
-* SCaml programs should be compilable by OCaml to native executables with an appropriate library, which can simulate their behaviour.  It will also open a door to write a dApp consists both of on-chain and off-chain programs in one language.
+* SCaml programs should be compilable by OCaml to native executables with an appropriate library, which can simulate their behavior.  It will also open a door to write a dApp consists both of on-chain and off-chain programs in one language.
 * OCaml programmers can start writing SCaml programs immediately.  New comers can learn SCaml through existing OCaml language tutorials and references.
 * Researchers can use SCaml for bases of their research prototypes.
 
@@ -36,7 +36,7 @@ A contract must be written in one file.
 
 * Modules.
 * Labeled functions.
-* Partial applicaiton of primitives defined in `SCaml`.
+* Partial application of primitives defined in `SCaml`.
 * Side effects: reference, mutable record fields, arrays.
 * Exceptions.
 * Classes, and objects.
@@ -56,7 +56,7 @@ illegal uses of `PUSH` and comparisons for now.
 
 ### Validity checks of string representations of addresses, keys, key hashes and signatures
 
-Michelson typechecker must be used to detect invalid string based literals.
+Michelson type-checker must be used to detect invalid string based literals.
 
 ## Design
 
@@ -99,11 +99,11 @@ Each arithmetic type has its own set of arithmetic binary operators:
 
 * Integers: `+`, `-`, `*`, etc
 * Natural numbers: `+^`, `-^`, `*^`, etc
-* Tezzys: `+$`, `-$`, `*$`, etc
+* Tezzies: `+$`, `-$`, `*$`, etc
 
 In future,
 
-* Integer suffixes to natural numbers and tezzys, like `42p`, `1.23t`
+* Integer suffixes to natural numbers and tezzies, like `42p`, `1.23t`
 * SML style overloading of these operators.
 
 ### Container literals
@@ -135,9 +135,9 @@ Under `src/tests/`
 
 Library functions are listed in `src/tests/SCaml.ml`.
 
-## Roadmap
+## Road-map
 
-> "Roadmap" is another expression of "promises almost never fulfilled in time". 
+> "Road-map" is another expression of "promises almost never fulfilled in time". 
 
 ### Pyramid (2020-01-01)
 
