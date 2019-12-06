@@ -7,6 +7,18 @@ type 'a tree =
   | Leaf of 'a
   | Branch of 'a tree * 'a tree
 
+let split len =
+  let rec bits bs =
+    if bs * 2 > len then bs
+    else bits (bs * 2)
+  in
+  let bs = bits 2 in
+  let nrights = (len - bs) + bs / 2 in
+  let nlefts = len - nrights in
+  assert (nrights > 0);
+  assert (nlefts > 0);
+  nlefts, nrights
+
 (* How to arrange n elements  *)
 let rec place xs =
   match xs with 
@@ -15,16 +27,8 @@ let rec place xs =
   | _ ->
       (* we need a branch. *)
       let len = List.length xs in
-      let rec bits bs =
-        if bs * 2 > len then bs
-        else bits (bs * 2)
-      in
-      let bs = bits 2 in
-      let nrights = (len - bs) + bs / 2 in
-      let nlefts = len - nrights in
+      let nlefts, nrights = split len in
       Format.eprintf "binplace: %d => %d %d@." len nlefts nrights;
-      assert (nrights > 0);
-      assert (nlefts > 0);
       let lefts, rights = List.split_at nlefts xs in
       Branch (place lefts, place rights)
 
@@ -33,22 +37,13 @@ let rec path i len =
   assert (i < len);
   if len = 1 then []
   else
-    (* XXX code duplicated. fragile against modifications *)
-    let rec bits bs =
-      if bs * 2 > len then bs
-      else bits (bs * 2)
-    in
-    let bs = bits 2 in
-    let nrights = (len - bs) + bs / 2 in
-    let nlefts = len - nrights in
-    assert (nrights > 0);
-    assert (nlefts > 0);
-    if i <= nlefts then Left :: path i nlefts
+    let nlefts, nrights = split len in
+    if i < nlefts then Left :: path i nlefts
     else Right :: path (i - nlefts) nrights
 
 let rec fold ~leaf ~branch = function
   | Leaf ty -> leaf ty
   | Branch (t1,t2) ->
-    let t1 = fold ~leaf ~branch t1 in
-    let t2 = fold ~leaf ~branch t2 in
-    branch t1 t2
+      let t1 = fold ~leaf ~branch t1 in
+      let t2 = fold ~leaf ~branch t2 in
+      branch t1 t2
