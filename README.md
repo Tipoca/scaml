@@ -11,7 +11,7 @@ All the valid SCaml programs are also valid as OCaml programs.
 This immediately leads to the following benefits:
 
 * Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
-* SCaml programs are also compilable as OCaml programs, which can simulate their behaviour.  It will also open a door to write a dApp consists both of on-chain and off-chain programs in one language.
+* SCaml programs should be compilable by OCaml to native executables with an appropriate library, which can simulate their behaviour.  It will also open a door to write a dApp consists both of on-chain and off-chain programs in one language.
 * OCaml programmers can start writing SCaml programs immediately.  New comers can learn SCaml through existing OCaml language tutorials and references.
 * Researchers can use SCaml for bases of their research prototypes.
 
@@ -19,36 +19,44 @@ This immediately leads to the following benefits:
 
 The following OCaml features are **not** supported:
 
-* Recursion
-* Polymorphism
-* Sum types other than lists, options, and `type ('a,'b) sum = Left of 'a | Right of 'b`.
-* Product types other than a pair: `t1 * t2`.
+### Recursion
+
+No `let rec` construct.  Map/iter/folding over lists, sets, maps and big maps are supported.  `Loop.left` is also available to uses `LOOP` Michelson opcode.
+
+### Polymorphism
+
+Michelson is monomorphic language.  So is SCaml.
+You may have to add type constraints to your SCaml programs when expressions have too general types.
+
+### Separate compilation
+
+A contract must be written in one file.
+
+### Others
+
 * Modules.
 * Labeled functions.
-* Exception patterns.
-* Multi case in `function`
 * Partial applicaiton of primitives defined in `SCaml`.
-* Reference or mutable record fields.
+* Side effects: reference, mutable record fields, arrays.
 * Exceptions.
-* Arrays.
 * Classes, and objects.
 
-### No user defined types (yet)
+## Unsupported features of Michelson
 
-For simplicity SCaml support only 2 ways to create complex types:
-pair `ty1 * ty2` and sum `(ty1, ty2) sum`, which correspond with
-the composite types of Michelson.  The pair is a two arity tuple
-and `sum` has the following definition:
+### `CREATE_CONTRACT`
 
-```
-type ('a, 'b) sum =
-  | Left of 'a
-  | Right of 'b
-```
+Giving a nice API for `CREATE_CONTRACT` opcode in ML is not trivial.
+We are currently studying the optimal design.
 
-### Experimental: Pattern match
+### Check of pushable/comparable or not
 
-Full pattern matching for `match` is recently added as an experimental feature.  It is not yet fully tested.
+SCaml itself does not type-check its Michelson output.  The output
+must be checked by Tezos node's Michelson type checker to find out
+illegal uses of `PUSH` and comparisons for now.
+
+### Validity checks of string representations of addresses, keys, key hashes and signatures
+
+Michelson typechecker must be used to detect invalid string based literals.
 
 ## Design
 
@@ -77,7 +85,7 @@ Most of the unsupported features of OCaml are rejected here.
 
 ### Compilation to Michelson
 
-`IML` AST is compiled to Michelson.
+`IML` AST is compiled down to Michelson.
 
 ## Features
 
@@ -104,7 +112,7 @@ In future,
 * Sets: `Set [ Nat 1; Nat 2; Nat 3 ]`
 * Maps: `Map [ (Nat 1, "1"); (Nat 2, "2"); (Nat 3, "3") ]`
 
-### String based constants
+### String based literals
 
 * Bytes: `Bytes "0123456789abcdef"`
 * Address: `Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN"`
@@ -112,9 +120,9 @@ In future,
 * Key hashes: `Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"`
 * Signatures: `Signature "edsigu4chLHh7rDAUxHyifHYTJyuS8zybSSFQ5eSXydXD7PWtHXrpeS19ds3hA587p5JNjyJcZbLx8QtemuJBEFkLyzjAhTjjta"`
 
-### Entry points
+### Entry points (experimental)
 
-Top level `let` bindings with `[@entry]` attribute are treated as entry points.  If none of `[@entry]` specified, the last value definition is treated as the entry point:
+Top level `let` bindings with `[@entry]` attribute are treated as entry points introduced in Babylon.  If none of `[@entry]` specified, the last value definition is treated as the entry point:
 
 ```
 let [@entry] case1 (param : int) storage = ...
@@ -127,9 +135,16 @@ Under `src/tests/`
 
 Library functions are listed in `src/tests/SCaml.ml`.
 
-## Unsupported
+## Roadmap
 
-* `CREATE_CONTRACT`
-* Check of validities of addresses, keys, key_hashes and signatures, which can be checked by Michelson typing.
+> "Roadmap" is another expression of "promises almost never fulfilled in time". 
 
+### Pyramid (2020-01-01)
 
+"Pyramid" will be the first official release of SCaml:
+
+* Attractive web site.
+* Minimal support of `CREATE_CONTRACT`.
+
+Pyramid is a big feature close.  After it, we concentrate on the maintenance
+for a while.

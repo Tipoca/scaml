@@ -7,7 +7,7 @@ $ git clone https://gitlab.com/dailambda/scaml
 $ cd scaml
 ```
 
-If you have no 4.07.1 OCaml switch.  (Of course you have `opam` already!):
+Install `opam`, then:
 
 ```
 $ opam switch create . ocaml-base-compiler.4.07.1
@@ -20,6 +20,9 @@ If successful, there should be the compiler executable:
 $ which scamlc
 .../_opam/bin/scamlc
 ```
+
+The compiler `scamlc` has almost the same interface as `ocamlc`.
+`scamlc xxx.ml` compiles `xxx.ml` to `xxx.tz`.
 
 # Test
 
@@ -63,4 +66,3 @@ emitted operations
 big_map diff
 
 ```
-
