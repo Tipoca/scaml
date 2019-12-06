@@ -242,7 +242,9 @@ let mkfst e =
 let mksnd e =
   let ty = match e.typ.desc with
     | TyPair (_, ty) -> ty
-    | _ -> assert false
+    | _ -> 
+        Format.eprintf "mksnd %a !?@." M.Type.pp e.typ;
+        assert false
   in
   let prim = snd (List.assoc "snd" Primitives.primitives) (tyLambda (e.typ, ty)) in
   mke ty (Prim ("snd", prim, [e]))
@@ -1063,7 +1065,7 @@ module Pmatch = struct
       | Switch (v, [Pair, [v1,ty1; v2,ty2], t], None) ->
           let t = f t in
           mklet (mkp ty1 v1) (mkfst & mkvar v)
-            & mklet (mkp ty2 v2) (mksnd & mkvar v) t
+          & mklet (mkp ty2 v2) (mksnd & mkvar v) t
       | Switch (_, [Unit, [], t], None) -> f t
       | Switch (v, ( [ Left, [vl,tyl], tl
                      ; Right, [vr,tyr], tr ]
@@ -1609,7 +1611,7 @@ let structure str final =
         Binplace.fold
           ~leaf:(fun c -> c)
           ~branch:(fun c1 c2 ->
-              make_constant & mk & Pair (c1, c2))
+              make_constant & mkpair c1 c2)
         & Binplace.place es
 
     | Texp_record { fields; extended_expression= Some e; } ->
@@ -1642,14 +1644,14 @@ let structure str final =
     | Texp_field (e, _, label) ->
         let pos = label.lbl_pos in
         let nfields = Array.length label.lbl_all in
+        Format.eprintf "field %d %s of %d @." pos label.lbl_name nfields;
         let e = expression e in
-        let rec f = function
+        let rec f e = function
           | [] -> e
-          | Binplace.Left :: dirs -> mkfst & f dirs (* XXX mkfst, mnsnd should be somewhere else *)
-          | Binplace.Right :: dirs -> mksnd & f dirs
+          | Binplace.Left :: dirs -> f (mkfst e) dirs
+          | Binplace.Right :: dirs -> f (mksnd e) dirs
         in
-        f & Binplace.path pos nfields
-        
+        f e & Binplace.path pos nfields
     | Texp_setfield _ -> unsupported ~loc "record field set"
     | Texp_array _ -> unsupported ~loc "array"
     | Texp_sequence _ -> unsupported ~loc "sequence"
