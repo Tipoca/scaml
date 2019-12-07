@@ -212,6 +212,7 @@ let make_constant t =
         almost_constant t1 >>= fun c1 ->
         almost_constant t2 >>= fun c2 ->
         Some (C.Pair (c1, c2))
+    (* XXX Left and Right *)
     | _ -> None
   with
   | None -> t
@@ -1285,17 +1286,17 @@ let structure str final =
         end
   
     (* sum *)
-    | Tconstr (p, [_; _], _), TyOr _ when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
+    | Tconstr (p, [_; _], _), TyOr (tyl, tyr) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
         let arg = match args with [arg] -> arg | _ -> internal_error ~loc "strange sum arguments" in
         begin match cstr_name with
         | "Left" -> 
             let e = expression arg in
             (* e.typ = ty1 *)
-            make_constant & make typ & Left e
+            make_constant & mkleft tyr e
         | "Right" ->
             let e = expression arg in
             (* e.typ = ty2 *)
-            make_constant & make typ & Right e
+            make_constant & mkright tyl e
         | s -> internal_error ~loc "strange sum constructor %s" s
         end
 
@@ -1458,7 +1459,7 @@ let structure str final =
                                     constr.cstr_name
                                     Printtyp.type_expr ty
                                     pp_type_expr_error e)
-                              & type_expr tyenv exp_type) ty_args) non_consts
+                              & type_expr tyenv ty) ty_args) non_consts
                     in
                     let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
                     Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
