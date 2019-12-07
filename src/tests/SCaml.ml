@@ -150,7 +150,7 @@ module Contract : sig
   val address : 'a t -> address
 
   val create_raw : string -> key_hash option -> tz -> 'storage -> operation * address
-  (** Very raw interface for CREATE_CONTRACT.
+  (** Raw interface for CREATE_CONTRACT.
   
       Michelson code must be given as a string literal.
       The types of the contract and the initial storage are not checked 
