@@ -37,9 +37,9 @@ let var ~loc env id = match Env.find id env with
         (Ident.unique_name id)
         (Format.sprintf "%a" Env.pp env)
   | Some (0,_typ) ->
-      [ COMMENT( "var " ^ Ident.name id, [ DUP ]) ] 
+      [ COMMENT( "var " ^ Ident.unique_name id, [ DUP ]) ] 
   | Some (n,_typ) ->
-      [ COMMENT( "var " ^ Ident.name id, [ DIG n; DUP; DUG (n+1) ]) ] 
+      [ COMMENT( "var " ^ Ident.unique_name id, [ DIG n; DUP; DUG (n+1) ]) ] 
 
 let rec compile env t = 
   let os = desc env t in
@@ -124,8 +124,8 @@ and desc env t =
   | Let (pat, t1, t2) ->
       let os1 = compile env t1 in
       let os2 = compile ((pat.desc, pat.typ)::env) t2 in
-      COMMENT (Ident.name pat.desc, os1) :: os2 
-      @ [COMMENT ("clean " ^ Ident.name pat.desc, [DIP (1, [DROP 1])])]
+      COMMENT (Ident.unique_name pat.desc, os1) :: os2 
+      @ [COMMENT ("clean " ^ Ident.unique_name pat.desc, [DIP (1, [DROP 1])])]
   | Switch_or (t, p1, t1, p2, t2) ->
       let os = compile env t in
       let os1 = compile ((p1.desc,p1.typ)::env) t1 in
@@ -148,9 +148,9 @@ and desc env t =
       (*
       Format.eprintf "fvars: @[%a@] env: @[%a@]@." 
         (Format.list ";@ " (fun ppf (id,ty) ->
-             Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) fvars
+             Format.fprintf ppf "%s:%a" (Ident.unique_name id) M.Type.pp ty)) fvars
         (Format.list ";@ " (fun ppf (id,ty) ->
-             Format.fprintf ppf "%s:%a" (Ident.name id) M.Type.pp ty)) env;
+             Format.fprintf ppf "%s:%a" (Ident.unique_name id) M.Type.pp ty)) env;
       *)
       begin match t.typ.desc with
         | TyLambda (ty1, ty2) ->
@@ -189,7 +189,7 @@ and desc env t =
                     *)
                     let extractor = 
                       List.rev_map (fun (v,_ty) ->
-                          COMMENT ("fvar " ^ Ident.name v, [ DUP ; DIP (1, [ CAR ]); CDR ])) fvars
+                          COMMENT ("fvar " ^ Ident.unique_name v, [ DUP ; DIP (1, [ CAR ]); CDR ])) fvars
                     in
                     let len = List.length fvars in
                     let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP (len + 1) ]) ]) ] in
@@ -199,7 +199,7 @@ and desc env t =
                     (* Apply fvars from xn to x1 *)
                     List.fold_left (fun st (x,_ty) ->
                         let o = var ~loc ((Ident.dummy,tyUnit (* for lambda *))::env) x in
-                        COMMENT ("partial app " ^ Ident.name x, o @ [APPLY]) :: st) [] fvars
+                        COMMENT ("partial app " ^ Ident.unique_name x, o @ [APPLY]) :: st) [] fvars
                   in
                   lambda :: partial_apply
             end
@@ -228,7 +228,7 @@ let structure t =
   let ops, env = 
     List.fold_left (fun (ops, env) (p,t) ->
         let os1 = compile env t in
-        ops @ [ COMMENT ("let " ^ Ident.name p.IML.desc, os1) ], 
+        ops @ [ COMMENT ("let " ^ Ident.unique_name p.IML.desc, os1) ], 
         ((p.desc, p.typ)::env)) ([], []) defs
   in
   (* (parameter, storage) :: []
