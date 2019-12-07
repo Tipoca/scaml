@@ -1,6 +1,8 @@
 open Spotlib.Spot
 open Tools
 
+let if_debug = Flags.if_debug
+
 type side = Left | Right
 
 type 'a tree =
@@ -28,7 +30,7 @@ let rec place xs =
       (* we need a branch. *)
       let len = List.length xs in
       let nlefts, nrights = split len in
-      Format.eprintf "binplace: %d => %d %d@." len nlefts nrights;
+      if_debug (fun () -> Format.eprintf "binplace: %d => %d %d@." len nlefts nrights);
       let lefts, rights = List.split_at nlefts xs in
       Branch (place lefts, place rights)
 

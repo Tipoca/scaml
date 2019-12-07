@@ -4,16 +4,15 @@ open Asttypes
 open Typedtree
 open Tools
 
+let if_debug = Flags.if_debug
+
 module M = Michelson
 open M.Type
 module C = M.Constant
 
 let repr_desc ty = (Ctype.repr ty).desc
 
-let create_ident =
-  let cntr = ref 0 in
-  (* XXX Variables start with __ must be rejected to avoid name crashes *)
-  fun n -> incr cntr; Ident.create & "__" ^ n ^ "_" ^ string_of_int !cntr
+let create_ident n = Ident.create & "__" ^ n
 
 let contract_self_id = create_ident "self"
   
@@ -58,11 +57,11 @@ module Pat = struct
   let rec pp ppf pat = 
     let open Format in
     match pat.desc with
-    | Var i -> fprintf ppf "%s" (Ident.name i)
+    | Var i -> fprintf ppf "%s" (Ident.unique_name i)
     | Constr (c, []) -> fprintf ppf "%s" (Constructor.to_string c)
     | Constr (c, ps) -> fprintf ppf "@[%s (%a)@]" (Constructor.to_string c) (Format.list ",@ " pp) ps
     | Wild -> string ppf "_"
-    | Alias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp p (Ident.name id)
+    | Alias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp p (Ident.unique_name id)
     | Or (p1,p2) -> fprintf ppf "(@[%a@ | %a@])" pp p1 pp p2
         
   type var = (Ident.t, unit) with_loc_and_type
@@ -138,7 +137,7 @@ let pp ppf =
     | Left t -> f "Left %a" pp t
     | Right t -> f "Right %a" pp t
     | Unit -> p "()"
-    | Var id -> f "%s" (Ident.name id)
+    | Var id -> f "%s" (Ident.unique_name id)
     | Pair (t1, t2) -> f "@[%a,@ %a@]" pp t1 pp t2
     | Assert t -> f "assert %a" pp t
     | AssertFalse -> p "assert false"
@@ -158,19 +157,19 @@ let pp ppf =
         f "@[@[<2>let %a@ = %a@]@ in@ %a@]"
           P.pp_var p pp t1 pp t2
     | Switch_or (t, p1, t1, p2, t2) ->
-        f "@[<2>match %a with@ | Left %a -> %a@ | Right %a -> %a@]"
+        f "@[match %a with@ | @[<2>Left %a ->@ %a!]@ | @[<2>Right %a ->@ %a@]@]"
           pp t
           P.pp_var p1 pp t1 
           P.pp_var p2 pp t2
     | Switch_cons (t, p1, p2, t1, t2) ->
-        f "@[<2>match %a with@ | %a::%a -> %a@ | [] -> %a@]"
+        f "@[match %a with@ | @[<2>%a::%a ->@ %a!]@ | @[<2>[] ->@ %a@]@]"
           pp t
           P.pp_var p1
           P.pp_var p2
           pp t1 
           pp t2
     | Switch_none (t, t1, p2, t2) ->
-        f "@[<2>match %a with@ | None -> %a@ | Some %a -> %a@]"
+        f "@[match %a with@ | @[<2>None ->@ %a@]@ | @[Some %a@ -> %a@]@]"
           pp t
           pp t1 
           P.pp_var p2 pp t2
@@ -247,9 +246,7 @@ let mkfst e =
 let mksnd e =
   let ty = match e.typ.desc with
     | TyPair (_, ty) -> ty
-    | _ -> 
-        Format.eprintf "mksnd %a !?@." M.Type.pp e.typ;
-        assert false
+    | _ -> assert false
   in
   let prim = snd (List.assoc "snd" Primitives.primitives) (tyLambda (e.typ, ty)) in
   mke ty (Prim ("snd", prim, [e]))
@@ -329,6 +326,38 @@ let rec freevars t =
         (union 
            (freevars t1)
            (diff (freevars t2) (psingleton p2)))
+
+(* t2[t_i/id_i] 
+   XXX very inefficient.  should be removed somehow.
+*)
+let subst id_t_list t2 =
+  let rec f t = 
+    let mk desc = { t with desc } in
+    match t.desc with
+    | Var id ->
+        begin match List.assoc_opt id id_t_list with
+          | None -> t
+          | Some t' -> Attr.adds t.attrs t'
+        end
+    | Const _ | Nil | IML_None | Unit | AssertFalse 
+    | Contract_create_raw _ -> t
+
+    | IML_Some t -> mk & IML_Some (f t)
+    | Left t -> mk & Left (f t)
+    | Right t -> mk & Right (f t)
+    | Assert t -> mk & Assert (f t)
+    | Fun (pat, t) -> mk & Fun (pat, f t)
+    | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
+    | Cons (t1, t2) -> mk & Cons (f t1, f t2)
+    | Pair (t1, t2) -> mk & Pair (f t1, f t2)
+    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
+    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
+    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
+    | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
+    | App (t, ts) -> mk & App (f t, List.map f ts)
+    | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+  in
+  f t2
 
 type type_expr_error =
   | Type_variable of Types.type_expr
@@ -744,27 +773,27 @@ module Pmatch = struct
         f "Leaf %a %d" 
           (Format.list ",@," (fun ppf (v,(v',_)) ->
                Format.fprintf ppf "%s=%s"
-                 (Ident.name v)
-                 (Ident.name v'))) binders
+                 (Ident.unique_name v)
+                 (Ident.unique_name v'))) binders
           n
     | Switch (v, xs, None) ->
         f "@[<2>Switch %s@ [ @[%a@] ]@]"
-          (Ident.name & fst v)
+          (Ident.unique_name & fst v)
           (Format.list ";@ " (fun ppf -> 
                let f fmt = Format.fprintf ppf fmt in
                let pvs _ppf vs = 
-                 f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.name x) vs
+                 f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.unique_name x) vs
                in
                fun (c, vs, t) ->
                  f "%s %a (%a)" (Constructor.to_string c) pvs vs pp_tree t
              )) xs
     | Switch (v, xs, Some d) ->
         f "@[<2>Switch %s@ [ @[%a@] default %a]@]"
-          (Ident.name & fst v)
+          (Ident.unique_name & fst v)
           (Format.list ";@ " (fun ppf -> 
                let f fmt = Format.fprintf ppf fmt in
                let pvs _ppf vs = 
-                 f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.name x) vs
+                 f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.unique_name x) vs
                in
                fun (c, vs, t) ->
                  f "%s %a (%a)" (Constructor.to_string c) pvs vs pp_tree t
@@ -774,8 +803,8 @@ module Pmatch = struct
         f "@[<2>Guard (%a) guard%d case%d [%a]@]" 
           (Format.list ",@," (fun ppf (v,(v',_)) ->
                Format.fprintf ppf "%s=%s"
-                 (Ident.name v)
-                 (Ident.name v'))) binders
+                 (Ident.unique_name v)
+                 (Ident.unique_name v'))) binders
           guard
           case
           pp_tree otherwise
@@ -838,7 +867,7 @@ module Pmatch = struct
               | (None | Nil | Unit | Bool _ | Constant _), P.Wild -> 
                   [{ case with pats }]
   
-              | (_ , P.Var v) -> [{ case with pats; bindings= (v, o) :: bindings }]
+              | _ , P.Var v -> [{ case with pats; bindings= (v, o) :: bindings }]
             in
             let cases = f pat in
             cases @ st
@@ -849,11 +878,11 @@ module Pmatch = struct
     fprintf ppf "matrix:@.";
     List.iter (function
         | { pats; guard= None; action= i } ->
-            eprintf "| %a -> %d@."
+            fprintf ppf "| %a -> %d@."
               (list ", " P.pp) pats
               i
         | { pats; guard= Some g; action= i } ->
-            eprintf "| %a when %d -> %d@."
+            fprintf ppf "| %a when %d -> %d@."
               (list ", " P.pp) pats
               g
               i
@@ -862,23 +891,23 @@ module Pmatch = struct
   let pp_osmatrix ppf (os, matrix) =
     let open Format in
     fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) ->
-        fprintf ppf "%s" & Ident.name id)) os;
+        fprintf ppf "%s" & Ident.unique_name id)) os;
     List.iter (function
         | { pats; guard= None; action= i } ->
-            eprintf "| %a -> %d@."
-              (list ", " P.pp) pats
-              i
+            fprintf ppf "| %a -> %d@."
+               (list ", " P.pp) pats
+               i
         | { pats; guard= Some g; action= i } ->
-            eprintf "| %a when %d -> %d@."
+            fprintf ppf "| %a when %d -> %d@."
               (list ", " P.pp) pats
               g
               i
       ) matrix
   
   let specialize o c matrix =
-    Format.eprintf "specializing... %a@." pp_matrix matrix;
+    if_debug (fun () -> Format.eprintf "specializing... %a@." pp_matrix matrix);
     let matrix = specialize o c matrix in
-    Format.eprintf "specialized... %a@." pp_matrix matrix;
+    if_debug (fun () -> Format.eprintf "specialized... %a@." pp_matrix matrix);
     matrix
   
   let rec default o (matrix : matrix) : matrix =
@@ -909,7 +938,7 @@ module Pmatch = struct
     List.map (fun ({ pats } as case) -> { case with pats= f [] i pats }) matrix
   
   let rec cc os matrix = 
-    Format.eprintf "compile: %a" pp_osmatrix (os, matrix);
+    if_debug (fun () -> Format.eprintf "compile: %a" pp_osmatrix (os, matrix));
     match matrix with
     | [] -> Fail
     | { pats=ps; guard= g; action= a; bindings }::_ ->
@@ -931,7 +960,7 @@ module Pmatch = struct
           match g with
           | None -> Leaf (bindings, a)
           | Some g -> 
-              prerr_endline "guard";
+              if_debug (fun () -> prerr_endline "guard");
               Guard (bindings, g, a, cc os & List.tl matrix)
         else 
           (* find column i where at least one pattern which is not a wildcard *)
@@ -985,6 +1014,7 @@ module Pmatch = struct
               | [Some; None]
               | [Cons; Nil]
               | [Pair]
+              | [Unit]
               | [(Bool true) ; (Bool false)] -> true
               | _ -> false
             in
@@ -1037,12 +1067,12 @@ module Pmatch = struct
                         in
                         c, 
                         vs, 
-                        (prerr_endline ("specialize on " ^ Constructor.to_string c);
+                        (if_debug (fun () -> prerr_endline ("specialize on " ^ Constructor.to_string c));
                         cc (vs @ os) (specialize ivty c matrix))
                        ) constructors),
   
                     if is_signature then None
-                    else Some (prerr_endline "default"; cc (List.tl os) (default ivty matrix))
+                    else Some (if_debug (fun () -> prerr_endline "default"); cc (List.tl os) (default ivty matrix))
                    )
             in
             if i = 0 then algo os column
@@ -1113,7 +1143,7 @@ module Pmatch = struct
           if not & List.for_all (function (Cnstr.Constant _, [], _) -> true
                                         | (Constant _, _, _) -> assert false
                                         | (c, _, _) -> 
-                                            prerr_endline (Constructor.to_string c);
+                                            if_debug (fun () -> prerr_endline (Constructor.to_string c));
                                             false) cases
           then assert false;
           List.fold_right (fun case telse ->
@@ -1132,7 +1162,7 @@ module Pmatch = struct
     (* actions as functions *)
     let acts = 
       List.mapi (fun i (pat, _g, action) -> 
-          let v = create_ident (Printf.sprintf "case%d" i) in
+          let case = create_ident (Printf.sprintf "case%d" i) in
           let vars = IdTys.elements & P.vars pat in
           match vars with
           | [] ->
@@ -1141,17 +1171,33 @@ module Pmatch = struct
               *)
               let pvar = mkp Type.tyUnit & create_ident "unit" in
               let f = mkfun pvar action in 
-              (v, 
-               f,
-               mke action.typ (App (mkvar (v, f.typ), [mkunit ()]))) 
+              let e = mke action.typ (App (mkvar (case, f.typ), [mkunit ()])) in
+              (case, f, e)
           | _ -> 
-              let f = List.fold_right (fun (v,ty) st ->
-                  mkfun (mkp ty v) st) vars action
+              (* match ... with
+                 | ..x.. when g[x] -> e[x]
+                                                        
+                 let case xnew = e[xnew] in
+                 match ... with
+                 | ..x.. when g[x] -> case x
+                 
+                 We have to rename the pattern variables x in e[x]
+                 to void name crashes which confuse [count_variables].
+
+                 XXX This is very inefficient!
+              *)
+              let vars' = List.map (fun (v,ty) ->
+                  (create_ident & Ident.name v, ty)) vars in
+              let s = List.map2 (fun (v,ty) (v',_) -> 
+                  v, mke ty & Var v') vars vars' in 
+              let action = subst s action in
+              let f = List.fold_right (fun (v',ty) st ->
+                  mkfun (mkp ty v') st) vars' action
               in
               let e = 
-                mke action.typ (App (mkvar (v, f.typ), List.map mkvar vars)) 
+                mke action.typ (App (mkvar (case, f.typ), List.map mkvar vars)) 
               in
-              (v, f, e)) cases
+              (case, f, e)) cases
     in
   
     let cases, guards =
@@ -1182,10 +1228,9 @@ module Pmatch = struct
     in
   
     let res = cc [(v,e.typ)] matrix in
-    Format.eprintf "pmatch debug: %a@." pp_tree res;
-  
+    if_debug (fun () -> Format.eprintf "pmatch debug: %a@." pp_tree res);
     let e = build typ (List.map (fun (_,_,e) -> e) acts) guards res in
-    Format.eprintf "pmatch debug: %a@." pp e;
+    if_debug (fun () -> Format.eprintf "pmatch debug: %a@." pp e);
     make e
 end
 
@@ -1433,7 +1478,7 @@ let structure str final =
                   | _ -> mkright tyInt & f ty sides
         end
 
-    | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false
+    | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false (* XXX *)
   
   and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_extra=_; exp_attributes } =
     (* wildly ignores extra *)
@@ -1507,8 +1552,8 @@ let structure str final =
         end else begin
           (* let p = e and p' = e' in e''
              =>
-             let x = e in match x with p ->
-             let x' = e' in match x' with p' -> e''
+             let xnew = e in match xnew with p ->
+             let xnew' = e' in match xnew' with p' -> e''
           *)
           List.fold_right (fun vb e' ->
               let { vb_pat; vb_expr } = vb in
@@ -1590,7 +1635,7 @@ let structure str final =
         end else begin
           (* function case1 | .. | casen
              =>
-             fun x -> match x with case1 | .. | casen 
+             fun xnew -> match xnew with case1 | .. | casen 
           *)
           let compile_case case = 
             let guard = Option.fmap expression case.c_guard in
@@ -1673,7 +1718,7 @@ let structure str final =
     | Texp_field (e, _, label) ->
         let pos = label.lbl_pos in
         let nfields = Array.length label.lbl_all in
-        Format.eprintf "field %d %s of %d @." pos label.lbl_name nfields;
+        if_debug (fun () -> Format.eprintf "field %d %s of %d @." pos label.lbl_name nfields);
         let e = expression e in
         let rec f e = function
           | [] -> e
@@ -1870,7 +1915,7 @@ let type_check_entry templ vb =
         raise(Typecore.Error(loc, env, Pattern_type_clash(trace)))
     | Tags(l1,l2) ->
         raise(Typetexp.Error(loc, env, Typetexp.Variant_tags (l1, l2)))
-    | e -> 
+    | e ->  (* XXX *)
         prerr_endline "unify raised something unfamiliar"; raise e
   in
   unify templ vb.vb_pat.pat_type
@@ -1973,7 +2018,7 @@ let check_self ty_self str =
           raise(Typecore.Error(loc, tyenv, Expr_type_clash(trace, None)))
       | Tags(l1,l2) ->
           raise(Typetexp.Error(loc, tyenv, Typetexp.Variant_tags (l1, l2)))
-      | e -> 
+      | e -> (* XXX *)
           prerr_endline "unify raised something unfamiliar"; raise e
     in
     match (Ctype.expand_head self.exp_env self.exp_type).Types.desc with
@@ -2007,7 +2052,7 @@ let compile_global_entry ty_storage ty_return node =
           | _ -> assert false
         in
         let param_var = mk_var param_id param_type in
-        Attr.add (Attr.Comment ("entry " ^ Ident.name id))
+        Attr.add (Attr.Comment ("entry " ^ Ident.unique_name id))
         & mk (App (var, [param_var; e_storage])) ty_return,
         param_type
 
@@ -2057,33 +2102,6 @@ let count_variables t =
   in
   f t VMap.empty
 
-(* t2[t1/id] *)
-let subst id t1 t2 =
-  let rec f t = 
-    let mk desc = { t with desc } in
-    match t.desc with
-    | Var id' when id = id' -> 
-        Attr.adds t.attrs t1 (* t1 never contains id *)
-    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse 
-    | Contract_create_raw _ -> t
-
-    | IML_Some t -> mk & IML_Some (f t)
-    | Left t -> mk & Left (f t)
-    | Right t -> mk & Right (f t)
-    | Assert t -> mk & Assert (f t)
-    | Fun (pat, t) -> mk & Fun (pat, f t)
-    | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
-    | Cons (t1, t2) -> mk & Cons (f t1, f t2)
-    | Pair (t1, t2) -> mk & Pair (f t1, f t2)
-    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
-    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
-    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
-    | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
-    | App (t, ts) -> mk & App (f t, List.map f ts)
-    | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
-  in
-  f t2
-
 (* 
    (fun x -> e1) e2  =>  let x = e2 in e1 
    let x = e2 in e1  =>  e1[e2/x]  when x appears only once in e1
@@ -2123,7 +2141,7 @@ let optimize t =
                 (* contract_self_id must not be inlined into LAMBDAs *)
                 (* XXX This is adhoc *)
                 add_attrs 
-                & f & subst p.desc (Attr.add (Attr.Comment ("= " ^ Ident.name p.desc)) t1) t2
+                & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
             | _ -> mk & Let (p, f t1, f t2)
           end
       | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create_raw _ -> 
@@ -2159,23 +2177,26 @@ let add_self self_typ t =
 
 let implementation sourcefile str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
-  List.iter (fun ({txt=k},v) ->
-      Format.eprintf "attr %s=%s@."
-        (String.concat "." & Longident.flatten k)
-        (match v with
-         | `Bool b -> Printf.sprintf "%b" b
-         | `Constant c -> 
-             match c with
-             | Parsetree.Pconst_integer (s, None)
-             | Pconst_float (s, None) -> s
-             | Pconst_integer (s, Some c)
-             | Pconst_float (s, Some c) ->  s ^ String.make 1 c
-             | Pconst_char c -> Printf.sprintf "%c" c (*XXX *)
-             | Pconst_string (s, None) -> Printf.sprintf "%S" s
-             | Pconst_string (s, Some t) -> Printf.sprintf "{%s|%s|%s}" t s t
-        )
-    ) attrs;
-  Flags.flags := List.fold_left Flags.eval !Flags.flags attrs;
+  if_debug (fun () -> 
+      List.iter (fun ({txt=k},v) ->
+          Format.eprintf "attr %s=%s@."
+            (String.concat "." & Longident.flatten k)
+            (match v with
+             | `Bool b -> Printf.sprintf "%b" b
+             | `Constant c -> 
+                 match c with
+                 | Parsetree.Pconst_integer (s, None)
+                 | Pconst_float (s, None) -> s
+                 | Pconst_integer (s, Some c)
+                 | Pconst_float (s, Some c) ->  s ^ String.make 1 c
+                 | Pconst_char c -> Printf.sprintf "%c" c (*XXX *)
+                 | Pconst_string (s, None) -> Printf.sprintf "%S" s
+                 | Pconst_string (s, Some t) -> Printf.sprintf "{%s|%s|%s}" t s t
+            )
+        ) attrs);
+  Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
+      Result.at_Error (errorf ~loc "%s") & Flags.eval t (txt, v))
+      t attrs);
   let vbs = toplevel_value_bindings str in
   match get_entries vbs with
   | [] -> 
@@ -2228,8 +2249,7 @@ let implementation sourcefile str =
               pp_type_expr_error e)
           & type_expr tyenv ty_param 
       in
-      let ty_param = 
-        match node with
+      let ty_param = match node with
         | `Leaf _ (* sole entry point *) -> ty_param
         | `Node _ ->
             let open M.Type in
@@ -2248,13 +2268,13 @@ let implementation sourcefile str =
                         else
                           s
                   in
-                  { ty with attrs= [ "@" ^ fix_name (Ident.name id) ] }
+                  { ty with attrs= [ "@" ^ fix_name (Ident.unique_name id) ] }
               | TyOr (ty1, ty2), `Node (n1, n2) ->
                   let ty1 = add_annot ty1 n1 in
                   let ty2 = add_annot ty2 n2 in
                   { ty with desc= TyOr (ty1, ty2) }
               | _, `Node _ -> 
-                  Format.eprintf "Entry point type: %a@." M.Type.pp ty;
+                  if_debug (fun () -> Format.eprintf "Entry point type: %a@." M.Type.pp ty);
                   assert false
             in
             add_annot ty_param node

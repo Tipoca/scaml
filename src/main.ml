@@ -185,6 +185,8 @@ let main () =
       "<type> Encode an SCaml type to Michelson"
     ; "-scaml-value", Arg.String (fun s -> scaml_values := s :: !scaml_values),
       "<value> Encode an SCaml value to Michelson"
+    ; "-scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
+      "Print SCaml debug messages"
     ];
   try
     readenv ppf Before_args;
