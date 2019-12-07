@@ -1,7 +1,7 @@
 open Spotlib.Spot
 
 module Mline : sig
-  type t
+  type t = Tezos_micheline.Micheline_printer.node
   val pp : Format.t -> t -> unit
 end
 
@@ -165,7 +165,11 @@ module Opcode : sig
     | ADDRESS
     | CHAIN_ID
 
+  and module_ = 
+    | Raw of Tezos_micheline.Micheline_printer.node list
+(*
   and module_ = { parameter : Type.t ; storage : Type.t ; code : t list }
+*)
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
@@ -173,6 +177,6 @@ module Opcode : sig
 end
 
 module Module : sig
-  type t = Opcode.module_ = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
+  type t = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
   val pp : Format.formatter -> t -> unit
 end

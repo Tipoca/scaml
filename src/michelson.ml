@@ -262,7 +262,9 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
     | ADDRESS
     | CHAIN_ID
 
-  and module_ = { parameter : Type.t ; storage : Type.t ; code : t list }
+  and module_ = 
+    | Raw of Tezos_micheline.Micheline_printer.node list
+    (* | { parameter : Type.t ; storage : Type.t ; code : t list } *)
     
   let to_micheline t =
     let open Mline in
@@ -370,22 +372,18 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
       | SENDER          -> !"SENDER"
       | ADDRESS         -> !"ADDRESS"
       | CHAIN_ID        -> !"CHAIN_ID"
-      | CREATE_CONTRACT m ->
-          prim "CREATE_CONTRACT" 
+      | CREATE_CONTRACT (Raw nodes) ->
+          prim "CREATE_CONTRACT" [ seq nodes ]
+            (*
             [ prim "parameter" [Type.to_micheline m.parameter]
             ; prim "storage" [Type.to_micheline m.storage]
             ; prim "code" (List.map f m.code  )
             ]
+            *)
     in
     f t
 
   let pp ppf t = Mline.pp ppf & to_micheline t
-
-  let pp_module ppf { parameter ; storage ; code } = 
-    let open Mline in
-    Format.fprintf ppf "%a ;@." Mline.pp & prim "parameter" [ Type.to_micheline parameter ] [];
-    Format.fprintf ppf "%a ;@." Mline.pp & prim "storage" [ Type.to_micheline storage ] [];
-    Format.fprintf ppf "%a ;@." Mline.pp & prim "code" [ seq (List.map to_micheline code) ] []
 
   let rec clean_failwith = function
     | [] -> []
@@ -403,7 +401,7 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
     | COMMENT (s, t) -> COMMENT (s, clean_failwith t)
     | LOOP t -> LOOP (clean_failwith t)
     | LOOP_LEFT t -> LOOP_LEFT (clean_failwith t)
-    | CREATE_CONTRACT m -> CREATE_CONTRACT { m with code= clean_failwith m.code }
+    | CREATE_CONTRACT m -> CREATE_CONTRACT m
     | (DUP
       | DIG _ | DUG _ | DROP _
       | SWAP
@@ -458,16 +456,11 @@ CREATE_CONTRACT - removed manager, delegate, delegatable and spendable arguments
 end
 
 module Module = struct
-  type t = Opcode.module_ = { parameter : Type.t ; storage : Type.t ; code : Opcode.t list }
+  type t = { parameter : Type.t ; storage : Type.t ; code : Opcode.t list }
            
-(*
-  let to_micheline { parameter ; storage ; code } =
+  let pp ppf { parameter ; storage ; code } = 
     let open Mline in
-    seq [ prim "parameter" [ Type.to_micheline parameter ]
-        ; prim "storage" [ Type.to_micheline storage ]
-        ; prim "code" (List.map Opcode.to_micheline code) 
-        ] 
-*)
-      
-  let pp = Opcode.pp_module
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "parameter" [ Type.to_micheline parameter ] [];
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "storage" [ Type.to_micheline storage ] [];
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "code" [ seq (List.map Opcode.to_micheline code) ] []
 end

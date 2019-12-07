@@ -114,7 +114,7 @@ and desc =
   | Switch_or of t * P.var * t * P.var * t
   | Switch_cons of t * P.var * P.var * t * t
   | Switch_none of t * t * P.var * t
-  | Contract_create_raw of string
+  | Contract_create_raw of M.Opcode.module_ * t * t * t
   | Seq of t * t
 
 let pp ppf = 
@@ -174,8 +174,10 @@ let pp ppf =
           pp t
           pp t1 
           P.pp_var p2 pp t2
-    | Contract_create_raw s ->
-        f "@[<2>Contract.create_raw@ %S@]" s
+    | Contract_create_raw (Raw nodes, t1, t2, t3) ->
+        f "@[<2>Contract.create_raw@ (@[%a@]) %a %a %a@]" 
+          (Format.list ";@ " M.Mline.pp) nodes
+          pp t1 pp t2 pp t3
     | Seq (t1, t2) -> f "%a; %a" pp t1 pp t2
   in
   pp ppf
@@ -1586,23 +1588,43 @@ let structure str final =
     | Texp_apply (_, []) -> assert false
 
     | Texp_apply ({ exp_desc= Texp_ident (p, _, _vd) ; exp_loc= loc_create_raw },
-                  (Nolabel, Some { exp_desc= Texp_constant(Const_string (s, _)) }) 
-                  :: args ) when Path.is_scaml p = Some "Contract.create_raw" ->
+                  (Nolabel, Some { exp_loc= loc_string; exp_desc= Texp_constant(Const_string (s, _)) })
+                  :: args) when Path.is_scaml p = Some "Contract.create_raw" ->
         (* Contract.create_raw <string literal> ... *)
         let args = List.map (function
             | (Nolabel, Some (e: Typedtree.expression)) -> expression e
             | _ -> unsupported ~loc "labeled arguments") args
         in
+        let e1,e2,e3 = match args with
+          | [e1; e2; e3] -> e1, e2, e3
+          | _ -> errorf ~loc "Contract.create_raw cannot be partially applied";
+        in
         let retty = tyPair (tyOperation, tyAddress) in
         let fty =
           List.fold_right (fun arg ty -> tyLambda (arg.typ, ty)) args retty 
         in
-        mk & App (
-          { desc= Contract_create_raw s;
-            loc= loc_create_raw;
-            typ= fty;
-            attrs= [] },
-          args )
+        let nodes =
+          let open Tezos_micheline in
+          let open Micheline_parser in
+          let open Tezos_error_monad in
+          match tokenize s with
+          | tkns, [] ->
+              begin match parse_toplevel ~check:false tkns with
+              | nodes, [] ->
+                  List.map 
+                    (Micheline.map_node 
+                       (fun _ -> { Micheline_printer.comment= None })
+                       (fun x -> x))
+                    nodes
+              | _nodes, es ->
+                  errorf ~loc:loc_string "Michelson parse error: %a"
+                    Error_monad.pp_print_error es
+              end
+          | _tkns, es ->
+              errorf ~loc:loc_string "Michelson parse error: %a"
+                Error_monad.pp_print_error es
+        in
+        mk & Contract_create_raw (Raw nodes, e1, e2, e3)
 
     | Texp_apply (f, args) -> 
         let args = List.map (function

@@ -46,7 +46,7 @@ and desc =
   | Switch_or of t * Pat.var * t * Pat.var * t
   | Switch_cons of t * Pat.var * Pat.var * t * t
   | Switch_none of t * t * Pat.var * t
-  | Contract_create_raw of string
+  | Contract_create_raw of Michelson.Opcode.module_ * t * t * t
   | Seq of t * t
 
 val pp : Format.t -> t -> unit

@@ -212,8 +212,11 @@ and desc env t =
       List.fold_left (fun ofun arg ->
           let oarg = compile env arg in
           ofun @ oarg @ [ EXEC ]) ofun args
-  | Contract_create_raw _s -> (* XXX *)
-      [CREATE_CONTRACT (assert false)]
+  | Contract_create_raw (m, e1, e2, e3) -> (* XXX *)
+      List.fold_left (fun os arg ->
+          let oarg = compile env arg in
+          oarg @ os) [] [e1; e2; e3]
+      @ [CREATE_CONTRACT m ; PAIR]
       
 
 let split_entry_point t =
