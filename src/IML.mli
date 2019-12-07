@@ -47,6 +47,7 @@ and desc =
   | Switch_cons of t * Pat.var * Pat.var * t * t
   | Switch_none of t * t * Pat.var * t
   | Contract_create_raw of string
+  | Seq of t * t
 
 val pp : Format.t -> t -> unit
 

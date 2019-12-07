@@ -115,6 +115,7 @@ and desc =
   | Switch_cons of t * P.var * P.var * t * t
   | Switch_none of t * t * P.var * t
   | Contract_create_raw of string
+  | Seq of t * t
 
 let pp ppf = 
   let p = Format.pp_print_string ppf in
@@ -175,6 +176,7 @@ let pp ppf =
           P.pp_var p2 pp t2
     | Contract_create_raw s ->
         f "@[<2>Contract.create_raw@ %S@]" s
+    | Seq (t1, t2) -> f "%a; %a" pp t1 pp t2
   in
   pp ppf
 
@@ -298,7 +300,7 @@ let rec freevars t =
   let psingleton p = singleton (p.desc, p.typ) in
   match t.desc with
   | Const _ | Nil | IML_None | Unit | Contract_create_raw _ -> empty
-  | Cons (t1,t2) | Pair (t1,t2) -> union (freevars t1) (freevars t2)
+  | Cons (t1,t2) | Pair (t1,t2) | Seq (t1,t2) -> union (freevars t1) (freevars t2)
   | Left t | Right t | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
   | Var id -> singleton (id, t.typ)
@@ -356,6 +358,7 @@ let subst id_t_list t2 =
     | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
     | App (t, ts) -> mk & App (f t, List.map f ts)
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+    | Seq (t1, t2) -> mk & Seq (f t1, f t2)
   in
   f t2
 
@@ -1386,10 +1389,18 @@ let structure str final =
               (* tyList (tyPair (ty1, ty2)) = e.typ *)
               begin match get_constant e with
               | Some (List xs) -> 
-                  (* XXX Uniqueness and sorting? *)
-                  let xs = List.map (function
+                  let order (c1,_) (c2,_) = compare c1 c2 in (* XXX relies on OCaml's compare! *)
+                  let xs = List.sort order & List.map (function
                       | C.Pair (c1,c2) -> (c1,c2)
-                      | _ -> assert false) xs in
+                      | _ -> assert false) xs 
+                  in
+                  let rec check_uniq = function
+                    | [] | [_] -> ()
+                    | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
+                        errorf ~loc "Map literal contains duplicated key %a" C.pp c1 
+                    | _::xs -> check_uniq xs
+                  in
+                  check_uniq xs;
                   { e with typ; desc= Const (Map xs) }
               | Some _ -> assert false
               | None -> errorf ~loc:e.loc "Elements of Map must be constants"
@@ -1653,6 +1664,9 @@ let structure str final =
            ignore (unify typ ethen.typ); *)
         mk & IfThenElse (econd, ethen, eelse)
   
+    | Texp_ifthenelse (_, _, None) ->
+        unsupported ~loc "if-then without else"
+
     | Texp_match (_, _, e::_, _) -> 
         unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
         
@@ -1670,8 +1684,6 @@ let structure str final =
           in
           Pmatch.compile e (List.map compile_case cases)
         end
-    | Texp_ifthenelse (_, _, None) ->
-        unsupported ~loc "if-then without else"
     | Texp_try _ -> unsupported ~loc "try-with"
     | Texp_variant _ -> unsupported ~loc "polymorphic variant"
 
@@ -1726,9 +1738,9 @@ let structure str final =
           | Binplace.Right :: dirs -> f (mksnd e) dirs
         in
         f e & Binplace.path pos nfields
+    | Texp_sequence (e1, e2) -> mk & Seq ( expression e1, expression e2 )
     | Texp_setfield _ -> unsupported ~loc "record field set"
     | Texp_array _ -> unsupported ~loc "array"
-    | Texp_sequence _ -> unsupported ~loc "sequence"
     | Texp_while _ -> unsupported ~loc "while-do-done"
     | Texp_for _ -> unsupported ~loc "for-do-done"
     | Texp_send _ -> unsupported ~loc "method call"
@@ -2090,7 +2102,7 @@ let count_variables t =
     | IML_Some t | Left t | Right t | Assert t
     | Fun (_, t) -> f t st
 
-    | Let (_, t1, t2) | Cons (t1, t2) | Pair (t1, t2) -> f t1 & f t2 st
+    | Let (_, t1, t2) | Cons (t1, t2) | Pair (t1, t2) | Seq (t1, t2) -> f t1 & f t2 st
 
     | IfThenElse (t1, t2, t3) 
     | Switch_or (t1, _, t2, _, t3)
@@ -2158,6 +2170,7 @@ let optimize t =
       | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
       | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
       | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
+      | Seq (t1, t2) -> mk & Seq (f t1, f t2)
     in
     begin match !attrs with
       | Some _ -> assert false

@@ -97,6 +97,10 @@ and desc env t =
       let os2 = compile env t2 in
       let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
       os2 @ os1 @ [ PAIR ]
+  | Seq (t1, t2) ->
+      let os1 = compile env t1 in
+      let os2 = compile env t2 in
+      os1 @ [ DROP 1 ] @ os2 (* erm... not sure about FAIL *)
   | Assert t ->
       let os = compile env t in
       os @ [ ASSERT; PUSH (tyUnit, Unit) ]
@@ -210,6 +214,7 @@ and desc env t =
           ofun @ oarg @ [ EXEC ]) ofun args
   | Contract_create_raw _s -> (* XXX *)
       [CREATE_CONTRACT (assert false)]
+      
 
 let split_entry_point t =
   let rec f st t = match t.IML.desc with
