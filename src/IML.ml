@@ -388,7 +388,11 @@ let rec type_expr tyenv ty =
   let open Result.Infix in
   let ty = Ctype.expand_head tyenv ty in
   match ty.desc with
-  | Tvar _ -> Error (Type_variable ty)
+  | Tvar _ when ty.level = Btype.generic_level -> Error (Type_variable ty)
+  | Tvar _ ->
+      (* Non generalized type variable.  We are brave enough to unify it with Unit *)
+      Ctype.unify tyenv ty Predef.type_unit; (* must succeed *)
+      type_expr tyenv ty
   | Tarrow (Nolabel, f, t, _) -> 
       type_expr tyenv f >>= fun f ->
       type_expr tyenv t >>= fun t -> 
@@ -1587,7 +1591,7 @@ let structure str final =
   
     | Texp_apply (_, []) -> assert false
 
-    | Texp_apply ({ exp_desc= Texp_ident (p, _, _vd) ; exp_loc= loc_create_raw },
+    | Texp_apply ({ exp_desc= Texp_ident (p, _, _vd) },
                   (Nolabel, Some { exp_loc= loc_string; exp_desc= Texp_constant(Const_string (s, _)) })
                   :: args) when Path.is_scaml p = Some "Contract.create_raw" ->
         (* Contract.create_raw <string literal> ... *)
@@ -1598,10 +1602,6 @@ let structure str final =
         let e1,e2,e3 = match args with
           | [e1; e2; e3] -> e1, e2, e3
           | _ -> errorf ~loc "Contract.create_raw cannot be partially applied";
-        in
-        let retty = tyPair (tyOperation, tyAddress) in
-        let fty =
-          List.fold_right (fun arg ty -> tyLambda (arg.typ, ty)) args retty 
         in
         let nodes =
           let open Tezos_micheline in
