@@ -21,11 +21,17 @@ The following OCaml features are **not** supported:
 
 ### Recursion
 
-No `let rec` construct.  Map/iter/folding over lists, sets, maps and big maps are supported.  `Loop.left` is also available to uses `LOOP` Michelson opcode.
+Michelson has no recursion opcode.  Therefore neither for SCaml: no `let rec` construct.  
+
+Map/iter/folding over lists, sets, maps and big maps are supported.
+`Loop.left` is also available to uses `LOOP` Michelson opcode.
 
 ### Polymorphism
 
 Michelson is monomorphic language.  So is SCaml.
+
+If you need polymorphism, copy the definition and instantiate for each type.
+
 You may have to add type constraints to your SCaml programs when expressions have too general types.
 
 ### Separate compilation
