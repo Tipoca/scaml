@@ -182,46 +182,9 @@ let pp ppf =
   in
   pp ppf
 
-let almost_constant t = 
-  match t.desc with
-  | Nil ->
-     (* We cannot PUSH (list operation) {}. If we do, we get:
-        "operation type forbidden in parameter, storage and constants" *)
-      begin match t.typ.desc with
-        | TyList { desc= TyOperation } -> None
-        | _ -> Some (C.List [])
-      end
-  | Const c -> Some c
-  | IML_None -> Some (C.Option None)
-  | Unit -> Some C.Unit
-  | _ -> None
-
-let make_constant t = 
-  match
-    let (>>=) = Option.bind in
-    match t.desc with
-    | Const c -> Some c
-    | Nil | IML_None | Unit -> 
-        None (* They have special opcodes to push.  Let's keep as they are. *)
-    | Cons (t1, t2) ->
-        begin almost_constant t1 >>= fun c1 ->
-          almost_constant t2 >>= function 
-          | C.List c2 -> Some (C.List (c1 :: c2))
-          | _ -> assert false
-        end
-    | IML_Some t -> almost_constant t >>= fun c -> Some (C.Option (Some c))
-    | Pair (t1, t2) -> 
-        almost_constant t1 >>= fun c1 ->
-        almost_constant t2 >>= fun c2 ->
-        Some (C.Pair (c1, c2))
-    (* XXX Left and Right *)
-    | _ -> None
-  with
-  | None -> t
-  | Some c -> { t with desc= Const c }
-
 let rec get_constant t = 
   let (>>=) = Option.bind in
+  (* XXX Nil, IML_None, Unit  have special opcodes to push *)
   match t.desc with
   | Unit -> Some C.Unit
   | Const c -> Some c
@@ -230,7 +193,13 @@ let rec get_constant t =
   | Left t -> get_constant t >>= fun t -> Some (C.Left t)
   | Right t -> get_constant t >>= fun t -> Some (C.Right t)
   | Pair (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 -> Some (C.Pair (t1, t2))
-  | Nil -> Some (C.List [])
+  | Nil -> 
+     (* We cannot PUSH (list operation) {}. If we do, we get:
+        "operation type forbidden in parameter, storage and constants" *)
+      begin match t.typ.desc with
+        | TyList { desc= TyOperation } -> None
+        | _ -> Some (C.List [])
+      end
   | Cons (t1, t2) -> get_constant t1 >>= fun t1 -> get_constant t2 >>= fun t2 ->
       begin match t2 with
         | C.List t2 -> Some (C.List (t1::t2))
@@ -238,6 +207,10 @@ let rec get_constant t =
       end
   | _ -> None
 
+let make_constant t = match get_constant t with
+  | None -> t
+  | Some c -> { t with desc= Const c }
+              
 let mke typ desc = { typ; desc; loc= Location.none; attrs= [] }
 
 let mkfst e =
@@ -1237,6 +1210,7 @@ module Pmatch = struct
           { pats=[pat]; guard= g; action= i; bindings= [] }) cases 
     in
   
+    (* XXX if match target is a tuple literal, no need to form a real tuple *)
     let res = cc [(v,e.typ)] matrix in
     if_debug (fun () -> Format.eprintf "pmatch debug: %a@." pp_tree res);
     let e = build typ (List.map (fun (_,_,e) -> e) acts) guards res in
@@ -1657,7 +1631,13 @@ let structure str final =
   
     | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
         if partial = Partial then errorf ~loc "Pattern match is partial";
-        let i = create_ident "x" in
+        (* name the same name of the original if possible *)
+        let i = create_ident & match cases with
+          | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 
+                                     Tpat_alias ({ pat_desc= Tpat_any }, id, _)) } } ] ->
+              Ident.name id
+          | _ -> "arg"
+        in
         let targ, _tret = match typ.desc with
           | TyLambda (targ, tret) -> targ, tret
           | _ -> assert false
@@ -1867,15 +1847,15 @@ let structure str final =
   *)
   and structure_item { str_desc; str_loc=loc } =
     match str_desc with
-    | Tstr_eval _ -> unsupported ~loc "toplevel evaluation"
-    | Tstr_primitive _ -> unsupported ~loc "primitive declaration"
-    | Tstr_typext _ -> unsupported ~loc "type extension"
-    | Tstr_exception _ -> unsupported ~loc "exception declaration"
+    | Tstr_eval _                      -> unsupported ~loc "toplevel evaluation"
+    | Tstr_primitive _                 -> unsupported ~loc "primitive declaration"
+    | Tstr_typext _                    -> unsupported ~loc "type extension"
+    | Tstr_exception _                 -> unsupported ~loc "exception declaration"
     | Tstr_module _ | Tstr_recmodule _ -> unsupported ~loc "module declaration"
-    | Tstr_class _ -> unsupported ~loc "class declaration"
-    | Tstr_class_type _ -> unsupported ~loc "class type declaration"
-    | Tstr_include _ -> unsupported ~loc "include"
-    | Tstr_modtype _ -> unsupported ~loc "module type declaration"
+    | Tstr_class _                     -> unsupported ~loc "class declaration"
+    | Tstr_class_type _                -> unsupported ~loc "class type declaration"
+    | Tstr_include _                   -> unsupported ~loc "include"
+    | Tstr_modtype _                   -> unsupported ~loc "module type declaration"
   
     | Tstr_value (Recursive, _vbs) -> unsupported ~loc "recursive definitions"
   
@@ -2318,6 +2298,43 @@ let implementation sourcefile str =
       ty_param, 
       ty_storage, 
       add_self (tyContract ty_param) & structure str final
+
+(*
+let convert _sourcefile str = 
+  let attrs = Attribute.get_scaml_toplevel_attributes str in
+  Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
+      Result.at_Error (errorf ~loc "%s") & Flags.eval t (txt, v))
+      t attrs);
+
+  let structure_item st { str_desc; str_loc= loc } =
+    match str_desc with
+    | Tstr_value (Recursive, _)        -> unsupported ~loc "recursive definitions"
+    | Tstr_primitive _                 -> unsupported ~loc "primitive declaration"
+    | Tstr_typext _                    -> unsupported ~loc "type extension"
+    | Tstr_exception _                 -> unsupported ~loc "exception declaration"
+    | Tstr_module _ | Tstr_recmodule _ -> unsupported ~loc "module declaration"
+    | Tstr_class _                     -> unsupported ~loc "class declaration"
+    | Tstr_class_type _                -> unsupported ~loc "class type declaration"
+    | Tstr_include _                   -> unsupported ~loc "include"
+    | Tstr_modtype _                   -> unsupported ~loc "module type declaration"
+
+    | Tstr_eval (e, _) -> [ `Value (None, e) ]
+    | Tstr_value (Nonrecursive, vbs) ->
+        List.map (fun { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } ->
+            let ido, e = match vb_pat.pat_desc with
+              | Tpat_var (id, _) -> `Value (Some id, vb_expr)
+              | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> `Value (Some id, vb_expr)
+              | Tpat_any -> `Value (None, vb_expr)
+              | _ -> 
+                  errorf ~loc:vb_pat.pat_loc "Conversion mode does not support complex patterns"
+            in
+            let e = expression e in
+          ) vbs
+    | Tstr_open _open_description -> []
+    | Tstr_type (_, tds) -> List.map (fun td -> `Type td.typ_id) tds
+    | Tstr_attribute _ -> []
+  in
+  *)
 
 let save path t = 
   let oc = open_out path in
