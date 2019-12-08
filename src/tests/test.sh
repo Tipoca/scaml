@@ -8,10 +8,10 @@ script_dir="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
 build_dir=$script_dir/_build
 
 # Make sure the library module is compiled
-(cd $script_dir; ocamlfind ocamlc -package zarith -c SCaml.mli SCaml.ml)
+(cp $script_dir/../lib/SCaml.mli $build_dir; ocamlfind ocamlc -package zarith -c $build_dir/SCaml.mli)
 
 # Compilation command
-comp="dune exec ../main.exe --"
+comp="dune exec ../main.exe -- -I $build_dir"
 echo comp=$comp
 
 for i in $*

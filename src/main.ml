@@ -69,6 +69,18 @@ let show_config () =
   exit 0;
 ;;
 
+let scaml_print_version_and_library compiler =
+  Printf.printf "The SCaml %s, version %s for Tezos protocol version %s" 
+    compiler Version.scaml Version.protocol; print_newline();
+  Printf.printf "The OCaml %s, version " compiler;
+  print_string Config.version; print_newline();
+  print_string "Standard library directory: ";
+  print_string Config.standard_library; print_newline();
+  exit 0
+
+let scaml_print_version_string () =
+  print_string Config.version; print_newline(); exit 0
+
 module Options = Main_args.Make_bytecomp_options (struct
   let set r () = r := true
   let unset r () = r := false
@@ -140,7 +152,7 @@ module Options = Main_args.Make_bytecomp_options (struct
   let _unsafe_string = set unsafe_string
   let _use_prims s = use_prims := s
   let _use_runtime s = use_runtime := s
-  let _v () = print_version_and_library "compiler"
+  let _v () = scaml_print_version_and_library "compiler"
   let _version = print_version_string
   let _vnum = print_version_string
   let _w = (Warnings.parse_options false)
@@ -182,6 +194,9 @@ let main () =
       "Print SCaml debug messages"
     ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_convert = true })),
       "Convet types and values, instead of compling a smart contract"
+    ; "--scaml-version", Arg.Unit (fun () -> 
+          print_string Version.scaml; print_newline(); exit 0),
+      "Print SCaml version and exit"
     ];
   try
     readenv ppf Before_args;
