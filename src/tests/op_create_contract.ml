@@ -2,6 +2,10 @@ open SCaml
 
 let main () () =
   let op, ad = 
+    (* Write Michelson contract code in a string.  
+       I recommend to use OCaml's quoted string {| .. |}
+       to avoid escaping newlines and double quotes.
+    *)
     Contract.create_raw {|
       parameter unit ;
       storage unit ;
