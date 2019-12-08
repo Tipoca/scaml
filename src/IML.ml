@@ -184,7 +184,6 @@ let pp ppf =
 
 let rec get_constant t = 
   let (>>=) = Option.bind in
-  (* XXX Nil, IML_None, Unit  have special opcodes to push *)
   match t.desc with
   | Unit -> Some C.Unit
   | Const c -> Some c
@@ -209,7 +208,11 @@ let rec get_constant t =
 
 let make_constant t = match get_constant t with
   | None -> t
-  | Some c -> { t with desc= Const c }
+  | Some c -> 
+      (* Nil, IML_None, Unit  have special opcodes to push *)
+      match c with
+      | C.List [] | C.Option None | C.Unit -> t
+      | _ -> { t with desc= Const c }
               
 let mke typ desc = { typ; desc; loc= Location.none; attrs= [] }
 
@@ -1218,681 +1221,674 @@ module Pmatch = struct
     make e
 end
 
-let structure str final =
-
-  let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
-    let typ = 
-      Result.at_Error (fun e ->
-          errorf ~loc "This has type %a.  %a" Printtyp.type_expr exp_type pp_type_expr_error e)
-      & type_expr tyenv exp_type 
-    in
-    let make typ desc = { loc; typ; desc; attrs= [] } in
-    match (Ctype.expand_head tyenv exp_type).Types.desc, typ.desc with
-    (* bool *)
-    | Tconstr (p, [], _), _ when p = Predef.path_bool ->
-        make tyBool (match cstr_name with
-            | "true" -> Const (C.Bool true)
-            | "false" -> Const (C.Bool false)
-            | s -> internal_error ~loc "strange bool constructor %s" s)
-  
-    (* list *)
-    | Tconstr (p, [_], _), TyList ty when p = Predef.path_list ->
-        begin match cstr_name with
-          | "[]" -> make (tyList ty) Nil
-          | "::" ->
-              begin match args with
-                | [e1; e2] ->
-                    let e1 = expression e1 in
-                    let e2 = expression e2 in
-                    (* tyList e1.typ = e2.typ *)
-                    make_constant & mkcons e1 e2
-                | _ -> internal_error ~loc "strange cons"
-              end
-          | s -> internal_error ~loc "strange list constructor %s" s
-        end
-  
-    (* option *)
-    | Tconstr (p, [_], _), TyOption ty when p = Predef.path_option ->
-        begin match cstr_name with
-          | "None" -> make (tyOption ty) IML_None
-          | "Some" ->
-              begin match args with
-                | [e1] ->
-                    let e1 = expression e1 in
-                    make_constant & mksome e1
-                | _ -> internal_error ~loc "strange cons"
-              end
-          | s -> internal_error ~loc "strange list constructor %s" s
-        end
-  
-    (* sum *)
-    | Tconstr (p, [_; _], _), TyOr (tyl, tyr) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
-        let arg = match args with [arg] -> arg | _ -> internal_error ~loc "strange sum arguments" in
-        begin match cstr_name with
-        | "Left" -> 
-            let e = expression arg in
-            (* e.typ = ty1 *)
-            make_constant & mkleft tyr e
-        | "Right" ->
-            let e = expression arg in
-            (* e.typ = ty2 *)
-            make_constant & mkright tyl e
-        | s -> internal_error ~loc "strange sum constructor %s" s
-        end
-
-    | Tconstr (p, _, _), TyUnit when p = Predef.path_unit -> 
-        make tyUnit Unit
-  
-    | Tconstr (p, [], _), TyInt when Path.is_scaml_dot "int" p ->
-        make tyInt begin
-          let arg = match args with
-              | [arg] -> arg
-              | _ -> internal_error ~loc "strange Int arguments"
-            in
-            match arg.exp_desc with
-              | Texp_constant (Const_int n) -> Const (Int (Z.of_int n))
-              | _ -> errorf ~loc "Int can only take an integer constant"
-          end
-  
-    | Tconstr (p, [], _), TyNat when Path.is_scaml_dot "nat" p ->
-        make tyNat begin 
-          let arg = match args with
-            | [arg] -> arg
-            | _ -> internal_error ~loc "strange Nat arguments"
-          in
-          match arg.exp_desc with
-            | Texp_constant (Const_int n) -> 
-                if n < 0 then 
-                  errorf ~loc "Nat can only take a positive integer constant";
-                Const (Nat (Z.of_int n))
-            | _ -> errorf ~loc "Nat can only take an integer constant"
-        end
-  
-    | Tconstr (p, [], _), TyMutez when Path.is_scaml_dot "tz" p ->
-        make tyMutez begin 
-          let arg = match args with
-            | [arg] -> arg
-            | _ -> internal_error ~loc "strange Tz arguments"
-          in
-          match arg.exp_desc with
-            | Texp_constant (Const_float f) -> 
-                begin try
-                  let pos = String.index f '.' in
-                  let dec = String.sub f 0 pos in
-                  let sub = String.sub f (pos+1) (String.length f - pos - 1) in
-                  let all_dec s =
-                    for i = 0 to String.length s - 1 do
-                      match String.unsafe_get s i with
-                      | '0'..'9' -> ()
-                      | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
-                    done
-                  in
-                  all_dec dec;
-                  all_dec sub;
-                  let sub = 
-                    if String.length sub > 6 then 
-                      errorf ~loc "%s: the smallest expressive franction of tz is micro" f;
-                    
-                    sub ^ String.init (6 - String.length sub) (fun _ -> '0')
-                  in
-                  Const (Nat (Z.of_string (dec ^ sub)))
-                with
-                | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
-              end
-            | _ -> errorf ~loc "Nat can only take an integer constant"
-        end
-  
-    (* set *)
-    | Tconstr (p, [_], _), TySet _ when (match Path.is_scaml p with Some "set" -> true | _ -> false) ->
-        (* XXX comparable type check *)
-        if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
-        begin match args with 
-          | [arg] -> 
-              let e = expression arg in
-              (* tyList ty = e.typ *)
-              begin match get_constant e with
-              | Some (List xs) -> 
-                  (* XXX Uniqueness and sorting? *)
-                  { e with typ; desc= Const (Set xs) }
-              | None -> errorf ~loc:e.loc "Elements of Set must be constants"
-              | Some _ -> assert false
-              end
-          | _ -> internal_error ~loc "strange set arguments"
-        end
-  
-    (* map *)
-    | Tconstr (p, [_; _], _), TyMap _ when (match Path.is_scaml p with Some "map" -> true | _ -> false) ->
-        (* XXX comparable type check *)
-        if cstr_name <> "Map" then internal_error ~loc "strange map constructor";
-        begin match args with 
-          | [arg] -> 
-              let e = expression arg in
-              (* tyList (tyPair (ty1, ty2)) = e.typ *)
-              begin match get_constant e with
-              | Some (List xs) -> 
-                  let order (c1,_) (c2,_) = compare c1 c2 in (* XXX relies on OCaml's compare! *)
-                  let xs = List.sort order & List.map (function
-                      | C.Pair (c1,c2) -> (c1,c2)
-                      | _ -> assert false) xs 
-                  in
-                  let rec check_uniq = function
-                    | [] | [_] -> ()
-                    | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
-                        errorf ~loc "Map literal contains duplicated key %a" C.pp c1 
-                    | _::xs -> check_uniq xs
-                  in
-                  check_uniq xs;
-                  { e with typ; desc= Const (Map xs) }
-              | Some _ -> assert false
-              | None -> errorf ~loc:e.loc "Elements of Map must be constants"
-              end
-          | _ -> internal_error ~loc "strange map arguments"
-        end
-
-    (* C "string" style constants *)
-    | Tconstr (p, [], _), _ when Path.is_scaml p <> None ->
-        begin match Path.is_scaml p with
-          | None -> assert false
-          | Some n ->
-              match List.assoc_opt n constructions_by_string with
-              | None -> 
-                  unsupported ~loc "constants of data type %s" (Path.name p)
-              | Some (tyname, cname, typ, parse) ->
-                  if cstr_name <> cname then internal_error ~loc "strange constructor for %s" tyname;
-                  match args with 
-                  | [] | _::_::_ ->
-                      internal_error ~loc "strange arguments for %s" cname
-                  | [arg] -> 
-                      let e = expression arg in
-                      match e.desc with
-                      | Const (String s) -> 
-                          begin match parse s with
-                            | Ok v -> { e with typ; desc= Const v }
-                            | Error s -> errorf ~loc "Parse error of %s string: %s" tyname s
-                          end
-                      | _ -> errorf ~loc "%s only takes a string literal" cname
-        end
-
-    | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
-        begin match Env.find_type_descrs p tyenv with
-          | [], [] -> 
-              errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
-          | [], _::_ -> assert false (* record cannot come here *)
-          | _::_, _::_ -> assert false
-
-          | constrs, [] -> 
-              let consts, non_consts =
-                List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
-              in
-              let non_consts_ty =
-                match non_consts with
-                | [] -> None
-                | _ ->
-                    let tys_list = 
-                      List.map (fun constr ->
-                          let ty_args, ty_res = Ctype.instance_constructor constr in
-                          Ctype.unify tyenv exp_type ty_res; (* XXX should succeed *)
-                          List.map (fun ty -> 
-                              Result.at_Error (fun e ->
-                                  errorf ~loc "This expression has type %a.  One of its constructors %s has type %a.  %a" 
-                                    Printtyp.type_expr exp_type 
-                                    constr.cstr_name
-                                    Printtyp.type_expr ty
-                                    pp_type_expr_error e)
-                              & type_expr tyenv ty) ty_args) non_consts
-                    in
-                    let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
-                    Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
-              in
-              let rec find_constr i = function
-                | [] -> assert false
-                | c::_ when c.Types.cstr_name = cstr_name -> i
-                | _::consts -> find_constr (i+1) consts
-              in
-              match cdesc.cstr_arity, consts, non_consts_ty with
-              | _, [], None -> assert false
-              | 0, [], _ -> assert false
-              | 0, _, None  -> mkint & find_constr 0 consts
-              | 0, _, Some ty -> mkleft ty & mkint & find_constr 0 consts
-              | _, _, None -> assert false
-              | _, _, Some ty ->
-                  let i = find_constr 0 non_consts in
-                  let sides = Binplace.path i (List.length non_consts) in
-                  let arg = encode_by mkpair & List.map expression args in
-                  let rec f ty sides = match ty.M.Type.desc, sides with
-                    | _, [] -> arg
-                    | TyOr (ty1, ty2), Binplace.Left::sides -> mkleft ty2 (f ty1 sides)
-                    | TyOr (ty1, ty2), Right::sides -> mkright ty1 (f ty2 sides)
-                    | _ -> assert false
-                  in
-                  match consts with
-                  | [] -> f ty sides
-                  | _ -> mkright tyInt & f ty sides
-        end
-
-    | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false (* XXX *)
-  
-  and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_extra=_; exp_attributes } =
-    (* wildly ignores extra *)
-    (* if exp_extra <> [] then unsupported ~loc "expression extra"; *)
-    begin match attr_has_entry_point exp_attributes with
-      | None -> ()
-      | Some loc ->
-          errorf ~loc "entry declaration is only allowed for the toplevel definitions";
-    end;
-    let typ = Result.at_Error (fun e ->
-        errorf ~loc "This expression has type %a.  %a" Printtyp.type_expr mltyp pp_type_expr_error e)
-        & type_expr tyenv mltyp 
-    in
-    let mk desc = { loc; typ; desc; attrs= [] } in
-    match exp_desc with
-    | Texp_ident (Path.Pident id, {loc=_}, _vd) -> mk & Var id
-    | Texp_ident (p, {loc}, _vd) ->
-        begin match Path.is_scaml p with
-          | Some "Contract.create_raw" ->
-              (* SCaml.Contract.create_raw must be always applied with a string literal.
-                 If we see it here, it is not.
-              *)
-              errorf ~loc "Contract.create_raw must be immediately applied with a string literal"
-          | Some n -> mk & primitive ~loc typ n []
-          | None -> unsupported ~loc "complex path %s" (Path.xname p)
-        end
-    | Texp_constant (Const_string (s, None)) -> 
-        mk & Const (String s)
-    | Texp_constant (Const_string (_, Some _)) -> 
-        unsupported ~loc "quoted string"
-    | Texp_constant _ -> unsupported ~loc "constant"
-    | Texp_tuple [e1; e2] ->
-        let e1 = expression e1 in
-        let e2 = expression e2 in
-        (* tyPair (e1.typ, e2.typ) = typ *) 
-        make_constant & mk & Pair (e1, e2)
-    | Texp_tuple es ->
-        Binplace.fold
-          ~leaf:(fun c -> c)
-          ~branch:(fun c1 c2 ->
-              make_constant & mk & Pair (c1, c2))
-          & Binplace.place 
-          & List.map expression es
-          
-    | Texp_construct ({loc}, c, args) -> 
-        construct ~loc tyenv mltyp c args
-  
-    | Texp_assert e ->
-        begin match e.exp_desc with
-        | Texp_construct (_, {cstr_name="false"}, []) ->
-            (* assert false has type 'a *)
-            mk AssertFalse
-        | _ -> mkassert & expression e
-        end
-  
-    | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
-    | Texp_let (Nonrecursive, vbs, e) ->
-        if not Flags.(!flags.iml_pattern_match) then begin
-          (* simple let x = e in e' *)
-          let rev_vbs =
-            List.fold_left (fun rev_vbs vb -> 
-                let _, v, e = value_binding vb in
-                (v, e) :: rev_vbs) [] vbs
-          in
-          let e = expression e in
-          List.fold_left (fun e (v,def) ->
-              { loc; (* XXX inaccurate *)
-                typ= e.typ;
-                desc= Let (v, def, e);
-                attrs= [] } ) e rev_vbs
-        end else begin
-          (* let p = e and p' = e' in e''
-             =>
-             let xnew = e in match xnew with p ->
-             let xnew' = e' in match xnew' with p' -> e''
-          *)
-          List.fold_right (fun vb e' ->
-              let { vb_pat; vb_expr } = vb in
-              let vb_expr = expression vb_expr in
-              let typ = vb_expr.typ in
-              let i = create_ident "x" in
-              let x = { desc= i; typ; loc= Location.none; attrs= () } in
-              let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
-              { desc= Let (x, vb_expr, 
-                           Pmatch.compile ex [(patternx vb_pat, None, e')])
-              ; typ= e'.typ
-              ; loc
-              ; attrs= [] 
-              }
-            ) vbs & expression e
-        end
-  
-    | Texp_apply (_, []) -> assert false
-
-    | Texp_apply ({ exp_desc= Texp_ident (p, _, _vd) },
-                  (Nolabel, Some { exp_loc= loc_string; exp_desc= Texp_constant(Const_string (s, _)) })
-                  :: args) when Path.is_scaml p = Some "Contract.create_raw" ->
-        (* Contract.create_raw <string literal> ... *)
-        let args = List.map (function
-            | (Nolabel, Some (e: Typedtree.expression)) -> expression e
-            | _ -> unsupported ~loc "labeled arguments") args
-        in
-        let e1,e2,e3 = match args with
-          | [e1; e2; e3] -> e1, e2, e3
-          | _ -> errorf ~loc "Contract.create_raw cannot be partially applied";
-        in
-        let nodes =
-          let open Tezos_micheline in
-          let open Micheline_parser in
-          let open Tezos_error_monad in
-          match tokenize s with
-          | tkns, [] ->
-              begin match parse_toplevel ~check:false tkns with
-              | nodes, [] ->
-                  List.map 
-                    (Micheline.map_node 
-                       (fun _ -> { Micheline_printer.comment= None })
-                       (fun x -> x))
-                    nodes
-              | _nodes, es ->
-                  errorf ~loc:loc_string "Michelson parse error: %a"
-                    Error_monad.pp_print_error es
-              end
-          | _tkns, es ->
-              errorf ~loc:loc_string "Michelson parse error: %a"
-                Error_monad.pp_print_error es
-        in
-        mk & Contract_create_raw (Raw nodes, e1, e2, e3)
-
-    | Texp_apply (f, args) -> 
-        let args = List.map (function
-            | (Nolabel, Some (e: Typedtree.expression)) -> expression e
-            | _ -> unsupported ~loc "labeled arguments") args
-        in
-        let name = match f with
-          | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
-          | _ -> None
-        in
-        (* only some fixed combinations *)
-        begin match name with
-          | None -> mk & App (expression f, args)
-          | Some n -> 
-              let _fty' = 
-                List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
-              in
-              let fty = Result.at_Error (fun e ->
-                  errorf ~loc:f.exp_loc "This primitive has type %a.  %a"
-                    Printtyp.type_expr f.exp_type
-                    pp_type_expr_error e)
-                  & type_expr f.exp_env f.exp_type 
-              in
-              (* fty = fty' *)
-              mk & primitive ~loc:f.exp_loc fty n args
-        end
-  
-    | Texp_function { arg_label= (Labelled _ | Optional _) } ->
-        unsupported ~loc "labeled arguments"
-  
-    | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
-        if partial = Partial then errorf ~loc "Pattern match is partial";
-        (* name the same name of the original if possible *)
-        let i = create_ident & match cases with
-          | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 
-                                     Tpat_alias ({ pat_desc= Tpat_any }, id, _)) } } ] ->
-              Ident.name id
-          | _ -> "arg"
-        in
-        let targ, _tret = match typ.desc with
-          | TyLambda (targ, tret) -> targ, tret
-          | _ -> assert false
-        in
-        let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
-        let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
-        if not Flags.(!flags.iml_pattern_match) then begin
-          mkfun var & switch ~loc evar cases
-        end else begin
-          (* function case1 | .. | casen
-             =>
-             fun xnew -> match xnew with case1 | .. | casen 
-          *)
-          let compile_case case = 
-            let guard = Option.fmap expression case.c_guard in
-            (patternx case.c_lhs, guard, expression case.c_rhs)
-          in
-          let t = Pmatch.compile evar & List.map compile_case cases in
-          mkfun var t
-        end
-  
-    | Texp_ifthenelse (cond, then_, Some else_) -> 
-        let econd = expression cond in
-        let ethen = expression then_ in
-        let eelse = expression else_ in
-        (* ignore (unify ethen.typ eelse.typ);
-           ignore (unify typ ethen.typ); *)
-        mk & IfThenElse (econd, ethen, eelse)
-  
-    | Texp_ifthenelse (_, _, None) ->
-        unsupported ~loc "if-then without else"
-
-    | Texp_match (_, _, e::_, _) -> 
-        unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
-        
-    | Texp_match (_ , _, _, Partial) -> 
-        unsupported ~loc "non exhaustive pattern match"
-        
-    | Texp_match (e , cases, [], Total) -> 
-        let e = expression e in
-        if not Flags.(!flags.iml_pattern_match) then begin
-          switch ~loc e cases
-        end else begin
-          let compile_case case = 
-            let guard = Option.fmap expression case.c_guard in
-            (patternx case.c_lhs, guard, expression case.c_rhs)
-          in
-          Pmatch.compile e (List.map compile_case cases)
-        end
-    | Texp_try _ -> unsupported ~loc "try-with"
-    | Texp_variant _ -> unsupported ~loc "polymorphic variant"
-
-    | Texp_record { fields; extended_expression= None; _ } -> 
-        (* I believe fields are already sorted *)
-        let es = 
-          List.map (fun (_ldesc, ldef) -> match ldef with
-              | Overridden (_, e) -> expression e
-              | Kept _ -> assert false) & Array.to_list fields
-        in
-        Binplace.fold
-          ~leaf:(fun c -> c)
-          ~branch:(fun c1 c2 ->
-              make_constant & mkpair c1 c2)
-        & Binplace.place es
-
-    | Texp_record { fields; extended_expression= Some e; } ->
-        (* optimal code, I hope *)
-        (* I believe fields are already sorted *)
-        let es = 
-          List.map (fun (_ldesc, ldef) -> match ldef with
-              | Overridden (_, e) -> Some (expression e)
-              | Kept _ -> None) & Array.to_list fields
-        in
-        let tree = Binplace.place es in
-        let rec simplify = function
-          | Binplace.Leaf x as t -> t, x = None
-          | Branch (t1, t2) -> 
-              let t1, b1 = simplify t1 in
-              let t2, b2 = simplify t2 in
-              if b1 && b2 then Leaf None, true
-              else Branch (t1, t2), false
-        in
-        let rec f e = function
-          | Binplace.Leaf None -> e (* no override *)
-          | Leaf (Some e) -> e
-          | Branch (t1, t2) ->
-              let e1 = f (mkfst e) t1 in
-              let e2 = f (mksnd e) t2 in
-              make_constant & mkpair e1 e2
-        in
-        f (expression e) & fst & simplify tree
-
-    | Texp_field (e, _, label) ->
-        let pos = label.lbl_pos in
-        let nfields = Array.length label.lbl_all in
-        if_debug (fun () -> Format.eprintf "field %d %s of %d @." pos label.lbl_name nfields);
-        let e = expression e in
-        let rec f e = function
-          | [] -> e
-          | Binplace.Left :: dirs -> f (mkfst e) dirs
-          | Binplace.Right :: dirs -> f (mksnd e) dirs
-        in
-        f e & Binplace.path pos nfields
-    | Texp_sequence (e1, e2) -> mk & Seq ( expression e1, expression e2 )
-    | Texp_setfield _ -> unsupported ~loc "record field set"
-    | Texp_array _ -> unsupported ~loc "array"
-    | Texp_while _ -> unsupported ~loc "while-do-done"
-    | Texp_for _ -> unsupported ~loc "for-do-done"
-    | Texp_send _ -> unsupported ~loc "method call"
-    | Texp_new _ -> unsupported ~loc "new"
-    | Texp_instvar _ -> unsupported ~loc "class instance variable"
-    | Texp_setinstvar _ -> unsupported ~loc "class instance variable set"
-    | Texp_override _ -> unsupported ~loc "override"
-    | Texp_letmodule _ -> unsupported ~loc "let-module"
-    | Texp_letexception _ -> unsupported ~loc "let-exception"
-    | Texp_lazy _ -> unsupported ~loc "lazy"
-    | Texp_object _ -> unsupported ~loc "object"
-    | Texp_pack _ -> unsupported ~loc "first class module"
-    | Texp_extension_constructor _ -> unsupported ~loc "open variant"
-    | Texp_unreachable -> unsupported ~loc "this type of expression"
-
-  and primitive ~loc fty n args =
-    match n with
-    | "Contract.self" ->
-        (* SELF cannot go into LAMBDA.  We have let contract_id = self in .. *)
-        assert (args = []);
-        Var contract_self_id
-    | _ -> 
-        match List.assoc_opt n Primitives.primitives with
-        | None -> errorf ~loc "Unknown primitive SCaml.%s" n
-        | Some (arity, conv) ->
-            if arity > List.length args then
-              unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
-            let args, left = List.split_at arity args in
-            match left with
-            | [] -> 
-                (* Bit tricky.  fty will be unified and its closure info will be
-                   modified.  The changes will be fixed when [conv fty] is used
-                   in compile.ml
-                *)
-                Prim (n, conv fty, args)
-            | _ -> 
-                let typ = 
-                  let rec f ty = function
-                    | [] -> ty
-                    | _arg::args ->
-                        match ty.M.Type.desc with
-                        | TyLambda (_,ty2) -> f ty2 args
-                        | _ -> assert false
-                  in
-                  f fty args
-                in
-                App ({ loc; (* XXX inaccurate *)
-                       typ;
-                       desc= Prim (n, conv fty, args);
-                       attrs= [] }, left)
-  
-  and switch ~loc:loc0 e cases =
-    let ty = e.typ in
-    let compile_case case = match case.c_guard with
-      | Some e -> unsupported ~loc:e.exp_loc "guard"
-      | None -> 
-          match case.c_lhs.pat_desc with
-          | Tpat_construct (_, { cstr_name }, xs) -> cstr_name, xs, expression case.c_rhs
-          | _ -> unsupported ~loc:case.c_lhs.pat_loc "non variant pattern"
-    in
-    let cases = 
-      List.sort (fun (n1,_,_) (n2,_,_) -> compare n1 n2) (List.map compile_case cases)
-    in
-    let mk desc = { desc; loc=loc0; typ= (let _, _, e = List.hd cases in e.typ); attrs= [] } in
-    match ty.desc, cases with
-    | TyOr (_ty1, _ty2), [("Left",[l],le); ("Right",[r],re)] ->
-        let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
-        let lv = get_var l in
-        let rv = get_var r in
-        mk & Switch_or (e,
-                        lv, le,
-                        rv, re)
-    | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
-    | TyList _ty1, [("::",[l1;l2],le); ("[]",[],re)] ->
-        let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
-        let lv1 = get_var l1 in
-        let lv2 = get_var l2 in
-        mk & Switch_cons (e,
-                          lv1, lv2, le,
-                          re)
-    | TyOption _ty1, [("None",[],le); ("Some",[r],re)] ->
-        let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
-        let rv = get_var r in
-        mk & Switch_none (e,
-                          le,
-                          rv, re)
-    | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
-
-  and value_binding { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
-    (* currently we only handle very simple sole variable pattern *)
-    match pattern_simple vb_pat with
-    | [v] ->
-        let e = expression vb_expr in
-        (* ignore & unify v.typ e.typ; *)
-        vb_pat.pat_type, v, e
-    | _ -> assert false
-  
-  (* The condition of the entry point is a bit too strict.
-     Currently: the last sitem must be an entry point.
-     Better: the last value binding must be an entry point.,
-  *)
-  and structure_item { str_desc; str_loc=loc } =
-    match str_desc with
-    | Tstr_eval _                      -> unsupported ~loc "toplevel evaluation"
-    | Tstr_primitive _                 -> unsupported ~loc "primitive declaration"
-    | Tstr_typext _                    -> unsupported ~loc "type extension"
-    | Tstr_exception _                 -> unsupported ~loc "exception declaration"
-    | Tstr_module _ | Tstr_recmodule _ -> unsupported ~loc "module declaration"
-    | Tstr_class _                     -> unsupported ~loc "class declaration"
-    | Tstr_class_type _                -> unsupported ~loc "class type declaration"
-    | Tstr_include _                   -> unsupported ~loc "include"
-    | Tstr_modtype _                   -> unsupported ~loc "module type declaration"
-  
-    | Tstr_value (Recursive, _vbs) -> unsupported ~loc "recursive definitions"
-  
-    | Tstr_value (Nonrecursive, vbs) ->
-        let rev_vbs = 
-          List.fold_left (fun rev_vbs vb ->
-              let pat_typ,v,b = value_binding vb in
-              (pat_typ,v,b)::rev_vbs) [] vbs
-        in
-        List.rev rev_vbs
-  
-    | Tstr_open _open_description -> []
-  
-    | Tstr_type _ -> []
-
-    | Tstr_attribute _ -> 
-        (* simply ignores it for now *)
-        []
-  
-  and structure { str_items= sitems } =
-    let rev_vbss =
-      List.fold_left (fun rev_vbss sitem ->
-          let vbs = structure_item sitem in
-          vbs :: rev_vbss) [] sitems 
-    in
-    (* This is if the entry point is alone and at the end *)
-    let vbs = List.flatten & List.rev rev_vbss in
-    List.fold_right (fun (_,v,b) x ->
-        { loc=Location.none; typ= tyUnit; desc= Let (v, b, x); attrs= [] })
-      vbs
-      final
+let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
+  let typ = 
+    Result.at_Error (fun e ->
+        errorf ~loc "This has type %a.  %a" Printtyp.type_expr exp_type pp_type_expr_error e)
+    & type_expr tyenv exp_type 
   in
-  structure str
+  let make typ desc = { loc; typ; desc; attrs= [] } in
+  match (Ctype.expand_head tyenv exp_type).Types.desc, typ.desc with
+  (* bool *)
+  | Tconstr (p, [], _), _ when p = Predef.path_bool ->
+      make tyBool (match cstr_name with
+          | "true" -> Const (C.Bool true)
+          | "false" -> Const (C.Bool false)
+          | s -> internal_error ~loc "strange bool constructor %s" s)
 
- 
+  (* list *)
+  | Tconstr (p, [_], _), TyList ty when p = Predef.path_list ->
+      begin match cstr_name with
+        | "[]" -> make (tyList ty) Nil
+        | "::" ->
+            begin match args with
+              | [e1; e2] ->
+                  let e1 = expression e1 in
+                  let e2 = expression e2 in
+                  (* tyList e1.typ = e2.typ *)
+                  make_constant & mkcons e1 e2
+              | _ -> internal_error ~loc "strange cons"
+            end
+        | s -> internal_error ~loc "strange list constructor %s" s
+      end
 
-  
+  (* option *)
+  | Tconstr (p, [_], _), TyOption ty when p = Predef.path_option ->
+      begin match cstr_name with
+        | "None" -> make (tyOption ty) IML_None
+        | "Some" ->
+            begin match args with
+              | [e1] ->
+                  let e1 = expression e1 in
+                  make_constant & mksome e1
+              | _ -> internal_error ~loc "strange cons"
+            end
+        | s -> internal_error ~loc "strange list constructor %s" s
+      end
+
+  (* sum *)
+  | Tconstr (p, [_; _], _), TyOr (tyl, tyr) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
+      let arg = match args with [arg] -> arg | _ -> internal_error ~loc "strange sum arguments" in
+      begin match cstr_name with
+      | "Left" -> 
+          let e = expression arg in
+          (* e.typ = ty1 *)
+          make_constant & mkleft tyr e
+      | "Right" ->
+          let e = expression arg in
+          (* e.typ = ty2 *)
+          make_constant & mkright tyl e
+      | s -> internal_error ~loc "strange sum constructor %s" s
+      end
+
+  | Tconstr (p, _, _), TyUnit when p = Predef.path_unit -> 
+      make tyUnit Unit
+
+  | Tconstr (p, [], _), TyInt when Path.is_scaml_dot "int" p ->
+      make tyInt begin
+        let arg = match args with
+            | [arg] -> arg
+            | _ -> internal_error ~loc "strange Int arguments"
+          in
+          match arg.exp_desc with
+            | Texp_constant (Const_int n) -> Const (Int (Z.of_int n))
+            | _ -> errorf ~loc "Int can only take an integer constant"
+        end
+
+  | Tconstr (p, [], _), TyNat when Path.is_scaml_dot "nat" p ->
+      make tyNat begin 
+        let arg = match args with
+          | [arg] -> arg
+          | _ -> internal_error ~loc "strange Nat arguments"
+        in
+        match arg.exp_desc with
+          | Texp_constant (Const_int n) -> 
+              if n < 0 then 
+                errorf ~loc "Nat can only take a positive integer constant";
+              Const (Nat (Z.of_int n))
+          | _ -> errorf ~loc "Nat can only take an integer constant"
+      end
+
+  | Tconstr (p, [], _), TyMutez when Path.is_scaml_dot "tz" p ->
+      make tyMutez begin 
+        let arg = match args with
+          | [arg] -> arg
+          | _ -> internal_error ~loc "strange Tz arguments"
+        in
+        match arg.exp_desc with
+          | Texp_constant (Const_float f) -> 
+              begin try
+                let pos = String.index f '.' in
+                let dec = String.sub f 0 pos in
+                let sub = String.sub f (pos+1) (String.length f - pos - 1) in
+                let all_dec s =
+                  for i = 0 to String.length s - 1 do
+                    match String.unsafe_get s i with
+                    | '0'..'9' -> ()
+                    | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
+                  done
+                in
+                all_dec dec;
+                all_dec sub;
+                let sub = 
+                  if String.length sub > 6 then 
+                    errorf ~loc "%s: the smallest expressive franction of tz is micro" f;
+
+                  sub ^ String.init (6 - String.length sub) (fun _ -> '0')
+                in
+                Const (Nat (Z.of_string (dec ^ sub)))
+              with
+              | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
+            end
+          | _ -> errorf ~loc "Nat can only take an integer constant"
+      end
+
+  (* set *)
+  | Tconstr (p, [_], _), TySet _ when (match Path.is_scaml p with Some "set" -> true | _ -> false) ->
+      (* XXX comparable type check *)
+      if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
+      begin match args with 
+        | [arg] -> 
+            let e = expression arg in
+            (* tyList ty = e.typ *)
+            begin match get_constant e with
+            | Some (List xs) -> 
+                (* XXX Uniqueness and sorting? *)
+                { e with typ; desc= Const (Set xs) }
+            | None -> errorf ~loc:e.loc "Elements of Set must be constants"
+            | Some _ -> assert false
+            end
+        | _ -> internal_error ~loc "strange set arguments"
+      end
+
+  (* map *)
+  | Tconstr (p, [_; _], _), TyMap _ when (match Path.is_scaml p with Some "map" -> true | _ -> false) ->
+      (* XXX comparable type check *)
+      if cstr_name <> "Map" then internal_error ~loc "strange map constructor";
+      begin match args with 
+        | [arg] -> 
+            let e = expression arg in
+            (* tyList (tyPair (ty1, ty2)) = e.typ *)
+            begin match get_constant e with
+            | Some (List xs) -> 
+                let order (c1,_) (c2,_) = compare c1 c2 in (* XXX relies on OCaml's compare! *)
+                let xs = List.sort order & List.map (function
+                    | C.Pair (c1,c2) -> (c1,c2)
+                    | _ -> assert false) xs 
+                in
+                let rec check_uniq = function
+                  | [] | [_] -> ()
+                  | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
+                      errorf ~loc "Map literal contains duplicated key %a" C.pp c1 
+                  | _::xs -> check_uniq xs
+                in
+                check_uniq xs;
+                { e with typ; desc= Const (Map xs) }
+            | Some _ -> assert false
+            | None -> errorf ~loc:e.loc "Elements of Map must be constants"
+            end
+        | _ -> internal_error ~loc "strange map arguments"
+      end
+
+  (* C "string" style constants *)
+  | Tconstr (p, [], _), _ when Path.is_scaml p <> None ->
+      begin match Path.is_scaml p with
+        | None -> assert false
+        | Some n ->
+            match List.assoc_opt n constructions_by_string with
+            | None -> 
+                unsupported ~loc "constants of data type %s" (Path.name p)
+            | Some (tyname, cname, typ, parse) ->
+                if cstr_name <> cname then internal_error ~loc "strange constructor for %s" tyname;
+                match args with 
+                | [] | _::_::_ ->
+                    internal_error ~loc "strange arguments for %s" cname
+                | [arg] -> 
+                    let e = expression arg in
+                    match e.desc with
+                    | Const (String s) -> 
+                        begin match parse s with
+                          | Ok v -> { e with typ; desc= Const v }
+                          | Error s -> errorf ~loc "Parse error of %s string: %s" tyname s
+                        end
+                    | _ -> errorf ~loc "%s only takes a string literal" cname
+      end
+
+  | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
+      begin match Env.find_type_descrs p tyenv with
+        | [], [] -> 
+            errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
+        | [], _::_ -> assert false (* record cannot come here *)
+        | _::_, _::_ -> assert false
+
+        | constrs, [] -> 
+            let consts, non_consts =
+              List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
+            in
+            let non_consts_ty =
+              match non_consts with
+              | [] -> None
+              | _ ->
+                  let tys_list = 
+                    List.map (fun constr ->
+                        let ty_args, ty_res = Ctype.instance_constructor constr in
+                        Ctype.unify tyenv exp_type ty_res; (* XXX should succeed *)
+                        List.map (fun ty -> 
+                            Result.at_Error (fun e ->
+                                errorf ~loc "This expression has type %a.  One of its constructors %s has type %a.  %a" 
+                                  Printtyp.type_expr exp_type 
+                                  constr.cstr_name
+                                  Printtyp.type_expr ty
+                                  pp_type_expr_error e)
+                            & type_expr tyenv ty) ty_args) non_consts
+                  in
+                  let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
+                  Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
+            in
+            let rec find_constr i = function
+              | [] -> assert false
+              | c::_ when c.Types.cstr_name = cstr_name -> i
+              | _::consts -> find_constr (i+1) consts
+            in
+            match cdesc.cstr_arity, consts, non_consts_ty with
+            | _, [], None -> assert false
+            | 0, [], _ -> assert false
+            | 0, _, None  -> mkint & find_constr 0 consts
+            | 0, _, Some ty -> mkleft ty & mkint & find_constr 0 consts
+            | _, _, None -> assert false
+            | _, _, Some ty ->
+                let i = find_constr 0 non_consts in
+                let sides = Binplace.path i (List.length non_consts) in
+                let arg = encode_by mkpair & List.map expression args in
+                let rec f ty sides = match ty.M.Type.desc, sides with
+                  | _, [] -> arg
+                  | TyOr (ty1, ty2), Binplace.Left::sides -> mkleft ty2 (f ty1 sides)
+                  | TyOr (ty1, ty2), Right::sides -> mkright ty1 (f ty2 sides)
+                  | _ -> assert false
+                in
+                match consts with
+                | [] -> f ty sides
+                | _ -> mkright tyInt & f ty sides
+      end
+
+  | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false (* XXX *)
+
+and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_extra=_; exp_attributes } =
+  (* wildly ignores extra *)
+  (* if exp_extra <> [] then unsupported ~loc "expression extra"; *)
+  begin match attr_has_entry_point exp_attributes with
+    | None -> ()
+    | Some loc ->
+        errorf ~loc "entry declaration is only allowed for the toplevel definitions";
+  end;
+  let typ = Result.at_Error (fun e ->
+      errorf ~loc "This expression has type %a.  %a" Printtyp.type_expr mltyp pp_type_expr_error e)
+      & type_expr tyenv mltyp 
+  in
+  let mk desc = { loc; typ; desc; attrs= [] } in
+  match exp_desc with
+  | Texp_ident (Path.Pident id, {loc=_}, _vd) -> mk & Var id
+  | Texp_ident (p, {loc}, _vd) ->
+      begin match Path.is_scaml p with
+        | Some "Contract.create_raw" ->
+            (* SCaml.Contract.create_raw must be always applied with a string literal.
+               If we see it here, it is not.
+            *)
+            errorf ~loc "Contract.create_raw must be immediately applied with a string literal"
+        | Some n -> mk & primitive ~loc typ n []
+        | None -> unsupported ~loc "complex path %s" (Path.xname p)
+      end
+  | Texp_constant (Const_string (s, None)) -> 
+      mk & Const (String s)
+  | Texp_constant (Const_string (_, Some _)) -> 
+      unsupported ~loc "quoted string"
+  | Texp_constant _ -> unsupported ~loc "constant"
+  | Texp_tuple [e1; e2] ->
+      let e1 = expression e1 in
+      let e2 = expression e2 in
+      (* tyPair (e1.typ, e2.typ) = typ *) 
+      make_constant & mk & Pair (e1, e2)
+  | Texp_tuple es ->
+      Binplace.fold
+        ~leaf:(fun c -> c)
+        ~branch:(fun c1 c2 ->
+            make_constant & mk & Pair (c1, c2))
+        & Binplace.place 
+        & List.map expression es
+
+  | Texp_construct ({loc}, c, args) -> 
+      construct ~loc tyenv mltyp c args
+
+  | Texp_assert e ->
+      begin match e.exp_desc with
+      | Texp_construct (_, {cstr_name="false"}, []) ->
+          (* assert false has type 'a *)
+          mk AssertFalse
+      | _ -> mkassert & expression e
+      end
+
+  | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
+  | Texp_let (Nonrecursive, vbs, e) ->
+      if not Flags.(!flags.iml_pattern_match) then begin
+        (* simple let x = e in e' *)
+        let rev_vbs =
+          List.fold_left (fun rev_vbs vb -> 
+              let _, v, e = value_binding vb in
+              (v, e) :: rev_vbs) [] vbs
+        in
+        let e = expression e in
+        List.fold_left (fun e (v,def) ->
+            { loc; (* XXX inaccurate *)
+              typ= e.typ;
+              desc= Let (v, def, e);
+              attrs= [] } ) e rev_vbs
+      end else begin
+        (* let p = e and p' = e' in e''
+           =>
+           let xnew = e in match xnew with p ->
+           let xnew' = e' in match xnew' with p' -> e''
+        *)
+        List.fold_right (fun vb e' ->
+            let { vb_pat; vb_expr } = vb in
+            let vb_expr = expression vb_expr in
+            let typ = vb_expr.typ in
+            let i = create_ident "x" in
+            let x = { desc= i; typ; loc= Location.none; attrs= () } in
+            let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
+            { desc= Let (x, vb_expr, 
+                         Pmatch.compile ex [(patternx vb_pat, None, e')])
+            ; typ= e'.typ
+            ; loc
+            ; attrs= [] 
+            }
+          ) vbs & expression e
+      end
+
+  | Texp_apply (_, []) -> assert false
+
+  | Texp_apply ({ exp_desc= Texp_ident (p, _, _vd) },
+                (Nolabel, Some { exp_loc= loc_string; exp_desc= Texp_constant(Const_string (s, _)) })
+                :: args) when Path.is_scaml p = Some "Contract.create_raw" ->
+      (* Contract.create_raw <string literal> ... *)
+      let args = List.map (function
+          | (Nolabel, Some (e: Typedtree.expression)) -> expression e
+          | _ -> unsupported ~loc "labeled arguments") args
+      in
+      let e1,e2,e3 = match args with
+        | [e1; e2; e3] -> e1, e2, e3
+        | _ -> errorf ~loc "Contract.create_raw cannot be partially applied";
+      in
+      let nodes =
+        let open Tezos_micheline in
+        let open Micheline_parser in
+        let open Tezos_error_monad in
+        match tokenize s with
+        | tkns, [] ->
+            begin match parse_toplevel ~check:false tkns with
+            | nodes, [] ->
+                List.map 
+                  (Micheline.map_node 
+                     (fun _ -> { Micheline_printer.comment= None })
+                     (fun x -> x))
+                  nodes
+            | _nodes, es ->
+                errorf ~loc:loc_string "Michelson parse error: %a"
+                  Error_monad.pp_print_error es
+            end
+        | _tkns, es ->
+            errorf ~loc:loc_string "Michelson parse error: %a"
+              Error_monad.pp_print_error es
+      in
+      mk & Contract_create_raw (Raw nodes, e1, e2, e3)
+
+  | Texp_apply (f, args) -> 
+      let args = List.map (function
+          | (Nolabel, Some (e: Typedtree.expression)) -> expression e
+          | _ -> unsupported ~loc "labeled arguments") args
+      in
+      let name = match f with
+        | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
+        | _ -> None
+      in
+      (* only some fixed combinations *)
+      begin match name with
+        | None -> mk & App (expression f, args)
+        | Some n -> 
+            let _fty' = 
+              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
+            in
+            let fty = Result.at_Error (fun e ->
+                errorf ~loc:f.exp_loc "This primitive has type %a.  %a"
+                  Printtyp.type_expr f.exp_type
+                  pp_type_expr_error e)
+                & type_expr f.exp_env f.exp_type 
+            in
+            (* fty = fty' *)
+            mk & primitive ~loc:f.exp_loc fty n args
+      end
+
+  | Texp_function { arg_label= (Labelled _ | Optional _) } ->
+      unsupported ~loc "labeled arguments"
+
+  | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
+      if partial = Partial then errorf ~loc "Pattern match is partial";
+      (* name the same name of the original if possible *)
+      let i = create_ident & match cases with
+        | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 
+                                   Tpat_alias ({ pat_desc= Tpat_any }, id, _)) } } ] ->
+            Ident.name id
+        | _ -> "arg"
+      in
+      let targ, _tret = match typ.desc with
+        | TyLambda (targ, tret) -> targ, tret
+        | _ -> assert false
+      in
+      let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
+      let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
+      if not Flags.(!flags.iml_pattern_match) then begin
+        mkfun var & switch ~loc evar cases
+      end else begin
+        (* function case1 | .. | casen
+           =>
+           fun xnew -> match xnew with case1 | .. | casen 
+        *)
+        let compile_case case = 
+          let guard = Option.fmap expression case.c_guard in
+          (patternx case.c_lhs, guard, expression case.c_rhs)
+        in
+        let t = Pmatch.compile evar & List.map compile_case cases in
+        mkfun var t
+      end
+
+  | Texp_ifthenelse (cond, then_, Some else_) -> 
+      let econd = expression cond in
+      let ethen = expression then_ in
+      let eelse = expression else_ in
+      (* ignore (unify ethen.typ eelse.typ);
+         ignore (unify typ ethen.typ); *)
+      mk & IfThenElse (econd, ethen, eelse)
+
+  | Texp_ifthenelse (_, _, None) ->
+      unsupported ~loc "if-then without else"
+
+  | Texp_match (_, _, e::_, _) -> 
+      unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
+
+  | Texp_match (_ , _, _, Partial) -> 
+      unsupported ~loc "non exhaustive pattern match"
+
+  | Texp_match (e , cases, [], Total) -> 
+      let e = expression e in
+      if not Flags.(!flags.iml_pattern_match) then begin
+        switch ~loc e cases
+      end else begin
+        let compile_case case = 
+          let guard = Option.fmap expression case.c_guard in
+          (patternx case.c_lhs, guard, expression case.c_rhs)
+        in
+        Pmatch.compile e (List.map compile_case cases)
+      end
+  | Texp_try _ -> unsupported ~loc "try-with"
+  | Texp_variant _ -> unsupported ~loc "polymorphic variant"
+
+  | Texp_record { fields; extended_expression= None; _ } -> 
+      (* I believe fields are already sorted *)
+      let es = 
+        List.map (fun (_ldesc, ldef) -> match ldef with
+            | Overridden (_, e) -> expression e
+            | Kept _ -> assert false) & Array.to_list fields
+      in
+      Binplace.fold
+        ~leaf:(fun c -> c)
+        ~branch:(fun c1 c2 ->
+            make_constant & mkpair c1 c2)
+      & Binplace.place es
+
+  | Texp_record { fields; extended_expression= Some e; } ->
+      (* optimal code, I hope *)
+      (* I believe fields are already sorted *)
+      let es = 
+        List.map (fun (_ldesc, ldef) -> match ldef with
+            | Overridden (_, e) -> Some (expression e)
+            | Kept _ -> None) & Array.to_list fields
+      in
+      let tree = Binplace.place es in
+      let rec simplify = function
+        | Binplace.Leaf x as t -> t, x = None
+        | Branch (t1, t2) -> 
+            let t1, b1 = simplify t1 in
+            let t2, b2 = simplify t2 in
+            if b1 && b2 then Leaf None, true
+            else Branch (t1, t2), false
+      in
+      let rec f e = function
+        | Binplace.Leaf None -> e (* no override *)
+        | Leaf (Some e) -> e
+        | Branch (t1, t2) ->
+            let e1 = f (mkfst e) t1 in
+            let e2 = f (mksnd e) t2 in
+            make_constant & mkpair e1 e2
+      in
+      f (expression e) & fst & simplify tree
+
+  | Texp_field (e, _, label) ->
+      let pos = label.lbl_pos in
+      let nfields = Array.length label.lbl_all in
+      if_debug (fun () -> Format.eprintf "field %d %s of %d @." pos label.lbl_name nfields);
+      let e = expression e in
+      let rec f e = function
+        | [] -> e
+        | Binplace.Left :: dirs -> f (mkfst e) dirs
+        | Binplace.Right :: dirs -> f (mksnd e) dirs
+      in
+      f e & Binplace.path pos nfields
+  | Texp_sequence (e1, e2) -> mk & Seq ( expression e1, expression e2 )
+  | Texp_setfield _ -> unsupported ~loc "record field set"
+  | Texp_array _ -> unsupported ~loc "array"
+  | Texp_while _ -> unsupported ~loc "while-do-done"
+  | Texp_for _ -> unsupported ~loc "for-do-done"
+  | Texp_send _ -> unsupported ~loc "method call"
+  | Texp_new _ -> unsupported ~loc "new"
+  | Texp_instvar _ -> unsupported ~loc "class instance variable"
+  | Texp_setinstvar _ -> unsupported ~loc "class instance variable set"
+  | Texp_override _ -> unsupported ~loc "override"
+  | Texp_letmodule _ -> unsupported ~loc "let-module"
+  | Texp_letexception _ -> unsupported ~loc "let-exception"
+  | Texp_lazy _ -> unsupported ~loc "lazy"
+  | Texp_object _ -> unsupported ~loc "object"
+  | Texp_pack _ -> unsupported ~loc "first class module"
+  | Texp_extension_constructor _ -> unsupported ~loc "open variant"
+  | Texp_unreachable -> unsupported ~loc "this type of expression"
+
+and primitive ~loc fty n args =
+  match n with
+  | "Contract.self" ->
+      (* SELF cannot go into LAMBDA.  We have let contract_id = self in .. *)
+      assert (args = []);
+      Var contract_self_id
+  | _ -> 
+      match List.assoc_opt n Primitives.primitives with
+      | None -> errorf ~loc "Unknown primitive SCaml.%s" n
+      | Some (arity, conv) ->
+          if arity > List.length args then
+            unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
+          let args, left = List.split_at arity args in
+          match left with
+          | [] -> 
+              (* Bit tricky.  fty will be unified and its closure info will be
+                 modified.  The changes will be fixed when [conv fty] is used
+                 in compile.ml
+              *)
+              Prim (n, conv fty, args)
+          | _ -> 
+              let typ = 
+                let rec f ty = function
+                  | [] -> ty
+                  | _arg::args ->
+                      match ty.M.Type.desc with
+                      | TyLambda (_,ty2) -> f ty2 args
+                      | _ -> assert false
+                in
+                f fty args
+              in
+              App ({ loc; (* XXX inaccurate *)
+                     typ;
+                     desc= Prim (n, conv fty, args);
+                     attrs= [] }, left)
+
+and switch ~loc:loc0 e cases =
+  let ty = e.typ in
+  let compile_case case = match case.c_guard with
+    | Some e -> unsupported ~loc:e.exp_loc "guard"
+    | None -> 
+        match case.c_lhs.pat_desc with
+        | Tpat_construct (_, { cstr_name }, xs) -> cstr_name, xs, expression case.c_rhs
+        | _ -> unsupported ~loc:case.c_lhs.pat_loc "non variant pattern"
+  in
+  let cases = 
+    List.sort (fun (n1,_,_) (n2,_,_) -> compare n1 n2) (List.map compile_case cases)
+  in
+  let mk desc = { desc; loc=loc0; typ= (let _, _, e = List.hd cases in e.typ); attrs= [] } in
+  match ty.desc, cases with
+  | TyOr (_ty1, _ty2), [("Left",[l],le); ("Right",[r],re)] ->
+      let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
+      let lv = get_var l in
+      let rv = get_var r in
+      mk & Switch_or (e,
+                      lv, le,
+                      rv, re)
+  | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
+  | TyList _ty1, [("::",[l1;l2],le); ("[]",[],re)] ->
+      let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
+      let lv1 = get_var l1 in
+      let lv2 = get_var l2 in
+      mk & Switch_cons (e,
+                        lv1, lv2, le,
+                        re)
+  | TyOption _ty1, [("None",[],le); ("Some",[r],re)] ->
+      let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
+      let rv = get_var r in
+      mk & Switch_none (e,
+                        le,
+                        rv, re)
+  | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
+
+and value_binding { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
+  (* currently we only handle very simple sole variable pattern *)
+  match pattern_simple vb_pat with
+  | [v] ->
+      let e = expression vb_expr in
+      (* ignore & unify v.typ e.typ; *)
+      vb_pat.pat_type, v, e
+  | _ -> assert false
+
+(* The condition of the entry point is a bit too strict.
+   Currently: the last sitem must be an entry point.
+   Better: the last value binding must be an entry point.,
+*)
+and structure_item { str_desc; str_loc=loc } =
+  match str_desc with
+  | Tstr_eval _                      -> unsupported ~loc "toplevel evaluation"
+  | Tstr_primitive _                 -> unsupported ~loc "primitive declaration"
+  | Tstr_typext _                    -> unsupported ~loc "type extension"
+  | Tstr_exception _                 -> unsupported ~loc "exception declaration"
+  | Tstr_module _ | Tstr_recmodule _ -> unsupported ~loc "module declaration"
+  | Tstr_class _                     -> unsupported ~loc "class declaration"
+  | Tstr_class_type _                -> unsupported ~loc "class type declaration"
+  | Tstr_include _                   -> unsupported ~loc "include"
+  | Tstr_modtype _                   -> unsupported ~loc "module type declaration"
+
+  | Tstr_value (Recursive, _vbs) -> unsupported ~loc "recursive definitions"
+
+  | Tstr_value (Nonrecursive, vbs) ->
+      let rev_vbs = 
+        List.fold_left (fun rev_vbs vb ->
+            let pat_typ,v,b = value_binding vb in
+            (pat_typ,v,b)::rev_vbs) [] vbs
+      in
+      List.rev rev_vbs
+
+  | Tstr_open _open_description -> []
+
+  | Tstr_type _ -> []
+
+  | Tstr_attribute _ -> 
+      (* simply ignores it for now *)
+      []
+
+and structure { str_items= sitems } final =
+  let rev_vbss =
+    List.fold_left (fun rev_vbss sitem ->
+        let vbs = structure_item sitem in
+        vbs :: rev_vbss) [] sitems 
+  in
+  (* This is if the entry point is alone and at the end *)
+  let vbs = List.flatten & List.rev rev_vbss in
+  List.fold_right (fun (_,v,b) x ->
+      { loc=Location.none; typ= tyUnit; desc= Let (v, b, x); attrs= [] })
+    vbs
+    final
+
 (* parameter and storage types *)
 
 let toplevel_value_bindings str =
@@ -2299,14 +2295,19 @@ let implementation sourcefile str =
       ty_storage, 
       add_self (tyContract ty_param) & structure str final
 
-(*
-let convert _sourcefile str = 
+let convert str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
   Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
       Result.at_Error (errorf ~loc "%s") & Flags.eval t (txt, v))
       t attrs);
 
-  let structure_item st { str_desc; str_loc= loc } =
+  let get_constant e = 
+    match get_constant & expression e with
+    | None -> errorf ~loc:e.exp_loc "This is not a constant expression, which is required for conversion mode"
+    | Some c -> c
+  in
+
+  let structure_item str_final_env { str_desc; str_loc= loc } =
     match str_desc with
     | Tstr_value (Recursive, _)        -> unsupported ~loc "recursive definitions"
     | Tstr_primitive _                 -> unsupported ~loc "primitive declaration"
@@ -2318,23 +2319,43 @@ let convert _sourcefile str =
     | Tstr_include _                   -> unsupported ~loc "include"
     | Tstr_modtype _                   -> unsupported ~loc "module type declaration"
 
-    | Tstr_eval (e, _) -> [ `Value (None, e) ]
+    | Tstr_eval (e, _) -> [ `Value (None, get_constant e) ]
     | Tstr_value (Nonrecursive, vbs) ->
         List.map (fun { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } ->
             let ido, e = match vb_pat.pat_desc with
-              | Tpat_var (id, _) -> `Value (Some id, vb_expr)
-              | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> `Value (Some id, vb_expr)
-              | Tpat_any -> `Value (None, vb_expr)
+              | Tpat_var (id, _) -> (Some id, vb_expr)
+              | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> (Some id, vb_expr)
+              | Tpat_any -> (None, vb_expr)
               | _ -> 
                   errorf ~loc:vb_pat.pat_loc "Conversion mode does not support complex patterns"
             in
-            let e = expression e in
+            `Value (ido, get_constant e)
           ) vbs
     | Tstr_open _open_description -> []
-    | Tstr_type (_, tds) -> List.map (fun td -> `Type td.typ_id) tds
+    | Tstr_type (_, tds) -> 
+        List.map (fun td -> match td.typ_params with
+            | _::_ -> errorf ~loc:td.typ_loc "Conversion mode does not support parameterized type declarations"
+            | [] ->
+                let id = td.typ_id in
+                let ty = Btype.newgenty (Tconstr (Path.Pident td.typ_id, [], ref Types.Mnil)) in
+                match type_expr str_final_env ty with
+                | Ok x -> `Type (id, x)
+                | Error e -> 
+                    errorf ~loc:td.typ_loc "Type %a.  It contains %a" Printtyp.type_expr ty pp_type_expr_error e) tds
     | Tstr_attribute _ -> []
   in
-  *)
+  let structure { str_items= sitems ; str_final_env } =
+    List.concat_map (structure_item str_final_env) sitems
+  in
+  let res = structure str in
+  List.iter (function
+      | `Value (Some id, c) ->
+          Format.printf "%s: @[<2>%a@]@." (Ident.name id) M.Constant.pp c
+      | `Value (None, c) ->
+          Format.printf "noname: @[<2>%a@]@." M.Constant.pp c
+      | `Type (id, t) ->
+          Format.printf "type %s: @[<2>%a@]@." (Ident.name id) M.Type.pp t
+    ) res
 
 let save path t = 
   let oc = open_out path in

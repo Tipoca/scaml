@@ -51,11 +51,13 @@ and desc =
 
 val pp : Format.t -> t -> unit
 
-val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
-
 val freevars : t -> IdTys.t
 
 val optimize : t -> t
+
+val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
+
+val convert : Typedtree.structure -> unit
 
 val save : string -> t -> unit
 (** Print out IML AST to a file.  For debugging. *)

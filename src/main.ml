@@ -51,7 +51,7 @@ module Compile = struct
           ++ print_if ppf Clflags.dump_typedtree
             Printtyped.implementation_with_coercion
        in
-       SCamlc.implementation sourcefile outputprefix modulename (typedtree, coercion)
+       SCamlc.compile sourcefile outputprefix modulename (typedtree, coercion)
       with x ->
         Stypes.dump (Some (outputprefix ^ ".annot"));
         raise x
@@ -171,9 +171,6 @@ module Options = Main_args.Make_bytecomp_options (struct
   let anonymous = anonymous
 end)
 
-let scaml_types = ref []
-let scaml_values = ref []
-
 let main () =
   Clflags.add_arguments __LOC__ Options.list;
   Clflags.add_arguments __LOC__
@@ -181,12 +178,10 @@ let main () =
      "<options> Compute dependencies (use 'ocamlc -depend -help' for details)"
     
     (* SCaml *)
-    ; "-scaml-type", Arg.String (fun s -> scaml_types := s :: !scaml_types),
-      "<type> Encode an SCaml type to Michelson"
-    ; "-scaml-value", Arg.String (fun s -> scaml_values := s :: !scaml_values),
-      "<value> Encode an SCaml value to Michelson"
-    ; "-scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
+    ; "--scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
       "Print SCaml debug messages"
+    ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_convert = true })),
+      "Convet types and values, instead of compling a smart contract"
     ];
   try
     readenv ppf Before_args;

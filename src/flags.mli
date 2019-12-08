@@ -4,6 +4,7 @@ type t =
   { iml_optimization  : bool
   ; iml_pattern_match : bool
   ; scaml_debug       : bool
+  ; scaml_convert     : bool (** type and value conversion mode *)
   }
 
 val flags : t ref
