@@ -11,7 +11,7 @@ build_dir=$script_dir/_build
 (cp $script_dir/../lib/SCaml.mli $build_dir; ocamlfind ocamlc -package zarith -c $build_dir/SCaml.mli)
 
 # Compilation command
-comp="dune exec ../main.exe -- -I $build_dir"
+comp="dune exec ../main.exe -- --scaml-noscamlib -I $build_dir"
 echo comp=$comp
 
 for i in $*
