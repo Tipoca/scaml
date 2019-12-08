@@ -193,7 +193,9 @@ let main () =
     ; "--scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
       "Print SCaml debug messages"
     ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_convert = true })),
-      "Convet types and values, instead of compling a smart contract"
+      "Convert types and values, instead of compling a smart contract"
+    ; "--scaml-noscamlib", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_noscamlib = true })),
+      "Do not add default directory for SCamlib to the list of include directories"
     ; "--scaml-version", Arg.Unit (fun () -> 
           print_string Version.scaml; print_newline(); exit 0),
       "Print SCaml version and exit"
@@ -202,6 +204,7 @@ let main () =
     readenv ppf Before_args;
     Clflags.parse_arguments anonymous usage;
     Compmisc.read_color_env ppf;
+    SCamlc.init ();
     begin try
       Compenv.process_deferred_actions
         (ppf,

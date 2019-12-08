@@ -5,6 +5,7 @@ type t =
   ; iml_pattern_match : bool
   ; scaml_debug       : bool
   ; scaml_convert     : bool (** type and value conversion mode *)
+  ; scaml_noscamlib   : bool (** do not add -I `opam config var prefix`/scaml *)
   }
 
 val flags : t ref

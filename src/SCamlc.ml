@@ -1,7 +1,30 @@
 open Spotlib.Spot
+open Tools
 
 module M = Michelson
 
+let init () =
+  if not !Flags.flags.scaml_noscamlib then begin
+    (* exec opam config var prefix *)
+    let dir = match 
+        let open Command in
+        exec ["opam"; "config"; "var"; "prefix"]
+        |> stdout
+        |> wait
+        |> must_exit_with 0
+      with
+      | dir::_ -> String.chop_eols dir ^/ "lib/scaml"
+      | [] ->  
+          internal_error ~loc:Location.none "Command 'opam config var prefix' answered nothing"
+      | exception (Failure s) -> 
+          internal_error ~loc:Location.none "Command 'opam config var prefix' has failed: %s" s
+      | exception e ->
+          internal_error ~loc:Location.none "Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e)
+    in
+    Clflags.include_dirs := !Clflags.include_dirs @ [dir];
+    List.iter prerr_endline !Clflags.include_dirs
+  end
+  
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   let parameter, storage, t = IML.implementation sourcefile str in
 
