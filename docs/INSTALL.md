@@ -1,7 +1,5 @@
 # SCaml installation
 
-## Installation
-
 Clone the repository:
 
 ```
@@ -23,52 +21,6 @@ $ which scamlc
 .../_opam/bin/scamlc
 ```
 
-## How to use
-
-### Compiling `.ml` files to `.tz`
-
-The compiler `scamlc` has almost the same interface as `ocamlc`.
-`scamlc xxx.ml` compiles `xxx.ml` to `xxx.tz`.
-
-### Compile ML values and types to Michelson
-
-There is a special compiler switch `--scaml-convert`.  With this option,
-`scamlc` command takes a `.ml` and print out Michelson representations of
-ML constants and types.  The conversion targets must be defined as toplevel
-declarations.  For example:
-
-```ocaml
-(* hoo.ml *)
-open SCaml
-type t = 
-  { name   : string
-  ; age    : nat
-  ; salary : tz
-  }
-
-and u = 
-   | Foo of int * tz * string
-   | Bar
-   | Boo of t list
-   | Far
-
-let v = Boo [ { name= "jon"; age= Nat 18; salary= Tz 10000.0 }
-            ; { name= "dow"; age= Nat 50; salary= Tz 1.0 }
-            ]
-```
-
-then,
-
-```shell
-$ scamlc --scaml-convert hoo.ml
-type t: pair string (pair nat mutez)
-type u: or int (or (pair int (pair mutez string)) (list (pair string (pair nat mutez))))
-v: Right (Right { Pair "jon" (Pair 18 10000000000) ; Pair "dow" (Pair 50 1000000) })
-```
-
-Note that the source file can refer types and constructors defined in other files,
-if they are already compiled and their `.cmi` files exist.
-
 ## Tests and examples
 
 `src/tests` directorty contains *working* tests which you can use as examples.
@@ -76,6 +28,13 @@ if they are already compiled and their `.cmi` files exist.
 ```
 $ cd src/tests
 $ ./test.sh xxx.ml
+```
+
+or 
+
+```
+$ cd src/tests
+$ ./test_all.sh
 ```
 
 If `tezos-client` is in `PATH` and it is configured to connect to a running node with a valid blockchain protocol, it should also dry-run the compiled tz:

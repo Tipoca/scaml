@@ -1973,34 +1973,14 @@ let type_check_entries tyenv vbs =
     ) vbs, 
   ty_storage
 
-let unite_entries pvbs =
-  (* simple balanced binary tree *)
-  let rec split vbs = match vbs with
-    | [] -> assert false                                                       
-    | [ty_param, vb] -> `Leaf (ty_param, vb)
-    | vbs ->                    
-        let len = List.length vbs in
-        let len' = len / 2 in
-        let rec take rev_st n xs = match n, xs with
-          | 0, _ 
-          | _, [] -> List.rev rev_st, xs
-          | n, x::xs -> take (x::rev_st) (n-1) xs
-        in
-        let vbs_l, vbs_r = take [] len' vbs in
-        let node_l = split vbs_l in
-        let node_r = split vbs_r in
-        `Node (node_l, node_r)
-  in
-  split pvbs
-
 let global_parameter_type tyenv node =
   let path =
     Env.lookup_type (*~loc: *)
       (Longident.(Ldot (Lident "SCaml", "sum"))) tyenv
   in
   let rec f = function
-    | `Leaf (param_ty, _) -> param_ty
-    | `Node (n1, n2) ->
+    | Binplace.Leaf (param_ty, _) -> param_ty
+    | Branch (n1, n2) ->
         let ty1 = f n1 in
         let ty2 = f n2 in
         Ctype.newconstr path [ty1; ty2]
@@ -2066,7 +2046,7 @@ let compile_global_entry ty_storage ty_return node =
   let e_storage = mk_var id_storage ty_storage in
 
   let rec f param_id node = match node with
-    | `Leaf (_,vb) ->
+    | Binplace.Leaf (_,vb) ->
         (* XXX top entry has poor pattern expressivity *)
         let id, var = match pattern_simple vb.vb_pat with
           | [p] -> p.desc, mk_var p.desc p.typ
@@ -2081,7 +2061,7 @@ let compile_global_entry ty_storage ty_return node =
         & mk (App (var, [param_var; e_storage])) ty_return,
         param_type
 
-    | `Node (n1, n2) ->
+    | Branch (n1, n2) ->
         let id_l = Ident.create "l" in
         let id_r = Ident.create "r" in
         let e_l, param_typ_l = f id_l n1 in
@@ -2231,10 +2211,10 @@ let implementation sourcefile str =
   | vbs ->
       let tyenv = str.str_final_env in
       let pvbs, ty_storage = type_check_entries str.str_final_env vbs in
-      let node = unite_entries pvbs in
+      let tree = Binplace.place pvbs in
 
       (* self *)
-      let ty_param = global_parameter_type tyenv node in
+      let ty_param = global_parameter_type tyenv tree in
       let self_type = 
         let path =
           Env.lookup_type (*~loc: *)
@@ -2267,7 +2247,7 @@ let implementation sourcefile str =
           & type_expr tyenv ty_storage 
       in
       let ty_return = tyPair (ty_operations, ty_storage) in
-      let final = compile_global_entry ty_storage ty_return node in
+      let final = compile_global_entry ty_storage ty_return tree in
       let ty_param = 
         Result.at_Error (fun e ->
             errorf ~loc:(Location.in_file sourcefile) "Contract has parameter type %a.  %a"
@@ -2275,12 +2255,12 @@ let implementation sourcefile str =
               pp_type_expr_error e)
           & type_expr tyenv ty_param 
       in
-      let ty_param = match node with
-        | `Leaf _ (* sole entry point *) -> ty_param
-        | `Node _ ->
+      let ty_param = match tree with
+        | Leaf _ (* sole entry point *) -> ty_param
+        | Branch _ ->
             let open M.Type in
             let rec add_annot ty node = match ty.desc, node with
-              | _, `Leaf (_,vb) -> 
+              | _, Binplace.Leaf (_,vb) -> 
                   (* XXX dup *)
                   let id = match pattern_simple vb.vb_pat with
                     | [p] -> p.desc
@@ -2294,16 +2274,16 @@ let implementation sourcefile str =
                         else
                           s
                   in
-                  { ty with attrs= [ "@" ^ fix_name (Ident.unique_name id) ] }
-              | TyOr (ty1, ty2), `Node (n1, n2) ->
+                  { ty with attrs= [ "%" ^ fix_name (Ident.name id) ] }
+              | TyOr (ty1, ty2), Branch (n1, n2) ->
                   let ty1 = add_annot ty1 n1 in
                   let ty2 = add_annot ty2 n2 in
                   { ty with desc= TyOr (ty1, ty2) }
-              | _, `Node _ -> 
+              | _, Branch _ -> 
                   if_debug (fun () -> Format.eprintf "Entry point type: %a@." M.Type.pp ty);
                   assert false
             in
-            add_annot ty_param node
+            add_annot ty_param tree
       in
       ty_param, 
       ty_storage, 
