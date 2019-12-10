@@ -96,48 +96,6 @@ Pattern matches are decomposed to simple switches in this phase.
 `IML` AST is compiled down to Michelson.
 It is a trivial compilation from FP to stack VM.
 
-## Features
-
-### Arithmetic types
-
-* Integers: `Int 42`, `Int (-100)`
-* Natural numbers: `Nat 42`, `Nat 12345`
-* Tezzies: `Tz 1.0`, `Tz 0.000001`
-
-Each arithmetic type has its own set of arithmetic binary operators:
-
-* Integers: `+`, `-`, `*`, etc
-* Natural numbers: `+^`, `-^`, `*^`, etc
-* Tezzies: `+$`, `-$`, `*$`, etc
-
-In future,
-
-* Integer suffixes to natural numbers and tezzies, like `42p`, `1.23t`
-* SML style overloading of these operators.
-
-### Container literals
-
-* Lists: `[ Int 1; Int 2; Int 3 ]`
-* Sets: `Set [ Nat 1; Nat 2; Nat 3 ]`
-* Maps: `Map [ (Nat 1, "1"); (Nat 2, "2"); (Nat 3, "3") ]`
-
-### String based literals
-
-* Bytes: `Bytes "0123456789abcdef"`
-* Address: `Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN"`
-* Keys: `Key "edpkuSR6ywqsk17myFVRcw2eXhVib2MeLc9D1QkEQb98ctWUBwSJpF"`
-* Key hashes: `Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"`
-* Signatures: `Signature "edsigu4chLHh7rDAUxHyifHYTJyuS8zybSSFQ5eSXydXD7PWtHXrpeS19ds3hA587p5JNjyJcZbLx8QtemuJBEFkLyzjAhTjjta"`
-
-### Entry points (experimental)
-
-Top level `let` bindings with `[@entry]` attribute are treated as entry points introduced in Babylon.  If none of `[@entry]` specified, the last value definition is treated as the entry point:
-
-```
-let [@entry] case1 (param : int) storage = ...
-let [@entry] case2 (param : string) storage = ...
-```
-
 ## Examples
 
 Under `src/tests/`
@@ -157,3 +115,7 @@ Library functions are listed in `src/tests/SCaml.ml`.
 
 Pyramid is a big feature close.  After it, we concentrate on the maintenance
 for a while.
+
+## Further information
+
+Look documents under `docs/`.

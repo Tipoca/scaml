@@ -99,9 +99,9 @@ Operations over arithmetics are also monomorphic and not overloaded just as OCam
 
 * Integers: `+`, `-`, `*`, etc
 * Natural numbers: `+^`, `-^`, `*^`, etc.  `^` depicts "positive".
-* Tezzies: `+$`, `-$`, `*$`, etc.  `$` depicts currency.
+* Tezzies: `+$`, `-$`, `*$`, etc.  `$` depicts "currency".
 
-### Container literals
+## Container literals
 
 SCaml has 4 built-in container types: lists, sets, maps, and big maps.
 Lists, sets, and maps have literals:
@@ -112,7 +112,7 @@ Lists, sets, and maps have literals:
 
 Currently, all the elements in `Set _` and `Map _` must be constants.
 
-### Other crypto related literals
+## Other crypto related literals
 
 * Bytes: `Bytes "0123456789abcdef"`,  Even number of `[0-9a-f]` characters.
 * Address: `Address "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN"`
@@ -126,6 +126,10 @@ from `string` to these types. (It is impossible in Michelson.)
 
 SCaml does not validate the form of strings for now.
 
+## Comparable, Pushable, Serializable
+
+SCaml does not check any of these properties for now.
+
 ## Self
 
 `Contract.self` returns the contract of the code itself.  It has a type `'a contract`
@@ -134,3 +138,22 @@ but actually it must agree with the real type of the contract.
 Unlike Michelson's `SELF` operator, `Contract.self` can appear inside a function.
 Even if the function value is sent to another contract, it does not point to the other
 contract but to the original contract which uses `Contract.self`.
+
+## Contract creation and call
+
+SCaml provides the lowest interface of contract creations and invocations.
+
+### Contract creation
+
+`Contract.create_raw <Michelson code string>` is the lowest (and only so far) API to 
+originate contracts within SCaml contracts.  The Michelson code must be given
+as a string literal.
+
+### Contract call
+
+`Operation.transfer_tokens` is the only API (so far) to call other contracts within SCaml contracts.
+
+### No more inter-contract abstractions
+
+For now, there is no easy-to-use framework for contract creation and invocation
+and no concrete plan to add it.
