@@ -11,7 +11,7 @@ All the valid SCaml programs are also valid as OCaml programs.
 This immediately leads to the following benefits:
 
 * Many OCaml programming tools, such as Merlin, Tuareg, OCamlFormat, PPX'es, etc can be used for SCaml for free.
-* SCaml programs should be compilable by OCaml to native executables with an appropriate library, which can simulate their behavior.  It will also open a door to write a dApp consists both of on-chain and off-chain programs in one language.
+* SCaml programs should be compilable by OCaml to native executables with an appropriate library, which can simulate their behavior.  It will also open a door to write a dApp consists both of on-chain and off-chain programs in one language.  It is even possible to port a code in smart contracts to Tezos protocol for speed.
 * OCaml programmers can start writing SCaml programs immediately.  New comers can learn SCaml through existing OCaml language tutorials and references.
 * Researchers can use SCaml for bases of their research prototypes.
 
