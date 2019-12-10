@@ -149,7 +149,7 @@ SCaml provides the lowest interface of contract creations and invocations.
 
 ### Contract creation
 
-`Contract.create_raw <Michelson code string>` is the lowest (and only so far) API to 
+`Contract.create_raw <Michelson code string>` is the lowest and the only (so far) API to 
 originate contracts within SCaml contracts.  The Michelson code must be given
 as a string literal.
 
