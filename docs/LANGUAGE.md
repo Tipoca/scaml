@@ -1,5 +1,9 @@
 # Writing Smart Contracts in OCaml
 
+## Learn OCaml
+
+SCaml is basically OCaml.  If you do not write OCaml, you will not write SCaml.  Learn OCaml first.
+
 ## One file per contract
 
 SCaml does not support separate compilation.  All the code for a contract
