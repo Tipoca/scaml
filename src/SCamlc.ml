@@ -36,7 +36,7 @@ let init () =
           internal_error ~loc:Location.none "Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e)
     in
     Clflags.include_dirs := !Clflags.include_dirs @ [dir];
-    List.iter prerr_endline !Clflags.include_dirs
+    List.iter (fun s -> prerr_endline @@ "Include: " ^ s) !Clflags.include_dirs
   end
   
 let implementation sourcefile outputprefix _modulename (str, _coercion) =

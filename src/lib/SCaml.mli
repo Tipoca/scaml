@@ -275,15 +275,27 @@ module Contract : sig
       
   val address : 'a t -> address
 
-  val create_raw : string -> key_hash option -> tz -> 'storage -> operation * address
+  val create_from_tz_code : string -> key_hash option -> tz -> 'storage -> operation * address
   (** Raw interface for CREATE_CONTRACT.
   
-      Michelson code must be given as a string literal.
-      The types of the contract and the initial storage are not checked 
-      by SCaml.
-      
-      Note that the Michelson code must be in string LITERAL.  
+      Michelson code must be given as a string LITERAL.
       In Tezos you cannot generate contract code programically in a contract.
+
+      The types of the contract and the initial storage are NOT checked 
+      by SCaml.
+  *)
+
+  val create_raw : string -> key_hash option -> tz -> 'storage -> operation * address
+  (** Same as [create_from_tz_code] *)
+
+  val create_from_tz_file : string -> key_hash option -> tz -> 'storage -> operation * address
+  (** CREATE_CONTRACT from a michelson source file.
+  
+      Michelson file name must be given as a string literal.
+      In Tezos you cannot generate contract code programically in a contract.
+
+      The types of the contract and the initial storage are NOT checked 
+      by SCaml.
   *)
 end
 

@@ -226,12 +226,35 @@ and desc env t =
       List.fold_left (fun ofun arg ->
           let oarg = compile env arg in
           ofun @ oarg @ [ EXEC ]) ofun args
-  | Contract_create_raw (m, e1, e2, e3) -> (* XXX *)
-      List.fold_left (fun os arg ->
-          let oarg = compile env arg in
-          oarg @ os) [] [e1; e2; e3]
-      @ [CREATE_CONTRACT m ; PAIR]
-      
+  | Contract_create (s, sloc, e1, e2, e3) -> (* XXX *)
+      match s with
+      | Tz_file _ -> assert false
+      | Tz_code s ->
+          let nodes =
+            let open Tezos_micheline in
+            let open Micheline_parser in
+            let open Tezos_error_monad in
+            match tokenize s with
+            | tkns, [] ->
+                begin match parse_toplevel ~check:false tkns with
+                | nodes, [] ->
+                    List.map 
+                      (Micheline.map_node 
+                         (fun _ -> { Micheline_printer.comment= None })
+                         (fun x -> x))
+                      nodes
+                | _nodes, es ->
+                    errorf ~loc:sloc "Michelson parse error: %a"
+                      Error_monad.pp_print_error es
+                end
+            | _tkns, es ->
+                errorf ~loc:sloc "Michelson parse error: %a"
+                  Error_monad.pp_print_error es
+          in
+          List.fold_left (fun os arg ->
+              let oarg = compile env arg in
+              oarg @ os) [] [e1; e2; e3]
+          @ [CREATE_CONTRACT (Raw nodes) ; PAIR]
 
 let split_entry_point t =
   let rec f st t = match t.IML.desc with

@@ -105,6 +105,10 @@ module Attr = struct
   let adds attrs t = { t with attrs= attrs @ t.attrs }
 end
 
+type contract_source =
+  | Tz_code of string
+  | Tz_file of string
+
 type t = (desc, Attr.ts) with_loc_and_type
 
 and desc =
@@ -128,7 +132,7 @@ and desc =
   | Switch_or of t * P.var * t * P.var * t
   | Switch_cons of t * P.var * P.var * t * t
   | Switch_none of t * t * P.var * t
-  | Contract_create_raw of M.Opcode.module_ * t * t * t
+  | Contract_create of contract_source * Location.t * t * t * t
   | Seq of t * t
 
 let pp ppf = 
@@ -188,10 +192,20 @@ let pp ppf =
           pp t
           pp t1 
           P.pp_var p2 pp t2
-    | Contract_create_raw (Raw nodes, t1, t2, t3) ->
+    | Contract_create (Tz_code s, _, t1, t2, t3) ->
+        f "@[<2>Contract.create_from_tz_code@ %S %a %a %a@]" 
+          s
+          pp t1 pp t2 pp t3
+    | Contract_create (Tz_file s, _, t1, t2, t3) ->
+        f "@[<2>Contract.create_from_tz_file@ %S %a %a %a@]" 
+          s
+          pp t1 pp t2 pp t3
+(*
+    | Contract_create (Raw nodes, t1, t2, t3) ->
         f "@[<2>Contract.create_raw@ (@[%a@]) %a %a %a@]" 
           (Format.list ";@ " M.Mline.pp) nodes
           pp t1 pp t2 pp t3
+*)
     | Seq (t1, t2) -> f "%a; %a" pp t1 pp t2
   in
   pp ppf
@@ -292,7 +306,7 @@ let rec freevars t =
   let open IdTys in
   let psingleton p = singleton (p.desc, p.typ) in
   match t.desc with
-  | Const _ | Nil | IML_None | Unit | Contract_create_raw _ -> empty
+  | Const _ | Nil | IML_None | Unit | Contract_create _ -> empty
   | Cons (t1,t2) | Pair (t1,t2) | Seq (t1,t2) -> union (freevars t1) (freevars t2)
   | Left t | Right t | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
@@ -335,7 +349,7 @@ let subst id_t_list t2 =
           | Some t' -> Attr.adds t.attrs t'
         end
     | Const _ | Nil | IML_None | Unit | AssertFalse 
-    | Contract_create_raw _ -> t
+    | Contract_create _ -> t
 
     | IML_Some t -> mk & IML_Some (f t)
     | Left t -> mk & Left (f t)
@@ -567,10 +581,12 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
   | Tpat_tuple ps -> encode_by mkppair & List.map patternx ps
 
-  | Tpat_constant (Const_string (s, None))  -> 
+  | Tpat_constant (Const_string (s, None)) -> 
       mk (P.Constr (Cnstr.Constant (C.String s), []))
                                                  
-  | Tpat_constant (Const_string (_, Some _))  -> unsupported ~loc "quoted string"
+  | Tpat_constant (Const_string (s, Some _)) ->
+      (* quoted string *)
+      mk (P.Constr (Cnstr.Constant (C.String s), []))
 
   | Tpat_constant _ -> unsupported ~loc "constant pattern of type %s"
                          (Format.sprintf "%a" Printtyp.type_scheme mltyp)
@@ -601,32 +617,28 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
             mk & P.Constr (Cnstr.Constant (C.Nat (Z.of_int n)), [])
         | "Nat", TyNat, [_] -> errorf ~loc "Nat can only take an integer constant"
         | _, TyMutez, [_] -> errorf ~loc "tz constant cannot be used as a pattern"
-        | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+        | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             mk & P.Constr (Cnstr.Constant (C.String s), [])
-        | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Key_hash", TyKeyHash, [_] -> unsupported ~loc "Key_hash can only take a string constant"
 
 
-        | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+        | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             mk & P.Constr (Cnstr.Constant (C.String s), [])
-        | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Address", TyAddress, [_] -> unsupported ~loc "Address can only take a string constant"
 
 
-        | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+        | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_timestamp s with
               | Error _e -> errorf ~loc "straonge arguments for Timestamp" 
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
-        | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
 
-        | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, None))}] ->
+        | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_bytes s with
               | Error _e -> errorf ~loc "straonge arguments for Bytes" 
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
-        | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (_, Some _))}] -> unsupported ~loc "quoted string"
         | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
                                      
         | _, _, _ ->
@@ -1512,10 +1524,8 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
         | Some n -> mk & primitive ~loc typ n []
         | None -> unsupported ~loc "complex path %s" (Path.xname p)
       end
-  | Texp_constant (Const_string (s, None)) -> 
+  | Texp_constant (Const_string (s, _)) -> 
       mk & Const (String s)
-  | Texp_constant (Const_string (_, Some _)) -> 
-      unsupported ~loc "quoted string"
   | Texp_constant _ -> unsupported ~loc "constant"
   | Texp_tuple [e1; e2] ->
       let e1 = expression e1 in
@@ -1580,41 +1590,6 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
 
   | Texp_apply (_, []) -> assert false
 
-  | Texp_apply ({ exp_desc= Texp_ident (p, _, _vd) },
-                (Nolabel, Some { exp_loc= loc_string; exp_desc= Texp_constant(Const_string (s, _)) })
-                :: args) when Path.is_scaml p = Some "Contract.create_raw" ->
-      (* Contract.create_raw <string literal> ... *)
-      let args = List.map (function
-          | (Nolabel, Some (e: Typedtree.expression)) -> expression e
-          | _ -> unsupported ~loc "labeled arguments") args
-      in
-      let e1,e2,e3 = match args with
-        | [e1; e2; e3] -> e1, e2, e3
-        | _ -> errorf ~loc "Contract.create_raw cannot be partially applied";
-      in
-      let nodes =
-        let open Tezos_micheline in
-        let open Micheline_parser in
-        let open Tezos_error_monad in
-        match tokenize s with
-        | tkns, [] ->
-            begin match parse_toplevel ~check:false tkns with
-            | nodes, [] ->
-                List.map 
-                  (Micheline.map_node 
-                     (fun _ -> { Micheline_printer.comment= None })
-                     (fun x -> x))
-                  nodes
-            | _nodes, es ->
-                errorf ~loc:loc_string "Michelson parse error: %a"
-                  Error_monad.pp_print_error es
-            end
-        | _tkns, es ->
-            errorf ~loc:loc_string "Michelson parse error: %a"
-              Error_monad.pp_print_error es
-      in
-      mk & Contract_create_raw (Raw nodes, e1, e2, e3)
-
   | Texp_apply (f, args) -> 
       let args = List.map (function
           | (Nolabel, Some (e: Typedtree.expression)) -> expression e
@@ -1624,21 +1599,22 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
         | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
         | _ -> None
       in
-      (* only some fixed combinations *)
       begin match name with
-        | None -> mk & App (expression f, args)
-        | Some n -> 
-            let _fty' = 
-              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
-            in
-            let fty = Result.at_Error (fun e ->
-                errorf ~loc:f.exp_loc "This primitive has type %a.  %a"
-                  Printtyp.type_expr f.exp_type
-                  pp_type_expr_error e)
-                & type_expr f.exp_env f.exp_type 
-            in
-            (* fty = fty' *)
-            mk & primitive ~loc:f.exp_loc fty n args
+      | None -> mk & App (expression f, args)
+      | Some n when  String.is_prefix "Contract.create" n ->
+          mk & contract_create ~loc n args
+      | Some n -> 
+          let _fty' = 
+            List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
+          in
+          let fty = Result.at_Error (fun e ->
+              errorf ~loc:f.exp_loc "This primitive has type %a.  %a"
+                Printtyp.type_expr f.exp_type
+                pp_type_expr_error e)
+              & type_expr f.exp_env f.exp_type 
+          in
+          (* fty = fty' *)
+          mk & primitive ~loc:f.exp_loc fty n args
       end
 
   | Texp_function { arg_label= (Labelled _ | Optional _) } ->
@@ -1903,6 +1879,24 @@ and structure { str_items= sitems } final =
     vbs
     final
 
+  and contract_create ~loc n args = 
+    match n with
+    | "Contract.create_raw" | "Contract.create_from_tz_code" ->
+        begin match args with
+        | [] | [_] | [_;_] | [_;_;_] ->
+            errorf ~loc "%s cannot be partially applied" n
+        | [e0; e1; e2; e3] ->
+            let s = match e0.desc with
+              | Const (C.String s) -> s
+              | _ -> 
+                  errorf ~loc:e0.loc
+                    "The first argument of %s must be a string literal of Michelson code" n
+            in
+            Contract_create (Tz_code s, e0.loc, e1, e2, e3)
+        | _ -> assert false (* too many args must be rejeced by OCaml type system *)
+        end
+    | _ -> errorf ~loc "Unknown Contract.create* function: %s" n
+
 (* parameter and storage types *)
 
 let toplevel_value_bindings str =
@@ -2089,7 +2083,7 @@ let count_variables t =
   let rec f t st = match t.desc with
     | Var id -> incr id st
 
-    | Contract_create_raw _
+    | Contract_create _
     | Const _ | Nil | IML_None | Unit | AssertFalse -> st
 
     | IML_Some t | Left t | Right t | Assert t
@@ -2149,7 +2143,7 @@ let optimize t =
                 & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
             | _ -> mk & Let (p, f t1, f t2)
           end
-      | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create_raw _ -> 
+      | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create _ -> 
           add_attrs { t with attrs= [] }
       | IML_Some t -> mk & IML_Some (f t)
       | Left t -> mk & Left (f t)
