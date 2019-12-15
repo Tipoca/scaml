@@ -149,9 +149,14 @@ SCaml provides the lowest interface of contract creations and invocations.
 
 ### Contract creation
 
-`Contract.create_raw <Michelson code string>` is the lowest and the only (so far) API to 
-originate contracts within SCaml contracts.  The Michelson code must be given
-as a string literal.
+SCaml provides the lowest level of APIs to originate contracts within SCaml:
+
+* `Contract.create_from_tz_code <Michelson code string>` takes a string literal of
+   Michelson source code.
+* `Contract.create_from_tz_file <Michelson code path name>` takes a string literal of
+   Michelson source file path.  The Michelson code in the source file is included 
+   at the compilation time.  Be careful of setting proper build dependnecy 
+   if the Michelson source file is generated from another language. 
 
 ### Contract call
 
