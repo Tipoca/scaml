@@ -1,0 +1,8 @@
+/* sample for op_create_contract3.ml */
+parameter unit ;
+storage unit ;
+code { { /* defs */ } ;
+       { /* entry point init */ DUP ; CDR ; DIP { CAR } } ;
+       { /* entry point */ { /* entry main_1004 */ UNIT ; NIL operation ; PAIR } } ;
+       { /* final clean up */ DIP { DROP 2 } }
+     }

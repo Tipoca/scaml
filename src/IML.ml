@@ -1895,6 +1895,20 @@ and structure { str_items= sitems } final =
             Contract_create (Tz_code s, e0.loc, e1, e2, e3)
         | _ -> assert false (* too many args must be rejeced by OCaml type system *)
         end
+    | "Contract.create_from_tz_file" ->
+        begin match args with
+        | [] | [_] | [_;_] | [_;_;_] ->
+            errorf ~loc "%s cannot be partially applied" n
+        | [e0; e1; e2; e3] ->
+            let s = match e0.desc with
+              | Const (C.String s) -> s
+              | _ -> 
+                  errorf ~loc:e0.loc
+                    "The first argument of %s must be a string literal of Michelson file path" n
+            in
+            Contract_create (Tz_file s, e0.loc, e1, e2, e3)
+        | _ -> assert false (* too many args must be rejeced by OCaml type system *)
+        end
     | _ -> errorf ~loc "Unknown Contract.create* function: %s" n
 
 (* parameter and storage types *)

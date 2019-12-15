@@ -159,5 +159,13 @@ as a string literal.
 
 ### No more inter-contract abstractions
 
-For now, there is no easy-to-use framework for contract creation and invocation
-and no concrete plan to add it.
+SCaml itself will not provide any highly abstracted easy-to-use framework
+for contract creation and invocation.
+
+It seems there is no trivial standard way for it.
+For example, we can consider OO approach via classes and objects, 
+and functional approach via functors and modules.
+
+We do not want to fix one of possible approaches in SCaml and push it
+to its users.  Inter-contract frameworks should be built as an SDL 
+with special typing rules which should be compiled down to SCaml.

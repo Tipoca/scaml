@@ -49,11 +49,6 @@ A contract must be written in one file.
 
 ## Unsupported features of Michelson for now
 
-### `CREATE_CONTRACT`
-
-Giving a nice API for `CREATE_CONTRACT` opcode in ML is not trivial.
-We are currently studying the optimal design.
-
 ### Check of pushable/comparable or not
 
 SCaml itself does not type-check its Michelson output.  The output
