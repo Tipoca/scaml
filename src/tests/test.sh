@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y 
+
 # Where am I?
 script_dir="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
 
@@ -45,14 +47,14 @@ do
       echo Executing $tezos_client run script $tz on storage 'Unit' and input 'Unit'
 
       # Must this test fail ?
-      MUST_FAIL=$(grep MUST_FAIL $i)
+      MUST_FAIL=$(grep MUST_FAIL $i || true)
 
       if [ "$MUST_FAIL" = "" ]; then
-	  TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y $tezos_client run script $tz on storage 'Unit' and input 'Unit'
+	  $tezos_client run script $tz on storage 'Unit' and input 'Unit'
       else
 	  echo THIS TEST MUST FAIL
 	  if
-	      TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y $tezos_client run script $tz on storage 'Unit' and input 'Unit'
+	      $tezos_client run script $tz on storage 'Unit' and input 'Unit'
 	  then
 	      echo "Error: TEST UNEXPECTEDLY SUCCEEEDED"; exit 2
 	  else

@@ -158,6 +158,8 @@ type 'a contract
 type operation
 type operations = operation list
 
+type ('param, 'storage) entry = 'param -> 'storage -> operations * 'storage
+
 module Contract : sig
   type 'a t = 'a contract
   val self : 'a t

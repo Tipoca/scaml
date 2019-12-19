@@ -1,4 +1,4 @@
-[@@@SCaml iml_optimization=false; iml_pattern_match=false ]
+[@@@SCaml iml_optimization=false; ]
 open SCaml
 
 let f (x, y) = x - y

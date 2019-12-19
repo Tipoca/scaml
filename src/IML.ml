@@ -1995,9 +1995,32 @@ let type_check_entry templ vb =
     | e ->  (* XXX *)
         prerr_endline "unify raised something unfamiliar"; raise e
   in
-  unify templ vb.vb_pat.pat_type
+  unify 
+    vb.vb_pat.pat_type (* the actual type of the pattern *)
+    templ              (* must have this type *)
 
 let type_check_entries tyenv vbs =
+  let ty_storage = Ctype.newvar () in
+  let ty_entry () =
+    let ty_parameter = Ctype.newvar () in
+    let path =
+      try
+        Env.lookup_type (*~loc: *)
+          (Longident.(Ldot (Lident "SCaml", "entry"))) tyenv
+      with
+      | Not_found -> internal_error ~loc:Location.none "Type SCaml.entry is not defined.  Something wrong in your SCaml installation."
+    in
+    ty_parameter,
+    Ctype.newconstr path [ty_parameter; ty_storage]
+  in
+  List.map (fun vb ->
+      let ty_parameter, templ = ty_entry () in
+      type_check_entry templ vb;
+      (ty_parameter, vb)
+    ) vbs, 
+  ty_storage
+
+(*
   let ty_storage = Ctype.newvar () in
   let ty_operations = 
     let path =
@@ -2024,6 +2047,7 @@ let type_check_entries tyenv vbs =
       (ty_param, vb)
     ) vbs, 
   ty_storage
+*)
 
 let global_parameter_type tyenv node =
   let path =
@@ -2343,6 +2367,7 @@ let implementation sourcefile str =
       ty_storage, 
       add_self (tyContract ty_param) & structure str final
 
+(* convert mode *)
 let convert str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
   Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 

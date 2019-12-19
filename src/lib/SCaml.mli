@@ -253,12 +253,14 @@ module Key_hash : sig
   type t = key_hash
 end
 
-(** Contract and operation *)
+(** Contract, entry points, and operation *)
 
 type 'a contract
 type operation
 type operations = operation list
 
+type ('param, 'storage) entry = 'param -> 'storage -> operations * 'storage
+  
 (** Contracts *)
 module Contract : sig
   type 'a t = 'a contract
