@@ -331,15 +331,19 @@ module Chain_id : sig
   type t = chain_id
 end
 
-(** Global values *)
+(** Global values 
+
+    They are constants but have functional types in order to provide
+    semantics in the native OCaml compilation in future.
+*)
 module Global : sig
-  val get_now : unit -> timestamp
-  val get_amount : unit -> tz
-  val get_balance : unit -> tz
-  val get_source : unit -> address
-  val get_sender : unit -> address
-  val get_steps_to_quota : unit -> nat
+  val get_now      : unit -> timestamp
+  val get_amount   : unit -> tz
+  val get_balance  : unit -> tz
+  val get_source   : unit -> address
+  val get_sender   : unit -> address
   val get_chain_id : unit -> chain_id
+  val get_steps_to_quota : unit -> nat
 end
 
 (** Keys *)
