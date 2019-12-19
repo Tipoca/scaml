@@ -15,7 +15,7 @@ depends: [
   "ocaml-migrate-parsetree"
   "ppxx"
   "spotlib"
-  "dune" {build & >= "1.0"}
+  "dune" { build & >= "1.0" }
   "hex"
   "ptime"
   "zarith"
@@ -25,4 +25,5 @@ depends: [
   "tezos-stdlib"
   "camlon"
   "ppx_meta_conv"
+  "ocamlfind" { build }
 ]
