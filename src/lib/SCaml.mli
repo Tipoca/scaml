@@ -97,9 +97,13 @@ val snd : ('a * 'b) -> 'b
 (** Errors *)
 module Error : sig
   val failwith : 'a -> 'b
-
-  (* You can also use [assert] *)
+  (** Deprecated.  Use [failwith] without [Error] *)
 end
+
+val failwith : 'a -> 'b
+(** Fail the execution of the smart contract.
+    You can also use [assert] 
+*)
 
 (** Loops *)
 module Loop : sig

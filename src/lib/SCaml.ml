@@ -75,6 +75,8 @@ module Error = struct
   let failwith : 'a -> 'b = fun _ -> assert false
 end
 
+let failwith : 'a -> 'b = fun _ -> assert false
+
 module List = struct
   type 'a t = 'a list
   let length : 'a t -> nat = fun _ -> assert false

@@ -297,7 +297,8 @@ let primitives =
   ; "Crypto.sha512", (1, simple [ SHA512 ])
   ; "Crypto.hash_key", (1, simple [ HASH_KEY ])
 
-  ; "Error.failwith", (1, simple [ FAILWITH ])
+  ; "Error.failwith", (1, simple [ FAILWITH ]) (* deprecated *)
+  ; "failwith", (1, simple [ FAILWITH ])
                       
   ; "Timestamp.add", (2, simple [ADD])
   ; "Timestamp.sub", (2, simple [SUB])
