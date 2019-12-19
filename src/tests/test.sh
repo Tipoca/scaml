@@ -43,6 +43,21 @@ do
   tezos_client=`which tezos-client || true`
   if [ -f "$tz" -a -n "$tezos_client" ]; then
       echo Executing $tezos_client run script $tz on storage 'Unit' and input 'Unit'
-      TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y $tezos_client run script $tz on storage 'Unit' and input 'Unit'
+
+      # Must this test fail ?
+      MUST_FAIL=$(grep MUST_FAIL $i)
+
+      if [ "$MUST_FAIL" = "" ]; then
+	  TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y $tezos_client run script $tz on storage 'Unit' and input 'Unit'
+      else
+	  echo THIS TEST MUST FAIL
+	  if
+	      TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y $tezos_client run script $tz on storage 'Unit' and input 'Unit'
+	  then
+	      echo "Error: TEST UNEXPECTEDLY SUCCEEEDED"; exit 2
+	  else
+	      echo "Ok: Test failed expectedly"
+	  fi
+      fi
   fi
 done
