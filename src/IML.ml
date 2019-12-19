@@ -127,7 +127,7 @@ and desc =
   | Assert of t
   | AssertFalse
   | Fun of P.var * t
-  | IfThenElse of t * t * t
+  | IfThenElse of t * t * t option
   | App of t * t list
   | Prim of string * (M.Opcode.t list -> M.Opcode.t list) * t list
   | Let of P.var * t * t
@@ -165,9 +165,12 @@ let pp ppf =
     | Fun (pat, body) ->
         f "@[<2>fun %a ->@ %a@]"
           P.pp_var pat pp body
-    | IfThenElse (t1, t2, t3) -> 
+    | IfThenElse (t1, t2, Some t3) -> 
         f "@[if %a@ then %a@ else %a@]"
           pp t1 pp t2 pp t3
+    | IfThenElse (t1, t2, None) -> 
+        f "@[if %a@ then %a@]"
+          pp t1 pp t2
     | App (t1, ts) -> 
         f "%a %a" pp t1 Format.(list " " (fun ppf t -> fprintf ppf "%a" pp t)) ts
     | Prim (n, _ops, ts) ->
@@ -297,7 +300,8 @@ let rec freevars t =
   | Left t | Right t | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
   | Var id -> singleton (id, t.typ)
-  | IfThenElse (t1,t2,t3) -> union (freevars t1) (union (freevars t2) (freevars t3))
+  | IfThenElse (t1,t2,Some t3) -> union (freevars t1) (union (freevars t2) (freevars t3))
+  | IfThenElse (t1,t2,None) -> union (freevars t1) (freevars t2)
   | App (t,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty (t::ts)
   | Prim (_,_,ts) ->
@@ -345,7 +349,8 @@ let subst id_t_list t2 =
     | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
     | Cons (t1, t2) -> mk & Cons (f t1, f t2)
     | Pair (t1, t2) -> mk & Pair (f t1, f t2)
-    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
+    | IfThenElse (t1, t2, Some t3) -> mk & IfThenElse (f t1, f t2, Some (f t3))
+    | IfThenElse (t1, t2, None) -> mk & IfThenElse (f t1, f t2, None)
     | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
     | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
     | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
@@ -380,7 +385,8 @@ let alpha_conv id_t_list t2 =
     | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
     | Cons (t1, t2) -> mk & Cons (f t1, f t2)
     | Pair (t1, t2) -> mk & Pair (f t1, f t2)
-    | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
+    | IfThenElse (t1, t2, Some t3) -> mk & IfThenElse (f t1, f t2, Some (f t3))
+    | IfThenElse (t1, t2, None) -> mk & IfThenElse (f t1, f t2, None)
     | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
     | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
     | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
@@ -1131,7 +1137,7 @@ module Pmatch = struct
             binders
           & mke ~loc:guarde.loc aty & IfThenElse (guarde, 
                                                   List.nth acts case, 
-                                                  f otherwise)
+                                                  Some (f otherwise))
       | Switch (_, [], _) -> assert false
       | Switch (v, [Pair, [v1,ty1; v2,ty2], t], None) ->
           let t = f t in
@@ -1155,7 +1161,7 @@ module Pmatch = struct
                       (Bool true), [], tt] ), None) ->
           let tt = f tt in
           let tf = f tf in
-          mke ~loc:noloc aty & IfThenElse (mkvar ~loc:noloc v, tt, tf)
+          mke ~loc:noloc aty & IfThenElse (mkvar ~loc:noloc v, tt, Some tf)
   
       | Switch (v, ( [Some, [vs,tys], ts;
                       None, [], tn]
@@ -1191,7 +1197,7 @@ module Pmatch = struct
                   let t = f t in
                   mke ~loc:noloc aty & IfThenElse (mkeq ~loc:noloc (mkvar ~loc:noloc v) 
                                                      (mke ~loc:noloc (snd v) & Const c),
-                                        t, telse)
+                                        t, Some telse)
               | _ -> assert false) cases  & f d
     in
     f t
@@ -1690,10 +1696,14 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
       let eelse = expression else_ in
       (* ignore (unify ethen.typ eelse.typ);
          ignore (unify typ ethen.typ); *)
-      mk & IfThenElse (econd, ethen, eelse)
+      mk & IfThenElse (econd, ethen, Some eelse)
 
-  | Texp_ifthenelse (_, _, None) ->
-      unsupported ~loc "if-then without else"
+  | Texp_ifthenelse (cond, then_, None) ->
+      let econd = expression cond in
+      let ethen = expression then_ in
+      if ethen.typ.desc <> TyUnit then 
+        errorf ~loc:ethen.loc "";
+      mk & IfThenElse (econd, ethen, None)
 
   | Texp_match (_, _, e::_, _) -> 
       unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
@@ -2137,9 +2147,10 @@ let count_variables t =
     | IML_Some t | Left t | Right t | Assert t
     | Fun (_, t) -> f t st
 
-    | Let (_, t1, t2) | Cons (t1, t2) | Pair (t1, t2) | Seq (t1, t2) -> f t1 & f t2 st
+    | Let (_, t1, t2) | Cons (t1, t2) | Pair (t1, t2) | Seq (t1, t2) 
+    | IfThenElse (t1, t2, None) -> f t1 & f t2 st
 
-    | IfThenElse (t1, t2, t3) 
+    | IfThenElse (t1, t2, Some t3) 
     | Switch_or (t1, _, t2, _, t3)
     | Switch_cons (t1, _, _, t2, t3)
     | Switch_none (t1, t2, _, t3) -> f t1 & f t2 & f t3 st
@@ -2200,7 +2211,8 @@ let optimize t =
       | Fun (c, t) -> mk & Fun (c, f t)
       | Cons (t1, t2) -> mk & Cons (f t1, f t2)
       | Pair (t1, t2) -> mk & Pair (f t1, f t2)
-      | IfThenElse (t1, t2, t3) -> mk & IfThenElse (f t1, f t2, f t3)
+      | IfThenElse (t1, t2, Some t3) -> mk & IfThenElse (f t1, f t2, Some (f t3))
+      | IfThenElse (t1, t2, None) -> mk & IfThenElse (f t1, f t2, None)
       | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
       | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
       | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)

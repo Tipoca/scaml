@@ -57,7 +57,7 @@ and desc =
   | Assert of t
   | AssertFalse
   | Fun of Pat.var * t
-  | IfThenElse of t * t * t
+  | IfThenElse of t * t * t option
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
   | Let of Pat.var * t * t

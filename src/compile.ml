@@ -117,13 +117,22 @@ and desc env t =
       os1 @ [ DROP 1 ] @ os2 (* erm... not sure about FAIL *)
   | Assert t ->
       let os = compile env t in
-      os @ [ ASSERT; PUSH (tyUnit, Unit) ]
+      os @ [ ASSERT; UNIT ]
   | AssertFalse -> [ UNIT ; FAILWITH ]
-  | IfThenElse (t1, t2, t3) ->
+  | IfThenElse (t1, t2, Some t3) ->
       let oif = compile env t1 in
       let othen = compile env t2 in
       let oelse = compile env t3 in
       oif @ [IF (othen, oelse)]
+  | IfThenElse (t1, t2, None) ->
+      let oif = compile env t1 in
+      let othen = compile env t2 in
+      if t2.typ.desc = TyUnit then
+        oif @ [IF (othen, [UNIT])]
+      else
+        (* I think this is never called *)
+        let othen = compile env t2 in
+        oif @ [IF (othen @ [DROP 1; UNIT], [UNIT])]
   | Prim (_n, conv, ts) ->
       (* Prim (ops, [t1; t2])
          t2 ; t1; ops
