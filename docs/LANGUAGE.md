@@ -40,7 +40,7 @@ this from is rejected by SCaml.
 
 SCaml expermentally supports the multiple entrypoints introduced in Tezos Babylon.
 
-To have more than one entry points their definitions must be attributed with `[@@entry]`. 
+To have more than one entry points their definitions must be attributed with `[@entry]`. 
 For example:
 
 ```
@@ -53,8 +53,11 @@ Each entry point is named based on the variable name of the definition.
 The above definitions introduce 2 entry points, `init` and `do`. 
 
 Note that if the last character of an entrypoint identifier is `_`, it is removed from
-the name of the entry point.  This is because one of the entrypoint naming convention,
+the name of the entry point.  This is because one of the entry point naming convention,
 `do`, is a reserved keyword in OCaml and SCaml.
+
+Currently there is no SCaml primitive to produce `CONTRACT %name t`.
+Entry point names must given in address literals like `Address "KT1.....%name"`.
 
 ## Monomorphism
 
