@@ -1,3 +1,6 @@
+(*
+   STORAGE= Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"
+*)
 open SCaml
 
 let [@entry] do_ (f : unit -> operations) kh =
