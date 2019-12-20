@@ -13,3 +13,4 @@
 (**************************************************************************)
 
 val structure : IML.t -> Michelson.Opcode.t list
+val constant : IML.t -> Michelson.Constant.t option

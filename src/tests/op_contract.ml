@@ -1,4 +1,7 @@
-[@@@SCaml iml_optimization=false]
+(* We must optmization on, otherwise a closure with self contract
+   is created, which is illegal in Michelson
+*)
+[@@@SCaml iml_optimization=true]
 open SCaml
 open Contract
 let main (x:unit) y =

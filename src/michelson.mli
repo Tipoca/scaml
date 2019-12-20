@@ -78,33 +78,117 @@ module Type : sig
   val to_micheline : t -> Mline.t
 end
 
+type module_ = 
+  | Raw of Tezos_micheline.Micheline_printer.node list
+  
+type constant = 
+  | Unit
+  | Bool of bool
+  | Int of Z.t
+  | String of string
+  | Bytes of string
+  | Option of constant option
+  | List of constant list
+  | Set of constant list
+  | Map of (constant * constant) list
+  | Pair of constant * constant
+  | Left of constant
+  | Right of constant
+  | Timestamp of Z.t
+  | Code of opcode list
+
+and opcode =
+  | DUP
+  | DIP of int * opcode list
+  | DIG of int
+  | DUG of int
+  | DROP of int
+  | SWAP
+  | PAIR
+  | ASSERT
+  | CAR | CDR
+  | LEFT of Type.t
+  | RIGHT of Type.t
+  | LAMBDA of Type.t * Type.t * opcode list
+  | APPLY
+  | PUSH of Type.t * constant
+  | NIL of Type.t
+  | CONS
+  | NONE of Type.t
+  | SOME
+  | COMPARE
+  | EQ | LT | LE | GT | GE | NEQ
+  | IF of opcode list * opcode list
+  | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
+  | AND | OR | XOR | NOT
+  | EXEC
+  | IF_NONE of opcode list * opcode list
+  | IF_LEFT of opcode list * opcode list
+  | IF_CONS of opcode list * opcode list
+  | FAILWITH
+  | COMMENT of string * opcode list
+  | UNIT
+  | EMPTY_SET of Type.t
+  | EMPTY_MAP of Type.t * Type.t
+  | EMPTY_BIG_MAP of Type.t * Type.t
+  | SIZE
+  | MEM
+  | UPDATE
+  | ITER of opcode list
+  | MAP of opcode list
+  | LOOP of opcode list (* It is not really useful for SCaml *)
+  | LOOP_LEFT of opcode list 
+  | CONCAT
+  | SELF
+  | GET
+  | RENAME of string (* for debugging *)
+  | PACK
+  | UNPACK of Type.t
+  | SLICE
+  | CAST (* to remove type name. *)
+  | CONTRACT of Type.t
+  | TRANSFER_TOKENS
+  | SET_DELEGATE
+  | CREATE_ACCOUNT (* deprecated *)
+  | CREATE_CONTRACT of module_
+  | IMPLICIT_ACCOUNT
+  | NOW
+  | AMOUNT
+  | BALANCE
+  | CHECK_SIGNATURE
+  | BLAKE2B
+  | SHA256
+  | SHA512
+  | HASH_KEY
+  | STEPS_TO_QUOTA
+  | SOURCE
+  | SENDER
+  | ADDRESS
+  | CHAIN_ID
+
 module Constant : sig
-  type t =
+  type t = constant =
     | Unit
     | Bool of bool
     | Int of Z.t
-    | Nat of Z.t
-    (* | Mutez of int *)
     | String of string
     | Bytes of string
     | Option of t option
     | List of t list
     | Set of t list
     | Map of (t * t) list
-    | Big_map of (t * t) list
     | Pair of t * t
     | Left of t
     | Right of t
     | Timestamp of Z.t
+    | Code of opcode list
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
 end
   
 module Opcode : sig
-  type constant = Constant.t
-                    
-  type t =
+  type t = opcode =
     | DUP
     | DIP of int * t list
     | DIG of int
@@ -178,12 +262,6 @@ module Opcode : sig
     | SENDER
     | ADDRESS
     | CHAIN_ID
-
-  and module_ = 
-    | Raw of Tezos_micheline.Micheline_printer.node list
-(*
-  and module_ = { parameter : Type.t ; storage : Type.t ; code : t list }
-*)
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t

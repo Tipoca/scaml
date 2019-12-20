@@ -1,65 +1,113 @@
 #!/bin/bash
 set -e
 
+# Disable the disclaimer message of tezos-node
 export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y 
 
 # Where am I?
-script_dir="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
 
 # Where to work?
-build_dir=$script_dir/_build
+BUILD_DIR=$SCRIPT_DIR/_build
 
-# Make sure the library module is compiled
-(cp $script_dir/../lib/SCaml.mli $build_dir; ocamlfind ocamlc -package zarith -c $build_dir/SCaml.mli)
+# Make sure the library module is COMPiled
+(cp $SCRIPT_DIR/../lib/SCaml.mli $BUILD_DIR; \
+ ocamlfind ocamlc -package zarith -c $BUILD_DIR/SCaml.mli)
 
 # Compilation command
-comp="dune exec ../main.exe -- --scaml-noscamlib -I $build_dir"
-echo comp=$comp
+COMP="dune exec ../main.exe -- --scaml-noscamlib -I $BUILD_DIR"
+
+# Optional: tezos-client
+TEZOS_CLIENT=`which tezos-client || true`
+
+# Input <ML>
+# Output TZ
+function compile () {
+    # Compile it under $BUILD_DIR
+    if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
+    local ml=$BUILD_DIR/$(basename $1)
+    cp $1 $ml
+    # Remove old output files
+    local iml=`echo $ml | sed -e 's/\.ml$/.iml/'`
+    TZ=`echo $ml | sed -e 's/\.ml$/.tz/'`
+    rm -f "$iml" "$TZ"
+    # Compile!
+    echo $COMP $ml
+    (cd $SCRIPT_DIR; $COMP $ml)
+}
+
+# Input: <code>
+# Output: CONVERSION
+function convert () {
+    tmp=`mktemp`
+    echo "open SCaml" > $tmp
+    echo "let x = $1" >> $tmp
+    CONVERSION=$($COMP --scaml-convert -impl $tmp | sed -e 's/^x: //')
+}
+
+# Input <ML> <TZ>
+# Output: none
+function run () {
+
+    local ml=$1
+    local tz=$2
+
+    # Must this test fail ?
+    local must_fail=$(grep MUST_FAIL $ml || true)
+
+    # STORAGE=.*$
+    local storage=$(grep STORAGE= $i || true)
+    if [ -z "$storage" ]; then
+	storage='Unit'
+    else
+	storage=`echo $storage | sed -e 's/.*STORAGE=//'`
+	convert "$storage"
+	storage=$CONVERSION
+    fi
+
+    # INPUT=.*$
+    local input=$(grep INPUT= $i || true)
+    if [ -z "$input" ]; then
+	input='Unit'
+    else
+	input=`echo $input | sed -e 's/.*INPUT=//'`
+	convert "$input"
+	input=$CONVERSION
+    fi
+
+    echo Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input
+
+    if [ -z "$must_fail" ]; then
+	$TEZOS_CLIENT run script $tz on storage "$storage" and input "$input"
+    else
+	echo THIS TEST MUST FAIL
+	if
+    	    $TEZOS_CLIENT run script $tz on storage "$storage" and input "$input"
+	then
+	    echo "Error: TEST UNEXPECTEDLY SUCCEEEDED"; exit 2
+	else
+	    echo "Ok: Test failed expectedly"
+	fi
+    fi
+}
 
 for i in $*
 do
+
   echo "----- $i"    
   case "$i" in
   *.tz)
       # Do nothing if it is *.tz
-      tz="$i"
+      TZ="$i"
       ;;
   *)
-      # Compile it under $build_dir
-      if [ ! -d $build_dir ]; then mkdir $build_dir; fi
-      cp $i $build_dir/$(basename $i)
-      ml=$build_dir/$(basename $i)
-      # Remove old output files
-      iml=`echo $ml | sed -e 's/\.ml$/.iml/'`
-      tz=`echo $ml | sed -e 's/\.ml$/.tz/'`
-      rm -f "$iml" "$tz"
-      # Compile!
-      echo $comp $ml
-      (cd $script_dir; $comp $ml)
+      compile "$i"
       ;;
   esac
 
-  # If tz compilation is successful, and if there is tezos-client in the PATH,
+  # If tz Compilation is successful, and if there is tezos-client in the PATH,
   # let's try to execute it.
-
-  tezos_client=`which tezos-client || true`
-  if [ -f "$tz" -a -n "$tezos_client" ]; then
-      echo Executing $tezos_client run script $tz on storage 'Unit' and input 'Unit'
-
-      # Must this test fail ?
-      MUST_FAIL=$(grep MUST_FAIL $i || true)
-
-      if [ "$MUST_FAIL" = "" ]; then
-	  $tezos_client run script $tz on storage 'Unit' and input 'Unit'
-      else
-	  echo THIS TEST MUST FAIL
-	  if
-	      $tezos_client run script $tz on storage 'Unit' and input 'Unit'
-	  then
-	      echo "Error: TEST UNEXPECTEDLY SUCCEEEDED"; exit 2
-	  else
-	      echo "Ok: Test failed expectedly"
-	  fi
-      fi
+  if [ -f "$TZ" -a -n "$TEZOS_CLIENT" ]; then
+      run "$i" "$TZ"
   fi
 done

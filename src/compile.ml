@@ -55,8 +55,12 @@ let var ~loc env id = match Env.find id env with
   | Some (n,_typ) ->
       [ COMMENT( "var " ^ Ident.unique_name id, [ DIG n; DUP; DUG (n+1) ]) ] 
 
-let rec compile env t = 
-  let os = desc env t in
+let rec compile env t = match constant t with
+  | None -> compile' env t 
+  | Some c -> [ PUSH (t.IML.typ, c) ]
+    
+and compile' env t = 
+  let os = desc env t in 
   let comments = 
     List.filter_map (function
         | IML.Attr.Comment s -> Some s
@@ -69,7 +73,9 @@ let rec compile env t =
 and desc env t =
   let loc = t.IML.loc in
   match t.IML.desc with
-  | IML.Const op -> [ PUSH (t.typ, op) ]
+  | IML.Set _ -> errorf ~loc "Set elements must be constants"
+  | Map _ -> errorf ~loc "Map bindings must be constants"
+  | Const c -> [ PUSH (t.typ, c) ]
   | Nil -> 
       let ty = match t.typ.desc with
         | TyList ty -> ty
@@ -296,6 +302,68 @@ and desc env t =
               let oarg = compile env arg in
               oarg @ os) [] [e1; e2; e3]
           @ [CREATE_CONTRACT (Raw nodes) ; PAIR]
+
+and constant t =
+  (* try to compile an expressions to a constant, rather than opcodes *)
+  let rec f t = 
+    let module C = M.Constant in
+    let (>>=) = Option.bind in
+    match t.IML.desc with
+    | IML.Unit -> Some C.Unit
+    | Const c -> Some c
+    | IML_None -> Some (C.Option None)
+    | IML_Some t -> f t >>= fun c -> Some (C.Option (Some c))
+    | Left t -> f t >>= fun t -> Some (C.Left t)
+    | Right t -> f t >>= fun t -> Some (C.Right t)
+    | Pair (t1, t2) -> f t1 >>= fun t1 -> f t2 >>= fun t2 -> Some (C.Pair (t1, t2))
+    | Nil -> 
+       (* We cannot PUSH (list operation) {}. If we do, we get:
+          "operation type forbidden in parameter, storage and constants" *)
+        begin match t.typ.desc with
+          | TyList { desc= TyOperation } -> None
+          | _ -> Some (C.List [])
+        end
+    | Cons (t1, t2) -> f t1 >>= fun t1 -> f t2 >>= fun t2 ->
+        begin match t2 with
+          | C.List t2 -> Some (C.List (t1::t2))
+          | _ -> assert false
+        end
+    | Fun _ when IML.IdTys.is_empty (IML.freevars t) (* XXXX Very inefficient *) ->
+        begin try 
+            match compile' [] t with
+            | [LAMBDA (_, _, os)] -> Some (C.Code os)
+            | _ -> assert false (* impossible *)
+          with _ -> None 
+        end
+    | Set ts ->
+        Some (C.Set
+                (List.map (fun t -> 
+                    match constant t with
+                    | Some c -> c
+                    | None -> errorf ~loc:t.loc "Set expects constant elements") ts))
+    | Map kvs ->
+        let kvs =
+          List.map (fun (k,v) -> 
+              match constant k with
+              | None -> errorf ~loc:k.loc "Map expects constant bindings"
+              | Some k ->
+                  match constant v with
+                  | None -> errorf ~loc:v.loc "Map expects contant bindings"
+                  | Some v -> (k,v)) kvs
+        in
+        (* XXX do not use OCaml's comparison *)
+        let kvs = List.sort (fun (k1,_) (k2,_) -> compare k1 k2) kvs in
+        let rec check_uniq = function
+          | [] | [_] -> ()
+          | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
+              errorf ~loc:t.loc "Map literal contains duplicated key %a" C.pp c1 
+          | _::xs -> check_uniq xs
+        in
+        check_uniq kvs;
+        Some (C.Map kvs)
+    | _ -> None
+    in
+    f t
 
 let split_entry_point t =
   let rec f st t = match t.IML.desc with

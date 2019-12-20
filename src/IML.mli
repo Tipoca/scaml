@@ -44,7 +44,7 @@ type contract_source =
 type t = (desc, Attr.ts) with_loc_and_type
 
 and desc =
-  | Const of Michelson.Opcode.constant
+  | Const of Michelson.Constant.t
   | Nil
   | Cons of t * t
   | IML_None
@@ -66,6 +66,8 @@ and desc =
   | Switch_none of t * t * Pat.var * t
   | Contract_create of contract_source * Location.t * t * t * t
   | Seq of t * t
+  | Set of t list
+  | Map of (t * t) list
 
 val pp : Format.t -> t -> unit
 
@@ -75,7 +77,9 @@ val optimize : t -> t
 
 val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
 
-val convert : Typedtree.structure -> unit
+val convert : Typedtree.structure -> 
+  [> `Type of Ident.t * Michelson.Type.t
+  | `Value of Ident.t option * t ] list
 
 val save : string -> t -> unit
 (** Print out IML AST to a file.  For debugging. *)

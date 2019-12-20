@@ -58,8 +58,27 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
   close_out oc
 
 let convert _sourcefile _outputprefix _modulename (str, _coercion) =
-  IML.convert str
-
+  let ts = IML.convert str in
+  let ts = List.map (fun t -> match t with
+      | `Type _ -> t
+      | `Value (ido, t) when Flags.(!flags.iml_optimization) ->
+          `Value (ido, IML.optimize t)
+      | `Value _ -> t) ts 
+  in
+  List.iter (function
+      | `Type (id, t) -> 
+          Format.printf "type %s: @[<2>%a@]@." (Ident.name id) M.Type.pp t
+      | `Value (n, t) ->
+          begin match Compile.constant t with
+            | None -> errorf ~loc:t.loc "Constant expression expected"
+            | Some c -> 
+                match n with
+                | None -> 
+                    Format.printf "noname: @[<2>%a@]@." M.Constant.pp c
+                | Some id ->
+                    Format.printf "%s: @[<2>%a@]@." (Ident.name id) M.Constant.pp c
+          end) ts
+    
 let compile sourcefile outputprefix modulename (typedtree, coercion) =
   let f = 
     if !Flags.flags.scaml_convert then convert

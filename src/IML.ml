@@ -114,7 +114,7 @@ type contract_source =
 type t = (desc, Attr.ts) with_loc_and_type
 
 and desc =
-  | Const of M.Opcode.constant
+  | Const of M.Constant.t
   | Nil
   | Cons of t * t
   | IML_None
@@ -136,6 +136,8 @@ and desc =
   | Switch_none of t * t * P.var * t
   | Contract_create of contract_source * Location.t * t * t * t
   | Seq of t * t
+  | Set of t list
+  | Map of (t * t) list
 
 let pp ppf = 
   let p = Format.pp_print_string ppf in
@@ -205,16 +207,16 @@ let pp ppf =
         f "@[<2>Contract.create_from_tz_file@ %S %a %a %a@]" 
           s
           pp t1 pp t2 pp t3
-(*
-    | Contract_create (Raw nodes, t1, t2, t3) ->
-        f "@[<2>Contract.create_raw@ (@[%a@]) %a %a %a@]" 
-          (Format.list ";@ " M.Mline.pp) nodes
-          pp t1 pp t2 pp t3
-*)
     | Seq (t1, t2) -> f "%a; %a" pp t1 pp t2
+    | Set ts -> f "Set [ @[%a@] ]" (Format.list ";@ " pp) ts
+    | Map tts -> f "Map [ @[%a@] ]" 
+                   (Format.list ";@ " (fun _ppf (x,y) ->
+                        f "(%a, %a)" pp x pp y)) tts
+                  
   in
   pp ppf
 
+(*
 let rec get_constant t = 
   let (>>=) = Option.bind in
   match t.desc with
@@ -246,6 +248,7 @@ let make_constant t = match get_constant t with
       match c with
       | C.List [] | C.Option None | C.Unit -> t
       | _ -> { t with desc= Const c }
+*)
               
 let mke ~loc typ desc = { typ; desc; loc; attrs= [] }
 
@@ -325,6 +328,8 @@ let rec freevars t =
         (union 
            (freevars t1)
            (diff (freevars t2) (psingleton p2)))
+  | Set ts -> unions (List.map freevars ts)
+  | Map tts -> unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
 
 (* t2[t_i/id_i] 
    XXX very inefficient.  should be removed somehow.
@@ -357,6 +362,8 @@ let subst id_t_list t2 =
     | App (t, ts) -> mk & App (f t, List.map f ts)
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
     | Seq (t1, t2) -> mk & Seq (f t1, f t2)
+    | Set ts  -> mk & Set (List.map f ts)
+    | Map tts -> mk & Map (List.map (fun (k,v) -> f k, f v) tts)
   in
   f t2
 
@@ -393,6 +400,8 @@ let alpha_conv id_t_list t2 =
     | App (t, ts) -> mk & App (f t, List.map f ts)
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
     | Seq (t1, t2) -> mk & Seq (f t1, f t2)
+    | Set ts  -> mk & Set (List.map f ts)
+    | Map tts -> mk & Map (List.map (fun (k,v) -> f k, f v) tts)
   in
   f t2
 
@@ -642,7 +651,7 @@ let rec patternx { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "Nat", TyNat, [{pat_desc= Tpat_constant (Const_int n)}] ->
             if n < 0 then 
               errorf ~loc "Nat can only take a positive integer constant";
-            mk & P.Constr (Cnstr.Constant (C.Nat (Z.of_int n)), [])
+            mk & P.Constr (Cnstr.Constant (C.Int (Z.of_int n)), [])
         | "Nat", TyNat, [_] -> errorf ~loc "Nat can only take an integer constant"
         | _, TyMutez, [_] -> errorf ~loc "tz constant cannot be used as a pattern"
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
@@ -1285,6 +1294,11 @@ module Pmatch = struct
     make e
 end
 
+let rec list_elems e = match e.desc with
+  | Cons (e,es) -> e :: list_elems es
+  | Nil -> []
+  | _ -> errorf ~loc:e.loc "List is expected"
+
 let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   let gloc = Location.ghost loc in
   let typ = 
@@ -1310,8 +1324,7 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
               | [e1; e2] ->
                   let e1 = expression e1 in
                   let e2 = expression e2 in
-                  (* tyList e1.typ = e2.typ *)
-                  make_constant & mkcons ~loc e1 e2
+                  mkcons ~loc e1 e2
               | _ -> internal_error ~loc "strange cons"
             end
         | s -> internal_error ~loc "strange list constructor %s" s
@@ -1325,7 +1338,7 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
             begin match args with
               | [e1] ->
                   let e1 = expression e1 in
-                  make_constant & mksome ~loc e1
+                  mksome ~loc e1
               | _ -> internal_error ~loc "strange cons"
             end
         | s -> internal_error ~loc "strange list constructor %s" s
@@ -1338,11 +1351,11 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       | "Left" -> 
           let e = expression arg in
           (* e.typ = ty1 *)
-          make_constant & mkleft ~loc tyr e
+          mkleft ~loc tyr e
       | "Right" ->
           let e = expression arg in
           (* e.typ = ty2 *)
-          make_constant & mkright ~loc tyl e
+          mkright ~loc tyl e
       | s -> internal_error ~loc "strange sum constructor %s" s
       end
 
@@ -1370,7 +1383,7 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
           | Texp_constant (Const_int n) -> 
               if n < 0 then 
                 errorf ~loc "Nat can only take a positive integer constant";
-              Const (Nat (Z.of_int n))
+              Const (Int (Z.of_int n))
           | _ -> errorf ~loc "Nat can only take an integer constant"
       end
 
@@ -1401,7 +1414,7 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
 
                   sub ^ String.init (6 - String.length sub) (fun _ -> '0')
                 in
-                Const (Nat (Z.of_string (dec ^ sub)))
+                Const (Int (Z.of_string (dec ^ sub)))
               with
               | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
             end
@@ -1414,15 +1427,8 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
       begin match args with 
         | [arg] -> 
-            let e = expression arg in
-            (* tyList ty = e.typ *)
-            begin match get_constant e with
-            | Some (List xs) -> 
-                (* XXX Uniqueness and sorting? *)
-                { e with typ; desc= Const (Set xs) }
-            | None -> errorf ~loc:e.loc "Elements of Set must be constants"
-            | Some _ -> assert false
-            end
+            let es = list_elems & expression arg in
+            mke ~loc typ (Set es)
         | _ -> internal_error ~loc "strange set arguments"
       end
 
@@ -1432,15 +1438,8 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       if cstr_name <> "Map" then internal_error ~loc "strange map constructor";
       begin match args with 
         | [arg] -> 
-            let e = expression arg in
-            (* tyList (tyPair (ty1, ty2)) = e.typ *)
-            begin match get_constant e with
-            | Some (List xs) -> 
-                let order (c1,_) (c2,_) = compare c1 c2 in (* XXX relies on OCaml's compare! *)
-                let xs = List.sort order & List.map (function
-                    | C.Pair (c1,c2) -> (c1,c2)
-                    | _ -> assert false) xs 
-                in
+            let es = list_elems & expression arg in
+(*
                 let rec check_uniq = function
                   | [] | [_] -> ()
                   | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
@@ -1448,10 +1447,14 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                   | _::xs -> check_uniq xs
                 in
                 check_uniq xs;
-                { e with typ; desc= Const (Map xs) }
-            | Some _ -> assert false
-            | None -> errorf ~loc:e.loc "Elements of Map must be constants"
-            end
+*)
+            let kvs = List.map (fun e -> match e.desc with
+                | Pair (k,v) -> (k,v)
+                | _ -> 
+                    errorf ~loc:e.loc "Map binding must be a pair expression")
+                es
+            in
+            { loc; typ; desc= Map kvs; attrs= [] }
         | _ -> internal_error ~loc "strange map arguments"
       end
 
@@ -1571,12 +1574,11 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
       let e1 = expression e1 in
       let e2 = expression e2 in
       (* tyPair (e1.typ, e2.typ) = typ *) 
-      make_constant & mk & Pair (e1, e2)
+      mk & Pair (e1, e2)
   | Texp_tuple es ->
       Binplace.fold
         ~leaf:(fun c -> c)
-        ~branch:(fun c1 c2 ->
-            make_constant & mk & Pair (c1, c2))
+        ~branch:(fun c1 c2 -> mk & Pair (c1, c2))
         & Binplace.place 
         & List.map expression es
 
@@ -1734,8 +1736,7 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
       in
       Binplace.fold
         ~leaf:(fun c -> c)
-        ~branch:(fun c1 c2 ->
-            make_constant & mkpair ~loc:gloc c1 c2)
+        ~branch:(fun c1 c2 -> mkpair ~loc:gloc c1 c2)
       & Binplace.place es
 
   | Texp_record { fields; extended_expression= Some e; } ->
@@ -1761,7 +1762,7 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
         | Branch (t1, t2) ->
             let e1 = f (mkfst ~loc:gloc e) t1 in
             let e2 = f (mksnd ~loc:gloc e) t2 in
-            make_constant & mkpair ~loc:gloc e1 e2
+            mkpair ~loc:gloc e1 e2
       in
       f (expression e) & fst & simplify tree
 
@@ -2020,34 +2021,6 @@ let type_check_entries tyenv vbs =
     ) vbs, 
   ty_storage
 
-(*
-  let ty_storage = Ctype.newvar () in
-  let ty_operations = 
-    let path =
-      try
-        Env.lookup_type (*~loc: *)
-          (Longident.(Ldot (Lident "SCaml", "operations"))) tyenv
-      with
-      | Not_found -> internal_error ~loc:Location.none "Type SCaml.operations is not defined.  Something wrong in your SCaml installation."
-    in
-    Ctype.newconstr path []
-  in
-  let mk_entry_type () =
-    let ty_parameter = Ctype.newvar () in
-    let ty_fun = 
-      Ctype.newty (Tarrow (Nolabel, ty_parameter,
-                           Ctype.newty (Tarrow (Nolabel, ty_storage,
-                                                Ctype.newty (Ttuple [ty_operations; ty_storage ]), Cok)), Cok))
-    in
-    (ty_parameter, ty_fun)
-  in
-  List.map (fun vb ->
-      let ty_param, templ = mk_entry_type () in
-      type_check_entry templ vb;
-      (ty_param, vb)
-    ) vbs, 
-  ty_storage
-*)
 
 let global_parameter_type tyenv node =
   let path =
@@ -2181,6 +2154,9 @@ let count_variables t =
 
     | App (t, ts) -> List.fold_right f (t::ts) st
     | Prim (_, _, ts) -> List.fold_right f ts st
+    | Set ts  -> List.fold_right f ts st
+    | Map tts -> 
+        List.fold_right (fun (t1,t2) st -> f t1 & f t2 st) tts st
   in
   f t VMap.empty
 
@@ -2242,6 +2218,8 @@ let optimize t =
       | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
       | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
       | Seq (t1, t2) -> mk & Seq (f t1, f t2)
+      | Set ts -> mk & Set (List.map f ts)
+      | Map kvs -> mk & Map (List.map (fun (k,v) -> f k, f v) kvs)
     in
     begin match !attrs with
       | Some _ -> assert false
@@ -2374,25 +2352,28 @@ let convert str =
       Result.at_Error (errorf ~loc "%s") & Flags.eval t (txt, v))
       t attrs);
 
+(*
   let get_constant e = 
     match get_constant & expression e with
-    | None -> errorf ~loc:e.exp_loc "This is not a constant expression, which is required for conversion mode"
+    | None -> errorf ~loc:e.exp_loc "This is not a constant expression.  Conversion mode must take a constant"
     | Some c -> c
   in
+*)
 
   let structure_item str_final_env { str_desc; str_loc= loc } =
     match str_desc with
-    | Tstr_value (Recursive, _)        -> unsupported ~loc "recursive definitions"
-    | Tstr_primitive _                 -> unsupported ~loc "primitive declaration"
-    | Tstr_typext _                    -> unsupported ~loc "type extension"
-    | Tstr_exception _                 -> unsupported ~loc "exception declaration"
-    | Tstr_module _ | Tstr_recmodule _ -> unsupported ~loc "module declaration"
-    | Tstr_class _                     -> unsupported ~loc "class declaration"
-    | Tstr_class_type _                -> unsupported ~loc "class type declaration"
-    | Tstr_include _                   -> unsupported ~loc "include"
-    | Tstr_modtype _                   -> unsupported ~loc "module type declaration"
+    | Tstr_value (Recursive, _) -> unsupported ~loc "recursive definitions"
+    | Tstr_primitive _          -> unsupported ~loc "primitive declaration"
+    | Tstr_typext _             -> unsupported ~loc "type extension"
+    | Tstr_exception _          -> unsupported ~loc "exception declaration"
+    | Tstr_module _ 
+    | Tstr_recmodule _          -> unsupported ~loc "module declaration"
+    | Tstr_class _              -> unsupported ~loc "class declaration"
+    | Tstr_class_type _         -> unsupported ~loc "class type declaration"
+    | Tstr_include _            -> unsupported ~loc "include"
+    | Tstr_modtype _            -> unsupported ~loc "module type declaration"
 
-    | Tstr_eval (e, _) -> [ `Value (None, get_constant e) ]
+    | Tstr_eval (e, _) -> [ `Value (None, expression e) ]
     | Tstr_value (Nonrecursive, vbs) ->
         List.map (fun { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } ->
             let ido, e = match vb_pat.pat_desc with
@@ -2402,7 +2383,7 @@ let convert str =
               | _ -> 
                   errorf ~loc:vb_pat.pat_loc "Conversion mode does not support complex patterns"
             in
-            `Value (ido, get_constant e)
+            `Value (ido, expression e)
           ) vbs
     | Tstr_open _open_description -> []
     | Tstr_type (_, tds) -> 
@@ -2420,7 +2401,9 @@ let convert str =
   let structure { str_items= sitems ; str_final_env } =
     List.concat_map (structure_item str_final_env) sitems
   in
-  let res = structure str in
+  structure str
+(*
+ in
   List.iter (function
       | `Value (Some id, c) ->
           Format.printf "%s: @[<2>%a@]@." (Ident.name id) M.Constant.pp c
@@ -2429,6 +2412,7 @@ let convert str =
       | `Type (id, t) ->
           Format.printf "type %s: @[<2>%a@]@." (Ident.name id) M.Type.pp t
     ) res
+*)
 
 let save path t = 
   let oc = open_out path in
