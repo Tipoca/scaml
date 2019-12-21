@@ -40,11 +40,11 @@ let init () =
   end
   
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
-  let parameter, storage, t = IML.implementation sourcefile str in
+  let parameter, storage, t = Translate.implementation sourcefile str in
 
   IML.save (outputprefix ^ ".iml0") t;
 
-  let t = if Flags.(!flags.iml_optimization) then IML.optimize t else t in
+  let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
 
   IML.save (outputprefix ^ ".iml") t;
 
@@ -58,11 +58,11 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
   close_out oc
 
 let convert _sourcefile _outputprefix _modulename (str, _coercion) =
-  let ts = IML.convert str in
+  let ts = Translate.convert str in
   let ts = List.map (fun t -> match t with
       | `Type _ -> t
       | `Value (ido, t) when Flags.(!flags.iml_optimization) ->
-          `Value (ido, IML.optimize t)
+          `Value (ido, Optimize.optimize t)
       | `Value _ -> t) ts 
   in
   List.iter (function

@@ -305,6 +305,9 @@ and desc env t =
 
 and constant t =
   (* try to compile an expressions to a constant, rather than opcodes *)
+  (* XXX This is incredibly inefficient, which tries to compile 
+     expressions as constants so many times.
+  *)
   let rec f t = 
     let module C = M.Constant in
     let (>>=) = Option.bind in
@@ -328,7 +331,7 @@ and constant t =
           | C.List t2 -> Some (C.List (t1::t2))
           | _ -> assert false
         end
-    | Fun _ when IML.IdTys.is_empty (IML.freevars t) (* XXXX Very inefficient *) ->
+    | Fun _ when IML.IdTys.is_empty (IML.freevars t) ->
         begin try 
             match compile' [] t with
             | [LAMBDA (_, _, os)] -> Some (C.Code os)

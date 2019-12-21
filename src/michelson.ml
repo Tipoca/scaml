@@ -15,6 +15,7 @@
 open Spotlib.Spot
 open Tools
 
+(* Micheline parser and printer tools *)
 module Mline = struct
   open Tezos_micheline.Micheline
   open Tezos_micheline.Micheline_printer
@@ -52,10 +53,12 @@ module Mline = struct
 end
 
 module Type = struct
+
   (* Michelson type.  This is shamelessly used as types for IML, too. *)
   type t = { desc : desc 
            ; attrs : string list
            } 
+
   and desc = 
     | TyString
     | TyNat
@@ -143,237 +146,8 @@ module Type = struct
 
 end
 
-type module_ = 
-  | Raw of Tezos_micheline.Micheline_printer.node list
-  (* | { parameter : Type.t ; storage : Type.t ; code : t list } *)
-  
-type constant = 
-  | Unit
-  | Bool of bool
-  | Int of Z.t
-  | String of string
-  | Bytes of string
-  | Option of constant option
-  | List of constant list
-  | Set of constant list
-  | Map of (constant * constant) list
-  | Pair of constant * constant
-  | Left of constant
-  | Right of constant
-  | Timestamp of Z.t
-  | Code of opcode list
-
-and opcode =
-  | DUP
-  | DIP of int * opcode list
-  | DIG of int
-  | DUG of int
-  | DROP of int
-  | SWAP
-  | PAIR
-  | ASSERT
-  | CAR | CDR
-  | LEFT of Type.t
-  | RIGHT of Type.t
-  | LAMBDA of Type.t * Type.t * opcode list
-  | APPLY
-  | PUSH of Type.t * constant
-  | NIL of Type.t
-  | CONS
-  | NONE of Type.t
-  | SOME
-  | COMPARE
-  | EQ | LT | LE | GT | GE | NEQ
-  | IF of opcode list * opcode list
-  | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
-  | AND | OR | XOR | NOT
-  | EXEC
-  | IF_NONE of opcode list * opcode list
-  | IF_LEFT of opcode list * opcode list
-  | IF_CONS of opcode list * opcode list
-  | FAILWITH
-  | COMMENT of string * opcode list
-  | UNIT
-  | EMPTY_SET of Type.t
-  | EMPTY_MAP of Type.t * Type.t
-  | EMPTY_BIG_MAP of Type.t * Type.t
-  | SIZE
-  | MEM
-  | UPDATE
-  | ITER of opcode list
-  | MAP of opcode list
-  | LOOP of opcode list (* It is not really useful for SCaml *)
-  | LOOP_LEFT of opcode list 
-  | CONCAT
-  | SELF
-  | GET
-  | RENAME of string (* for debugging *)
-  | PACK
-  | UNPACK of Type.t
-  | SLICE
-  | CAST (* to remove type name. *)
-  | CONTRACT of Type.t
-  | TRANSFER_TOKENS
-  | SET_DELEGATE
-  | CREATE_ACCOUNT (* deprecated *)
-  | CREATE_CONTRACT of module_
-  | IMPLICIT_ACCOUNT
-  | NOW
-  | AMOUNT
-  | BALANCE
-  | CHECK_SIGNATURE
-  | BLAKE2B
-  | SHA256
-  | SHA512
-  | HASH_KEY
-  | STEPS_TO_QUOTA
-  | SOURCE
-  | SENDER
-  | ADDRESS
-  | CHAIN_ID
-
-let rec constant_to_micheline = 
-  let open Mline in
-  let rec f = function
-    | Bool true  -> prim "True" [] []
-    | Bool false -> prim "False" [] []
-    | Unit     -> prim "Unit" [] []
-    | Int n    -> int n
-    | String s -> string s
-    | Bytes s (* in hex *) ->  bytes s
-    | Option None -> prim "None" [] []
-    | Option (Some t) -> prim "Some" [f t] []
-    | Pair (t1, t2) -> prim "Pair" [f t1; f t2] []
-    | Left t -> prim "Left" [f t] []
-    | Right t -> prim "Right" [f t] []
-    | List ts -> seq (List.map f ts)
-    | Set ts -> seq (List.map f & List.sort compare ts)
-    | Map xs -> 
-        seq (List.map (fun (k,v) ->
-            prim "Elt" [f k; f v] []) xs)
-    | Timestamp z -> 
-        begin match Ptime.of_float_s @@ Z.to_float z with
-          | None -> assert false
-          | Some t -> string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
-        end
-    | Code os -> 
-        seq (List.map opcode_to_micheline os)
-  in
-  f
-
-and opcode_to_micheline t =
-  let open Mline in
-  let prim x args = Mline.prim x args [] in
-  let (!) x = prim x [] in
-  let rec f = function
-    | DUP -> !"DUP"
-    | DIP (1, code) -> prim "DIP" [seq (List.map f code)]
-    | DIP (n, code) -> prim "DIP" [int & Z.of_int n; seq (List.map f code)]
-    | DIG n -> prim "DIG" [int & Z.of_int n]
-    | DUG n -> prim "DUG" [int & Z.of_int n]
-    | SWAP -> !"SWAP"
-    | PAIR -> !"PAIR"
-    | PUSH (ty, const) -> prim "PUSH" [Type.to_micheline ty; constant_to_micheline const]
-    | ASSERT -> !"ASSERT"
-    | CAR -> !"CAR"
-    | CDR -> !"CDR" 
-    | LEFT ty -> prim "LEFT" [Type.to_micheline ty]
-    | RIGHT ty -> prim "RIGHT" [Type.to_micheline ty]
-    | LAMBDA (ty1, ty2, code) -> 
-        prim "LAMBDA" [Type.to_micheline ty1;
-                       Type.to_micheline ty2;
-                       seq (List.map f code)]
-    | APPLY -> !"APPLY"
-    | CONS -> !"CONS"
-    | NIL ty -> prim "NIL" [ Type.to_micheline ty ]
-    | SOME -> !"SOME"
-    | NONE ty -> prim "NONE" [ Type.to_micheline ty ]
-    | DROP 1 -> !"DROP"
-    | DROP n -> prim "DROP" [int & Z.of_int n]
-    | COMPARE -> !"COMPARE"
-    | EQ  -> !"EQ"
-    | LT  -> !"LT"
-    | LE  -> !"LE"
-    | GT  -> !"GT"
-    | GE  -> !"GE"
-    | NEQ -> !"NEQ"
-    | IF (t,e) -> 
-        prim "IF" [ seq & List.map f t;
-                    seq & List.map f e ]
-
-    | IF_NONE (t,e) -> 
-        prim "IF_NONE" [ seq & List.map f t;
-                         seq & List.map f e ]
-    | ADD   -> !"ADD"
-    | SUB   -> !"SUB"
-    | MUL   -> !"MUL"
-    | EDIV  -> !"EDIV"
-    | ABS   -> !"ABS"
-    | ISNAT -> !"ISNAT"
-    | NEG   -> !"NEG"
-    | LSL   -> !"LSL"
-    | LSR   -> !"LSR"
-    | AND   -> !"AND"
-    | OR    -> !"OR" 
-    | XOR   -> !"XOR"
-    | NOT   -> !"NOT"
-
-    | EXEC -> !"EXEC"
-    | FAILWITH -> !"FAILWITH"
-    | COMMENT (s, ts) ->
-        add_comment (Some s) & seq (List.map f ts)
-    | IF_LEFT (t1, t2) ->
-        prim "IF_LEFT" [ seq & List.map f t1;
-                         seq & List.map f t2 ]
-    | IF_CONS (t1, t2) ->
-        prim "IF_CONS" [ seq & List.map f t1;
-                         seq & List.map f t2 ]
-    | UNIT -> !"UNIT"
-    | EMPTY_SET ty -> prim "EMPTY_SET" [ Type.to_micheline ty ]
-    | EMPTY_MAP (ty1, ty2) -> prim "EMPTY_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
-    | EMPTY_BIG_MAP (ty1, ty2) -> prim "EMPTY_BIG_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
-    | SIZE   -> !"SIZE"
-    | MEM    -> !"MEM"
-    | UPDATE -> !"UPDATE"
-    | ITER code -> prim "ITER" [ seq & List.map f code ]
-    | MAP code -> prim "MAP" [ seq & List.map f code ]
-    | LOOP code -> prim "LOOP" [ seq & List.map f code ]
-    | LOOP_LEFT code -> prim "LOOP_LEFT" [ seq & List.map f code ]
-    | CONCAT -> !"CONCAT"
-    | SELF   -> !"SELF"
-    | GET    -> !"GET"
-    | RENAME s -> prim "RENAME" [string s]
-    | PACK -> !"PACK"
-    | UNPACK ty -> prim "UNPACK" [Type.to_micheline ty]
-    | SLICE -> !"SLICE"
-    | CAST  -> !"CAST"
-    | CONTRACT ty -> prim "CONTRACT" [Type.to_micheline ty]
-    | TRANSFER_TOKENS  -> !"TRANSFER_TOKENS"
-    | SET_DELEGATE     -> !"SET_DELEGATE"
-    | CREATE_ACCOUNT   -> !"CREATE_ACCOUNT"
-    | IMPLICIT_ACCOUNT -> !"IMPLICIT_ACCOUNT"
-    | NOW              -> !"NOW"
-    | AMOUNT           -> !"AMOUNT"
-    | BALANCE          -> !"BALANCE"
-
-    | CHECK_SIGNATURE -> !"CHECK_SIGNATURE"
-    | BLAKE2B         -> !"BLAKE2B"
-    | SHA256          -> !"SHA256"
-    | SHA512          -> !"SHA512"
-    | HASH_KEY        -> !"HASH_KEY"
-
-    | STEPS_TO_QUOTA  -> !"STEPS_TO_QUOTA"
-    | SOURCE          -> !"SOURCE"
-    | SENDER          -> !"SENDER"
-    | ADDRESS         -> !"ADDRESS"
-    | CHAIN_ID        -> !"CHAIN_ID"
-    | CREATE_CONTRACT (Raw nodes) -> prim "CREATE_CONTRACT" [ seq nodes ]
-  in
-  f t
-
-
-module Constant = struct
-  type t = constant =
+module rec Constant : sig
+  type t =
     | Unit
     | Bool of bool
     | Int of Z.t
@@ -387,17 +161,148 @@ module Constant = struct
     | Left of t
     | Right of t
     | Timestamp of Z.t
-    | Code of opcode list
+    | Code of Opcode.t list
 
-  let rec to_micheline = constant_to_micheline
+  val pp : Format.formatter -> t -> unit
+  val to_micheline : t -> Mline.t
+end = struct
+  type t =
+    | Unit
+    | Bool of bool
+    | Int of Z.t
+    | String of string
+    | Bytes of string
+    | Option of t option
+    | List of t list
+    | Set of t list
+    | Map of (t * t) list
+    | Pair of t * t
+    | Left of t
+    | Right of t
+    | Timestamp of Z.t
+    | Code of Opcode.t list
+
+  let to_micheline = 
+    let open Mline in
+    let rec f = function
+      | Bool true  -> prim "True" [] []
+      | Bool false -> prim "False" [] []
+      | Unit     -> prim "Unit" [] []
+      | Int n    -> int n
+      | String s -> string s
+      | Bytes s (* in hex *) ->  bytes s
+      | Option None -> prim "None" [] []
+      | Option (Some t) -> prim "Some" [f t] []
+      | Pair (t1, t2) -> prim "Pair" [f t1; f t2] []
+      | Left t -> prim "Left" [f t] []
+      | Right t -> prim "Right" [f t] []
+      | List ts -> seq (List.map f ts)
+      | Set ts -> seq (List.map f & List.sort compare ts)
+      | Map xs -> 
+          seq (List.map (fun (k,v) ->
+              prim "Elt" [f k; f v] []) xs)
+      | Timestamp z -> 
+          begin match Ptime.of_float_s @@ Z.to_float z with
+            | None -> assert false
+            | Some t -> string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
+          end
+      | Code os -> 
+          seq (List.map Opcode.to_micheline os)
+    in
+    f
+  
   let pp fmt t = Mline.pp fmt & to_micheline t
 end
 
-module Opcode = struct
+and Opcode : sig
+  type module_ = 
+    | Raw of Tezos_micheline.Micheline_printer.node list
 
-  type constant = Constant.t
+  type t =
+    | DUP
+    | DIP of int * t list
+    | DIG of int
+    | DUG of int
+    | DROP of int
+    | SWAP
+    | PAIR
+    | ASSERT
+    | CAR
+    | CDR
+    | LEFT of Type.t
+    | RIGHT of Type.t
+    | LAMBDA of Type.t * Type.t * t list
+    | APPLY
+    | PUSH of Type.t * Constant.t
+    | NIL of Type.t
+    | CONS
+    | NONE of Type.t
+    | SOME
+    | COMPARE
+    | EQ
+    | LT
+    | LE
+    | GT
+    | GE
+    | NEQ
+    | IF of t list * t list
+    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
+    | AND | OR | XOR | NOT
+    | EXEC
+    | IF_NONE of t list * t list
+    | IF_LEFT of t list * t list
+    | IF_CONS of t list * t list
+    | FAILWITH
+    | COMMENT of string * t list
+    | UNIT
+    | EMPTY_SET of Type.t
+    | EMPTY_MAP of Type.t * Type.t
+    | EMPTY_BIG_MAP of Type.t * Type.t
+    | SIZE
+    | MEM
+    | UPDATE
+    | ITER of t list
+    | MAP of t list
+    | LOOP of t list (* It is not really useful for SCaml *)
+    | LOOP_LEFT of t list 
+    | CONCAT
+    | SELF
+    | GET
+    | RENAME of string (* for debugging *)
+    | PACK
+    | UNPACK of Type.t
+    | SLICE
+    | CAST (* to remove type name. *)
+    | CONTRACT of Type.t
+    | TRANSFER_TOKENS
+    | SET_DELEGATE
+    | CREATE_ACCOUNT
+    | CREATE_CONTRACT of module_
+    | IMPLICIT_ACCOUNT
+    | NOW
+    | AMOUNT
+    | BALANCE
+    | CHECK_SIGNATURE
+    | BLAKE2B
+    | SHA256
+    | SHA512
+    | HASH_KEY
+    | STEPS_TO_QUOTA
+    | SOURCE
+    | SENDER
+    | ADDRESS
+    | CHAIN_ID
 
-  type t = opcode =
+  val pp : Format.formatter -> t -> unit
+  val to_micheline : t -> Mline.t
+  val clean_failwith : t list -> t list
+end = struct
+
+  type module_ = 
+    | Raw of Tezos_micheline.Micheline_printer.node list
+    (* | { parameter : Type.t ; storage : Type.t ; code : t list } *)
+    
+  type t =
     | DUP
     | DIP of int * t list
     | DIG of int
@@ -411,7 +316,7 @@ module Opcode = struct
     | RIGHT of Type.t
     | LAMBDA of Type.t * Type.t * t list
     | APPLY
-    | PUSH of Type.t * constant
+    | PUSH of Type.t * Constant.t
     | NIL of Type.t
     | CONS
     | NONE of Type.t
@@ -465,8 +370,117 @@ module Opcode = struct
     | SENDER
     | ADDRESS
     | CHAIN_ID
+  
+  let to_micheline t =
+    let open Mline in
+    let prim x args = Mline.prim x args [] in
+    let (!) x = prim x [] in
+    let rec f = function
+      | DUP -> !"DUP"
+      | DIP (1, code) -> prim "DIP" [seq (List.map f code)]
+      | DIP (n, code) -> prim "DIP" [int & Z.of_int n; seq (List.map f code)]
+      | DIG n -> prim "DIG" [int & Z.of_int n]
+      | DUG n -> prim "DUG" [int & Z.of_int n]
+      | SWAP -> !"SWAP"
+      | PAIR -> !"PAIR"
+      | PUSH (ty, const) -> prim "PUSH" [Type.to_micheline ty; Constant.to_micheline const]
+      | ASSERT -> !"ASSERT"
+      | CAR -> !"CAR"
+      | CDR -> !"CDR" 
+      | LEFT ty -> prim "LEFT" [Type.to_micheline ty]
+      | RIGHT ty -> prim "RIGHT" [Type.to_micheline ty]
+      | LAMBDA (ty1, ty2, code) -> 
+          prim "LAMBDA" [Type.to_micheline ty1;
+                         Type.to_micheline ty2;
+                         seq (List.map f code)]
+      | APPLY -> !"APPLY"
+      | CONS -> !"CONS"
+      | NIL ty -> prim "NIL" [ Type.to_micheline ty ]
+      | SOME -> !"SOME"
+      | NONE ty -> prim "NONE" [ Type.to_micheline ty ]
+      | DROP 1 -> !"DROP"
+      | DROP n -> prim "DROP" [int & Z.of_int n]
+      | COMPARE -> !"COMPARE"
+      | EQ  -> !"EQ"
+      | LT  -> !"LT"
+      | LE  -> !"LE"
+      | GT  -> !"GT"
+      | GE  -> !"GE"
+      | NEQ -> !"NEQ"
+      | IF (t,e) -> 
+          prim "IF" [ seq & List.map f t;
+                      seq & List.map f e ]
+  
+      | IF_NONE (t,e) -> 
+          prim "IF_NONE" [ seq & List.map f t;
+                           seq & List.map f e ]
+      | ADD   -> !"ADD"
+      | SUB   -> !"SUB"
+      | MUL   -> !"MUL"
+      | EDIV  -> !"EDIV"
+      | ABS   -> !"ABS"
+      | ISNAT -> !"ISNAT"
+      | NEG   -> !"NEG"
+      | LSL   -> !"LSL"
+      | LSR   -> !"LSR"
+      | AND   -> !"AND"
+      | OR    -> !"OR" 
+      | XOR   -> !"XOR"
+      | NOT   -> !"NOT"
+  
+      | EXEC -> !"EXEC"
+      | FAILWITH -> !"FAILWITH"
+      | COMMENT (s, ts) ->
+          add_comment (Some s) & seq (List.map f ts)
+      | IF_LEFT (t1, t2) ->
+          prim "IF_LEFT" [ seq & List.map f t1;
+                           seq & List.map f t2 ]
+      | IF_CONS (t1, t2) ->
+          prim "IF_CONS" [ seq & List.map f t1;
+                           seq & List.map f t2 ]
+      | UNIT -> !"UNIT"
+      | EMPTY_SET ty -> prim "EMPTY_SET" [ Type.to_micheline ty ]
+      | EMPTY_MAP (ty1, ty2) -> prim "EMPTY_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
+      | EMPTY_BIG_MAP (ty1, ty2) -> prim "EMPTY_BIG_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
+      | SIZE   -> !"SIZE"
+      | MEM    -> !"MEM"
+      | UPDATE -> !"UPDATE"
+      | ITER code -> prim "ITER" [ seq & List.map f code ]
+      | MAP code -> prim "MAP" [ seq & List.map f code ]
+      | LOOP code -> prim "LOOP" [ seq & List.map f code ]
+      | LOOP_LEFT code -> prim "LOOP_LEFT" [ seq & List.map f code ]
+      | CONCAT -> !"CONCAT"
+      | SELF   -> !"SELF"
+      | GET    -> !"GET"
+      | RENAME s -> prim "RENAME" [string s]
+      | PACK -> !"PACK"
+      | UNPACK ty -> prim "UNPACK" [Type.to_micheline ty]
+      | SLICE -> !"SLICE"
+      | CAST  -> !"CAST"
+      | CONTRACT ty -> prim "CONTRACT" [Type.to_micheline ty]
+      | TRANSFER_TOKENS  -> !"TRANSFER_TOKENS"
+      | SET_DELEGATE     -> !"SET_DELEGATE"
+      | CREATE_ACCOUNT   -> !"CREATE_ACCOUNT"
+      | IMPLICIT_ACCOUNT -> !"IMPLICIT_ACCOUNT"
+      | NOW              -> !"NOW"
+      | AMOUNT           -> !"AMOUNT"
+      | BALANCE          -> !"BALANCE"
+  
+      | CHECK_SIGNATURE -> !"CHECK_SIGNATURE"
+      | BLAKE2B         -> !"BLAKE2B"
+      | SHA256          -> !"SHA256"
+      | SHA512          -> !"SHA512"
+      | HASH_KEY        -> !"HASH_KEY"
+  
+      | STEPS_TO_QUOTA  -> !"STEPS_TO_QUOTA"
+      | SOURCE          -> !"SOURCE"
+      | SENDER          -> !"SENDER"
+      | ADDRESS         -> !"ADDRESS"
+      | CHAIN_ID        -> !"CHAIN_ID"
+      | CREATE_CONTRACT (Raw nodes) -> prim "CREATE_CONTRACT" [ seq nodes ]
+    in
+    f t
 
-  let to_micheline = opcode_to_micheline
   let pp ppf t = Mline.pp ppf & to_micheline t
 
   let rec clean_failwith = function

@@ -12,21 +12,13 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@warning "-27-32-41"]
+val contract_self_id : Ident.t
+  
+val implementation 
+  : string 
+  -> Typedtree.structure 
+  -> Michelson.Type.t * Michelson.Type.t * IML.t
 
-include Typemod
-
-let type_interface sourcefile _env _ast =
-  Location.raise_errorf ~loc:(Location.in_file sourcefile)
-    "SCaml does not support compilation of interfaces"
-
-let type_implementation sourcefile outputprefix modulename initial_env ast =
-  try
-    let res = type_implementation sourcefile outputprefix modulename initial_env ast in
-    SCamlc.implementation sourcefile outputprefix modulename res;
-    res
-  with
-  | e -> 
-    Location.report_exception Format.err_formatter e;
-    (* raise e *)
-    exit 1
+val convert
+  : Typedtree.structure 
+  -> [> `Type of Ident.t * Michelson.Type.t | `Value of Ident.t option * IML.t ] list

@@ -25,16 +25,19 @@ type ('desc, 'attrs) with_loc_and_type =
 module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
 (** Set of idents and their types *)
 
-module Pat : sig
-  type var = (Ident.t, unit) with_loc_and_type
+module PatVar : sig
+  type t = (Ident.t, unit) with_loc_and_type
   (** Pattern variable *)
   
-  val pp_var : Format.t -> var -> unit
+  val pp : Format.t -> t -> unit
 end
 
 module Attr : sig
   type t = Comment of string
   type ts = t list
+      
+  val add : t -> ('a, ts) with_loc_and_type -> ('a, ts) with_loc_and_type
+  val adds : ts -> ('a, ts) with_loc_and_type -> ('a, ts) with_loc_and_type
 end
 
 type contract_source =
@@ -56,14 +59,14 @@ and desc =
   | Pair of t * t
   | Assert of t
   | AssertFalse
-  | Fun of Pat.var * t
+  | Fun of PatVar.t * t
   | IfThenElse of t * t * t option
   | App of t * t list
   | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
-  | Let of Pat.var * t * t
-  | Switch_or of t * Pat.var * t * Pat.var * t
-  | Switch_cons of t * Pat.var * Pat.var * t * t
-  | Switch_none of t * t * Pat.var * t
+  | Let of PatVar.t * t * t
+  | Switch_or of t * PatVar.t * t * PatVar.t * t
+  | Switch_cons of t * PatVar.t * PatVar.t * t * t
+  | Switch_none of t * t * PatVar.t * t
   | Contract_create of contract_source * Location.t * t * t * t
   | Seq of t * t
   | Set of t list
@@ -71,15 +74,9 @@ and desc =
 
 val pp : Format.t -> t -> unit
 
-val freevars : t -> IdTys.t
-
-val optimize : t -> t
-
-val implementation : string -> Typedtree.structure -> Michelson.Type.t * Michelson.Type.t * t
-
-val convert : Typedtree.structure -> 
-  [> `Type of Ident.t * Michelson.Type.t
-  | `Value of Ident.t option * t ] list
-
 val save : string -> t -> unit
 (** Print out IML AST to a file.  For debugging. *)
+
+val freevars : t -> IdTys.t
+val subst : (Ident.t * t) list -> t -> t
+val alpha_conv : (Ident.t * Ident.t) list -> t -> t

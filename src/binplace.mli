@@ -13,7 +13,7 @@
 (**************************************************************************)
 
 (* This module defines encoding of ML records and variants in Michelson,
-   which only has binary tree based type: [pair] and [or].
+   which only has binary product and sum: [pair] and [or].
 *)
 
 type side = Left | Right
