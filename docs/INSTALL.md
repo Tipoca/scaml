@@ -26,6 +26,7 @@ $ which scamlc
 `src/tests` directorty contains *working* tests which you can use as examples.
 
 ```
+$ dune build
 $ cd src/tests
 $ ./test.sh xxx.ml
 ```
@@ -33,6 +34,7 @@ $ ./test.sh xxx.ml
 or 
 
 ```
+$ dune build
 $ cd src/tests
 $ ./test_all.sh
 ```
