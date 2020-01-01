@@ -1,5 +1,5 @@
 open SCaml
-let main (x:unit) y = 
+let main x y = 
   [],
   assert (
       match isnat (Int (-1)) with

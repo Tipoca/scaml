@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main (main : unit) (storage : unit) =
+let main param storage =
   [],
   assert (
     (* XXX tuple is formed, which is redundant *)

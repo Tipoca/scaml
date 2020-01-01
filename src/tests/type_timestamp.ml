@@ -1,7 +1,7 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
 open Timestamp
-let main (x:unit) y =
+let main x y =
   let now = Global.get_now () in
   [],
   assert (

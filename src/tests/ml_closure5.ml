@@ -6,4 +6,4 @@ let f b =
   if b then fun () -> b (* this should create a closure *)
   else fun () -> false
 
-let main (x : unit) y = [], (assert ((f true) ()))
+let main x y = [], (assert ((f true) ()))

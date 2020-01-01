@@ -3,4 +3,4 @@ open SCaml
 
 let f x = x + Int 2
 
-let main (x:unit) y = [], assert (f (Int 3) = Int 5)
+let main x y = [], assert (f (Int 3) = Int 5)

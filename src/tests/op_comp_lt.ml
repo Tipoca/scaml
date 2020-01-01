@@ -2,6 +2,6 @@
 open SCaml
 let v = Int 2
 let w = Int 3
-let main (x:unit) y = ([], assert (v < w))
+let main x y = ([], assert (v < w))
     
 

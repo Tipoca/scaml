@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main (x:unit) y = 
+let main x y = 
   [],
   assert (Int 2 * Int (-3) = Int (-6)
           && Nat 2 *^ Nat 3 = Nat 6

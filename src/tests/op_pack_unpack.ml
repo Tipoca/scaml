@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main (x:unit) y =
+let main x y =
   [],
   assert (match ( Obj.unpack (Obj.pack (Int 1)) : int option) with
       | None -> false

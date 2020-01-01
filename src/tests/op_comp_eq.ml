@@ -1,5 +1,5 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main (x:unit) y = ([], assert (Int 3 = Int 3))
+let main x y = ([], assert (Int 3 = Int 3))
     
 

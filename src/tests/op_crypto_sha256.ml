@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main (x:unit) y =
+let main x y =
   [],
   assert (
     Crypto.sha256 (Bytes "0123456789ABCDEF") =

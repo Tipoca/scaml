@@ -1,5 +1,5 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main (x:unit) y = ([], assert (true && true))
+let main x y = ([], assert (true && true))
     
 

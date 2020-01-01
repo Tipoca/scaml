@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main (main : unit) (storage : unit) =
+let main param storage =
   [],
   assert (
     ( match (Left (Int 1) : (int, unit) sum) with
