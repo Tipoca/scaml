@@ -213,6 +213,10 @@ let main () =
     ; "--scaml-version", Arg.Unit (fun () -> 
           print_string Version.scaml; print_newline(); exit 0),
       "Print SCaml version and exit"
+    ; "--scaml-dump-iml0", Arg.Unit (fun () -> Flags.(flags := { !flags with dump_iml0 = true })),
+      "Dump IML code before optimization to .iml0 file"
+    ; "--scaml-dump-iml", Arg.Unit (fun () -> Flags.(flags := { !flags with dump_iml = true })),
+      "Dump the final IML code to .iml file"
     ];
   try
     readenv ppf Before_args;

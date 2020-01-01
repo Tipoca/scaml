@@ -16,7 +16,7 @@ if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
  ocamlfind ocamlc -package zarith -c $BUILD_DIR/SCaml.mli)
 
 # Compilation command
-COMP="dune exec ../main.exe -- --scaml-noscamlib -I $BUILD_DIR"
+COMP="dune exec ../main.exe -- --scaml-noscamlib --scaml-dump-iml0 --scaml-dump-iml -I $BUILD_DIR"
 
 # Optional: tezos-client
 TEZOS_CLIENT=`which tezos-client || true`

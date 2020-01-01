@@ -22,6 +22,8 @@ type t =
   ; scaml_debug : bool
   ; scaml_convert : bool
   ; scaml_noscamlib : bool
+  ; dump_iml0 : bool
+  ; dump_iml : bool
   } [@@deriving conv{ocaml}]
 
 let pp = Camlon.Ocaml.format_with ocaml_of_t
@@ -39,6 +41,10 @@ let eval flags (k, v) =
   | "scaml_convert", _ -> must_be_a_bool ()
   | "scaml_noscamlib", `Bool b -> Ok { flags with scaml_noscamlib= b }
   | "scaml_noscamlib", _ -> must_be_a_bool ()
+  | "dump_iml0", `Bool b -> Ok { flags with dump_iml0= b }
+  | "dump_iml0", _ -> must_be_a_bool ()
+  | "dump_iml", `Bool b -> Ok { flags with dump_iml= b }
+  | "dump_iml", _ -> must_be_a_bool ()
   | n, _ -> Error (Printf.sprintf "Unknown attribute %s" n)
 
 let flags = ref 
@@ -47,6 +53,8 @@ let flags = ref
     ; scaml_debug       = begin try ignore (Sys.getenv "SCAML_DEBUG"); true with _ -> false end 
     ; scaml_convert     = false
     ; scaml_noscamlib   = false
+    ; dump_iml0         = false
+    ; dump_iml          = false
     }
 
 let update f = flags := f !flags

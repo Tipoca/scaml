@@ -42,11 +42,11 @@ let init () =
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   let parameter, storage, t = Translate.implementation sourcefile str in
 
-  IML.save (outputprefix ^ ".iml0") t;
+  if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
 
   let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
 
-  IML.save (outputprefix ^ ".iml") t;
+  if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
 
   let code = Compile.structure t in
   let m = { M.Module.parameter; storage; code } in

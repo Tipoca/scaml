@@ -20,6 +20,8 @@ type t =
   ; scaml_debug       : bool
   ; scaml_convert     : bool (** type and value conversion mode *)
   ; scaml_noscamlib   : bool (** do not add -I `opam config var prefix`/scaml *)
+  ; dump_iml0         : bool
+  ; dump_iml          : bool
   }
 
 val flags : t ref
