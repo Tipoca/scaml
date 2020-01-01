@@ -497,7 +497,15 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
 let attr_has_entry_point = 
   List.find_map_opt (function
-      | ({ txt = "entry"; loc }, Parsetree.PStr []) -> Some loc
+      | ({ txt = "entry"; loc }, payload) -> 
+          begin match Attribute.parse_options_in_payload "entry" ~loc payload with
+            | _::_::_ -> errorf ~loc "@entry cannot specify more than one options"
+            | [] -> Some (loc, None)
+            | [{txt=Longident.Lident "name"}, `Constant (Parsetree.Pconst_string (s, _))] ->
+                Some (loc, Some s)
+            | [{txt=Longident.Lident "name"}, _] -> errorf ~loc "@entry can take only a string literal"
+            | [_, _] -> errorf ~loc "@entry can take at most one name=<name> binding"
+          end
       | _ -> None)
   
 module Pmatch = struct
@@ -1266,7 +1274,7 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
   (* if exp_extra <> [] then unsupported ~loc "expression extra"; *)
   begin match attr_has_entry_point exp_attributes with
     | None -> ()
-    | Some loc ->
+    | Some (loc, _) ->
         errorf ~loc "entry declaration is only allowed for the toplevel definitions";
   end;
   let typ = Result.at_Error (fun e ->
@@ -1692,14 +1700,17 @@ let toplevel_value_bindings str =
   structure str
 
 let get_explicit_entries vbs =
-  List.filter (fun vb -> attr_has_entry_point vb.vb_attributes <> None) vbs
+  List.filter_map (fun vb -> 
+      match attr_has_entry_point vb.vb_attributes with
+      | None -> None
+      | Some (_, name) -> Some (vb, name)) vbs
 
 let get_entries vbs =
   match get_explicit_entries vbs with
   | [] -> 
       begin match List.last vbs with
         | None -> []
-        | Some vb -> [vb]
+        | Some vb -> [vb, None]
       end
   | ents -> ents
     
@@ -1720,7 +1731,7 @@ let type_check_entry templ vb =
     vb.vb_pat.pat_type (* the actual type of the pattern *)
     templ              (* must have this type *)
 
-let type_check_entries tyenv vbs =
+let type_check_entries tyenv vbns =
   let ty_storage = Ctype.newvar () in
   let ty_entry () =
     let ty_parameter = Ctype.newvar () in
@@ -1734,11 +1745,11 @@ let type_check_entries tyenv vbs =
     ty_parameter,
     Ctype.newconstr path [ty_parameter; ty_storage]
   in
-  List.map (fun vb ->
+  List.map (fun (vb,name) ->
       let ty_parameter, templ = ty_entry () in
       type_check_entry templ vb;
-      (ty_parameter, vb)
-    ) vbs, 
+      (ty_parameter, vb, name)
+    ) vbns, 
   ty_storage
 
 
@@ -1748,7 +1759,7 @@ let global_parameter_type tyenv node =
       (Longident.(Ldot (Lident "SCaml", "sum"))) tyenv
   in
   let rec f = function
-    | Binplace.Leaf (param_ty, _) -> param_ty
+    | Binplace.Leaf (param_ty, _, _) -> param_ty
     | Branch (n1, n2) ->
         let ty1 = f n1 in
         let ty2 = f n2 in
@@ -1812,7 +1823,7 @@ let compile_global_entry ty_storage ty_return node =
   let e_storage = mkvar ~loc:noloc (id_storage, ty_storage) in
 
   let rec f param_id node = match node with
-    | Binplace.Leaf (_,vb) ->
+    | Binplace.Leaf (_,vb,_name) ->
         (* XXX top entry has poor pattern expressivity *)
         (* id, var: name of the entrypoint *)
         let gloc = Location.ghost vb.vb_loc in
@@ -1883,10 +1894,10 @@ let implementation sourcefile str =
   | [] -> 
       errorf ~loc:(Location.in_file sourcefile)
         "SCaml needs at least one value definition for an entry point"
-  | vbs ->
+  | vbns ->
       let tyenv = str.str_final_env in
-      let pvbs, ty_storage = type_check_entries str.str_final_env vbs in
-      let tree = Binplace.place pvbs in
+      let pvbns, ty_storage = type_check_entries str.str_final_env vbns in
+      let tree = Binplace.place pvbns in
 
       (* self *)
       let ty_param = global_parameter_type tyenv tree in
@@ -1935,19 +1946,15 @@ let implementation sourcefile str =
         | Branch _ ->
             let open M.Type in
             let rec add_annot ty node = match ty.desc, node with
-              | _, Binplace.Leaf (_,vb) -> 
+              | _, Binplace.Leaf (_,vb,name) -> 
                   (* XXX dup *)
                   let id = match pattern_simple vb.vb_pat with
                     | [p] -> p.desc
                     | _ -> assert false
                   in
-                  let fix_name s = match s with
-                    | "" -> assert false
-                    | _ ->
-                        if String.unsafe_get s (String.length s - 1) = '_' then
-                          String.sub s 0 (String.length s - 1)
-                        else
-                          s
+                  let fix_name s = match name with
+                    | Some n -> n
+                    | None -> s
                   in
                   { ty with attrs= [ "%" ^ fix_name (Ident.name id) ] }
               | TyOr (ty1, ty2), Branch (n1, n2) ->

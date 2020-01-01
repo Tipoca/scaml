@@ -12,4 +12,10 @@
 (*                                                                        *)
 (**************************************************************************)
 
+val parse_options_in_payload : 
+  loc:Tools.Location.t 
+  -> string 
+  -> Parsetree.payload 
+  -> (Longident.t Asttypes.loc * [> `Bool of bool | `Constant of Parsetree.constant ]) list
+
 val get_scaml_toplevel_attributes : Typedtree.structure -> (Longident.t Asttypes.loc * [`Bool of bool | `Constant of Parsetree.constant ]) list

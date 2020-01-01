@@ -1,6 +1,6 @@
 open SCaml
     
-let [@entry] init () () = [], ()
+let [@entry name="hello"] init () () = [], ()
 
 let inc x = x + Int 1
             
