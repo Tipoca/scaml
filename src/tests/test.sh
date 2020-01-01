@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
 
 # Where to work?
 BUILD_DIR=$SCRIPT_DIR/_build
+if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
 
 # Make sure the library module is COMPiled
 (cp $SCRIPT_DIR/../lib/SCaml.mli $BUILD_DIR; \
