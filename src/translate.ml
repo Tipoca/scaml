@@ -479,7 +479,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                   | (n, typ)::labels, _ ->
                       let typ = 
                         Result.at_Error (fun e -> 
-                            errorf ~loc "This pattern has a field %s with type %a.  %a" 
+                            errorf ~loc "This pattern has a field %s with type %a, whose %a" 
                               n 
                               Printtyp.type_expr typ
                               pp_type_expr_error e) 
@@ -1022,7 +1022,7 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   let gloc = Location.ghost loc in
   let typ = 
     Result.at_Error (fun e ->
-        errorf ~loc "This has type %a.  %a" Printtyp.type_expr exp_type pp_type_expr_error e)
+        errorf ~loc "This has type %a, whose %a" Printtyp.type_expr exp_type pp_type_expr_error e)
     & type_expr tyenv exp_type 
   in
   let make typ desc = { loc; typ; desc; attrs= [] } in
@@ -1222,7 +1222,7 @@ let rec construct ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                         Ctype.unify tyenv exp_type ty_res; (* XXX should succeed *)
                         List.map (fun ty -> 
                             Result.at_Error (fun e ->
-                                errorf ~loc "This expression has type %a.  One of its constructors %s has type %a.  %a" 
+                                errorf ~loc "This expression has type %a.  One of its constructors %s has type %a, whose %a" 
                                   Printtyp.type_expr exp_type 
                                   constr.cstr_name
                                   Printtyp.type_expr ty
@@ -1270,7 +1270,7 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
         errorf ~loc "entry declaration is only allowed for the toplevel definitions";
   end;
   let typ = Result.at_Error (fun e ->
-      errorf ~loc "This expression has type %a.  %a" Printtyp.type_expr mltyp pp_type_expr_error e)
+      errorf ~loc "This expression has type %a, whose %a" Printtyp.type_expr mltyp pp_type_expr_error e)
       & type_expr tyenv mltyp 
   in
   let mk desc = { loc; typ; desc; attrs= [] } in
@@ -1369,7 +1369,7 @@ and expression { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= tyenv; exp_ext
             List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
           in
           let fty = Result.at_Error (fun e ->
-              errorf ~loc:f.exp_loc "This primitive has type %a.  %a"
+              errorf ~loc:f.exp_loc "This primitive has type %a, whose %a"
                 Printtyp.type_expr f.exp_type
                 pp_type_expr_error e)
               & type_expr f.exp_env f.exp_type 
@@ -1916,7 +1916,7 @@ let implementation sourcefile str =
 
       let ty_storage = 
         Result.at_Error (fun e ->
-            errorf ~loc:(Location.in_file sourcefile) "Contract has storage type %a.  %a"
+            errorf ~loc:(Location.in_file sourcefile) "Contract has storage type %a, whose %a"
               Printtyp.type_expr ty_storage
               pp_type_expr_error e)
           & type_expr tyenv ty_storage 
@@ -1925,7 +1925,7 @@ let implementation sourcefile str =
       let final = compile_global_entry ty_storage ty_return tree in
       let ty_param = 
         Result.at_Error (fun e ->
-            errorf ~loc:(Location.in_file sourcefile) "Contract has parameter type %a.  %a"
+            errorf ~loc:(Location.in_file sourcefile) "Contract has parameter type %a, whose %a"
               Printtyp.type_expr ty_param
               pp_type_expr_error e)
           & type_expr tyenv ty_param 
