@@ -97,19 +97,21 @@ Under `src/tests/`
 
 Library functions are listed in `src/tests/SCaml.ml`.
 
+## 1.0 Pyramid (2020-01-01, released)
+
+"Pyramid" will be the first official release of SCaml.
+
+Pyramid is a big feature close.  After it, we concentrate on the maintenance
+for a while.
+
 ## Road-map
 
 > "Road-map" is another expression of "promises almost never fulfilled in time". 
 
-### 1.0 Pyramid (2020-01-01)
+### 1.1 Salting (around 2020-03)
 
-"Pyramid" will be the first official release of SCaml:
-
-* Attractive web site.
-* Minimal support of `CREATE_CONTRACT`.
-
-Pyramid is a big feature close.  After it, we concentrate on the maintenance
-for a while.
+1.1 "Salting" will support the coming upgrade of Tezos (likely called Carthage)
+and bug fixes.
 
 ## Further information
 
