@@ -17,15 +17,27 @@
 *)
 
 type ocaml_int = int
+(** OCaml's int *)
 
 type nat = Nat of ocaml_int
-(** Arbitrary length nat *)
+(** Arbitrary length nat. 
+    
+    [Nat] only takes a constant.  Currently there is no way to write 
+    a literal beyond the range of OCaml's [int].
+*)
 
 type int = Int of ocaml_int
-(** Arbitrary length int *)
+(** Arbitrary length int 
+
+    [Int] only takes a constant.  Currently there is no way to write 
+    a literal beyond the range of OCaml's [int].
+*)
 
 type tz = Tz of float
-(** Tezzies.  The smallest unit is micro tz, [Tz 0.000001]. *)
+(** Tezzies.  The smallest unit is micro tz, [Tz 0.000001]. 
+
+    [Tz] only takes a constant.
+*)
 
 type ('a, 'b) sum = Left of 'a | Right of 'b
 (** Basic sum type corresponds with Michelson's [or] type. *)
@@ -67,8 +79,9 @@ val abs : int -> nat
 val isnat : int -> nat option
 
 (** Comparisons 
-    Just like OCaml they are fully polymorphic, 
-    but they only work for limited set of Michelson types.
+
+    They are fully polymorphic, but they only work for limited set 
+    of Michelson types.
     
     Use Michelson type-checker to find invalid uses of comparisons
     for now.
@@ -97,12 +110,14 @@ val snd : ('a * 'b) -> 'b
 (** Errors *)
 module Error : sig
   val failwith : 'a -> 'b
-  (** Deprecated.  Use [failwith] without [Error] *)
+  (** Deprecated.  Use [SCaml.failwith] *)
 end
 
 val failwith : 'a -> 'b
 (** Fail the execution of the smart contract.
-    You can also use [assert] 
+
+    You can use [assert b] to fail the execution conditinally.
+    [assert b] fails if and only if [b] is evaluated to [false].
 *)
 
 (** Loops *)
@@ -115,7 +130,7 @@ module Loop : sig
   *)
 end
   
-(** Data tyeps *)
+(** Data types *)
 
 (** Lists *)
 module List : sig
