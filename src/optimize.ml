@@ -54,12 +54,14 @@ let count_variables t =
   f t VMap.empty
 
 (* 
+   (let x = e in f) e2 => let x = e in f e2
+
    (fun x -> e1) e2  =>  let x = e2 in e1 
 
    let x = e2 in e1  =>  e1[e2/x]  
      when x appears only once in e1
           or e2 is just a variable
-   
+
    Free variables are counted for each let (and fun).  Very inefficient.
 *)
 let optimize t = 
@@ -85,6 +87,8 @@ let optimize t =
                               typ= ty2;
                               attrs= [] },
                             ts)
+          | {desc= Let (pv, t1, t2); typ; loc; attrs} ->
+              f { desc= Let (pv, t1, mk & App (t2, ts)); typ; loc ; attrs }
           | u -> mk & App (u, t::ts)
           end
       | Let (p, ({ desc= Var _ } as t1), t2) -> 
