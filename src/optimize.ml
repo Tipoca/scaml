@@ -55,7 +55,10 @@ let count_variables t =
 
 (* 
    (fun x -> e1) e2  =>  let x = e2 in e1 
-   let x = e2 in e1  =>  e1[e2/x]  when x appears only once in e1
+
+   let x = e2 in e1  =>  e1[e2/x]  
+     when x appears only once in e1
+          or e2 is just a variable
    
    Free variables are counted for each let (and fun).  Very inefficient.
 *)
@@ -84,6 +87,9 @@ let optimize t =
                             ts)
           | u -> mk & App (u, t::ts)
           end
+      | Let (p, ({ desc= Var _ } as t1), t2) -> 
+          add_attrs 
+          & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
       | Let (p, t1, t2) -> 
           let vmap = count_variables t2 in
           begin match VMap.find_opt p.desc vmap with
