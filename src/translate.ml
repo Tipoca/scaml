@@ -1731,6 +1731,13 @@ let type_check_entry templ vb =
     vb.vb_pat.pat_type (* the actual type of the pattern *)
     templ              (* must have this type *)
 
+(*
+   Even if the parameter and storage types of the entries are generalized,
+   they are canceled by unifing with non-generalized type variables. 
+   
+   XXX This was ... unintentionally introduced, but useful feature.
+   XXX This must be documented.
+*)
 let type_check_entries tyenv vbns =
   let ty_storage = Ctype.newvar () in
   let ty_entry () =
