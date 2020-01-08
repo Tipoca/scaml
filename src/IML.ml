@@ -76,87 +76,156 @@ and desc =
   | Set of t list
   | Map of (t * t) list
 
-let pp ppf = 
-  let p = Format.pp_print_string ppf in
-  let f fmt = Format.fprintf ppf fmt in
-  let rec pp _ppf t =
-    match t.attrs with
-    | [] -> f "(%a : %a)" desc t Type.pp t.typ
-    | _ -> f "(%a <%a> : %a)" desc t attr t.attrs Type.pp t.typ
+module P = struct
+  (* forge OCaml untyped AST from IML.t just for printing *)
+  open Parsetree
+  module Ast_builder = Ppxlib.Ast_builder.Make(struct let loc = Location.none end)
+  open Ast_builder
+  let loc = Location.none
 
-  and attr _ppf attrs = 
-    List.iter (function
-        | Attr.Comment s -> f "/* %s */" s) attrs
-                         
-  and desc _ppf t = match t.desc with
-    | Const c -> f "%a" M.Constant.pp c
-    | Nil -> f "[]"
-    | Cons (t1, t2) -> f "%a :: %a" pp t1 pp t2
-    | IML_None -> f "None"
-    | IML_Some t -> f "Some %a" pp t
-    | Left t -> f "Left %a" pp t
-    | Right t -> f "Right %a" pp t
-    | Unit -> p "()"
-    | Var id -> f "%s" (Ident.unique_name id)
-    | Pair (t1, t2) -> f "@[%a,@ %a@]" pp t1 pp t2
-    | Assert t -> f "assert %a" pp t
-    | AssertFalse -> p "assert false"
-    | Fun (pat, body) ->
-        f "@[<2>fun %a ->@ %a@]"
-          PatVar.pp pat pp body
-    | IfThenElse (t1, t2, Some t3) -> 
-        f "@[if %a@ then %a@ else %a@]"
-          pp t1 pp t2 pp t3
-    | IfThenElse (t1, t2, None) -> 
-        f "@[if %a@ then %a@]"
-          pp t1 pp t2
-    | App (t1, ts) -> 
-        f "%a %a" pp t1 Format.(list " " (fun ppf t -> fprintf ppf "%a" pp t)) ts
-    | Prim (n, _ops, ts) ->
-        f "%s %a" 
-          n
-          Format.(list " " (fun ppf t -> fprintf ppf "%a" pp t)) ts
-    | Let (p, t1, t2) ->
-        f "@[@[<2>let %a@ = %a@]@ in@ %a@]"
-          PatVar.pp p pp t1 pp t2
-    | Switch_or (t, p1, t1, p2, t2) ->
-        f "@[match %a with@ | @[<2>Left %a ->@ %a!]@ | @[<2>Right %a ->@ %a@]@]"
-          pp t
-          PatVar.pp p1 pp t1 
-          PatVar.pp p2 pp t2
-    | Switch_cons (t, p1, p2, t1, t2) ->
-        f "@[match %a with@ | @[<2>%a::%a ->@ %a!]@ | @[<2>[] ->@ %a@]@]"
-          pp t
-          PatVar.pp p1
-          PatVar.pp p2
-          pp t1 
-          pp t2
-    | Switch_none (t, t1, p2, t2) ->
-        f "@[match %a with@ | @[<2>None ->@ %a@]@ | @[Some %a@ -> %a@]@]"
-          pp t
-          pp t1 
-          PatVar.pp p2 pp t2
-    | Contract_create (Tz_code s, _, t1, t2, t3) ->
-        f "@[<2>Contract.create_from_tz_code@ %S %a %a %a@]" 
-          s
-          pp t1 pp t2 pp t3
-    | Contract_create (Tz_file s, _, t1, t2, t3) ->
-        f "@[<2>Contract.create_from_tz_file@ %S %a %a %a@]" 
-          s
-          pp t1 pp t2 pp t3
-    | Seq (t1, t2) -> f "%a; %a" pp t1 pp t2
-    | Set ts -> f "Set [ @[%a@] ]" (Format.list ";@ " pp) ts
-    | Map tts -> f "Map [ @[%a@] ]" 
-                   (Format.list ";@ " (fun _ppf (x,y) ->
-                        f "(%a, %a)" pp x pp y)) tts
-                  
-  in
-  pp ppf
+  let rec type_ ty = 
+    let open M.Type in
+    match ty.desc with
+    | TyString -> [%type: string]
+    | TyNat    -> [%type: nat]
+    | TyInt    -> [%type: int]
+    | TyBytes  -> [%type: byte]
+    | TyBool   -> [%type: bool]
+    | TyUnit   -> [%type: unit]
+    | TyList t -> [%type: [%t type_ t] list]
+    | TyPair (t1, t2) -> [%type: [%t type_ t1] * [%t type_ t2]]
+    | TyOption t -> [%type: [%t type_ t] option]
+    | TyOr (t1, t2) -> [%type: ([%t type_ t1], [%t type_ t2]) sum]
+    | TySet t -> [%type: [%t type_ t] set]
+    | TyMap (k,v) -> [%type: ([%t type_ k], [%t type_ v]) map]
+    | TyBigMap (k,v) -> [%type: ([%t type_ k], [%t type_ v]) big_map]
+    | TyMutez     -> [%type: tz]
+    | TyKeyHash   -> [%type: key_hash]
+    | TyTimestamp -> [%type: timestamp]
+    | TyAddress   -> [%type: address]
+    | TyChainID   -> [%type: chain_id]
+  
+    | TyKey -> [%type: key]
+    | TySignature -> [%type: signature]
+    | TyOperation -> [%type: operation]
+    | TyContract t -> [%type: [%t type_ t] contract]
+    | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
+
+  let rec constant = 
+    let open M.Constant in
+    function
+    | Unit -> [%expr ()]
+    | Bool true -> [%expr true]
+    | Bool false -> [%expr false] 
+    | Int z ->
+        { pexp_desc= Pexp_constant (Pconst_integer (Z.to_string z, None))
+        ; pexp_loc= Location.none
+        ; pexp_attributes= [] 
+        }
+    | String s -> estring s
+    | Bytes b ->
+        let `Hex h = Hex.of_string b in
+        [%expr Bytes [%e estring h]]
+    | Option None -> [%expr None]
+    | Option (Some e) -> [%expr Some [%e constant e]]
+    | List ts -> elist & List.map constant ts
+    | Set ts -> [%expr Set [%e elist & List.map constant ts]]
+    | Map kvs -> 
+        [%expr Map [%e elist & List.map (fun (k,v) -> 
+            from_Some & pexp_tuple_opt [ constant k ; constant v ]) kvs]]
+    | Pair (t1, t2) ->
+        from_Some & pexp_tuple_opt [ constant t1 ; constant t2 ]
+    | Left t -> [%expr Left [%e constant t]]
+    | Right t -> [%expr Right [%e constant t]]
+    | Timestamp z -> [%expr Timestamp [%e eint (Z.to_int z)]] (* XXX correct string *)
+    | Code ops -> 
+        let s = Format.sprintf "@[<2>{ %a }@]" (Format.list ";@ " M.Opcode.pp) ops in
+        { pexp_desc= Pexp_constant (Pconst_string (s, Some "michelson"))
+        ; pexp_loc= Location.none
+        ; pexp_attributes= [] 
+        }
+
+  let rec iml { desc; typ=_ } = match desc with
+    | Const c -> constant c
+    | Nil -> [%expr []] (* type? *)
+    | Cons (t1, t2) -> 
+        let t1 = iml t1 in
+        let t2 = iml t2 in
+        [%expr [%e t1] :: [%e t2]]
+    | IML_None -> [%expr None]
+    | IML_Some t -> [%expr Some [%e iml t]]
+    | Left t -> [%expr Left [%e iml t]]
+    | Right t -> [%expr Right [%e iml t]]
+    | Unit -> [%expr ()]
+    | Var id -> evar (Ident.unique_name id)
+    | Pair (t1, t2) ->
+        from_Some & pexp_tuple_opt [ iml t1 ; iml t2 ]
+    | Assert t ->[%expr assert [%e iml t]]
+    | AssertFalse ->[%expr assert false]
+    | Fun (pv, t) -> 
+        let pv = pvar & Ident.unique_name pv.desc in
+        [%expr fun [%p pv] -> [%e iml t] ]
+    | IfThenElse (t1, t2, None) ->
+        [%expr if [%e iml t1] then [%e iml t2] ]
+    | IfThenElse (t1, t2, Some t3) ->
+        [%expr if [%e iml t1] then [%e iml t2] else [%e iml t3] ]
+    | App (t, ts) -> eapply (iml t) (List.map iml ts)
+    | Prim (s, _, ts) -> eapply (evar s) (List.map iml ts)
+    | Let (pv, t1, t2) ->
+        (* 
+           let ty = type_ pv.typ in
+           let pv = pvar & Ident.unique_name pv.desc in
+        *)
+        let pv = pvar & Ident.unique_name pv.desc in
+        [%expr let [%p pv] = [%e iml t1] in [%e iml t2]]
+    | Switch_or (t, pv1, t1, pv2, t2) ->
+        let pv1 = pvar & Ident.unique_name pv1.desc in
+        let pv2 = pvar & Ident.unique_name pv2.desc in
+        [%expr match [%e iml t] with
+          | [%p pv1] -> [%e iml t1]
+          | [%p pv2] -> [%e iml t2] ]
+    | Switch_cons (t, pv1, pv2, t1, t2) ->
+        let pv1 = pvar & Ident.unique_name pv1.desc in
+        let pv2 = pvar & Ident.unique_name pv2.desc in
+        [%expr match [%e iml t] with
+          | [%p pv1] :: [%p pv2] -> [%e iml t1]
+          | [] -> [%e iml t2] ]
+    | Switch_none (t, t1, pv2, t2) ->
+        let pv2 = pvar & Ident.unique_name pv2.desc in
+        [%expr match [%e iml t] with
+          | None -> [%e iml t1]
+          | Some [%p pv2] -> [%e iml t2] ]
+    | Contract_create (Tz_code code, _, t1, t2, t3) ->
+        let code = 
+          { pexp_desc= Pexp_constant (Pconst_string (code, Some ""))
+          ; pexp_loc= Location.none
+          ; pexp_attributes= [] 
+          }
+        in
+        [%expr Contract.create_from_tz_code [%e code] 
+            [%e iml t1]
+            [%e iml t2]
+            [%e iml t3]]
+    | Contract_create (Tz_file file, _, t1, t2,t3) ->
+        [%expr Contract.create_from_tz_file [%e estring file] 
+            [%e iml t1]
+            [%e iml t2]
+            [%e iml t3]]
+    | Seq (t1, t2) -> [%expr [%e iml t1]; [%e iml t2]]
+    | Set ts -> [%expr Set [%e elist & List.map iml ts]]
+    | Map kvs -> 
+        [%expr Map [%e elist & List.map (fun (k,v) -> 
+            from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
+        
+  let pp ppf t = Pprintast.expression ppf (iml t)
+end
+
+let pp = P.pp
 
 let save path t = 
   let oc = open_out path in
   let ppf = Format.of_out_channel oc in
-  Format.fprintf ppf "%a@." pp t;
+  Format.fprintf ppf "%a@." P.pp t;
   close_out oc
 
 let rec freevars t = 

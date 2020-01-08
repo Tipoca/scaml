@@ -74,6 +74,10 @@ and desc =
 
 val pp : Format.t -> t -> unit
 
+module P : sig
+  val pp : Format.t -> t -> unit
+end
+  
 val save : string -> t -> unit
 (** Print out IML AST to a file.  For debugging. *)
 

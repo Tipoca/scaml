@@ -26,4 +26,5 @@ depends: [
   "camlon"
   "ppx_meta_conv"
   "ocamlfind" { build }
+  "ppxlib"
 ]
