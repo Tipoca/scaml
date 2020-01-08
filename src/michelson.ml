@@ -487,6 +487,7 @@ end = struct
     | [] -> []
     | FAILWITH::_ -> [FAILWITH]
     | x::xs -> aux x :: clean_failwith xs
+
   and aux = function
     | DIP (n, ts) -> DIP (n, clean_failwith ts)
     | ITER ts -> ITER (clean_failwith ts)
@@ -500,6 +501,7 @@ end = struct
     | LOOP t -> LOOP (clean_failwith t)
     | LOOP_LEFT t -> LOOP_LEFT (clean_failwith t)
     | CREATE_CONTRACT m -> CREATE_CONTRACT m
+    | PUSH (ty, c) -> PUSH (ty, constant c)
     | (DUP
       | DIG _ | DUG _ | DROP _
       | SWAP
@@ -507,7 +509,6 @@ end = struct
       | ASSERT
       | CAR | CDR
       | LEFT _ | RIGHT _
-      | PUSH _
       | NIL _
       | CONS
       | NONE _
@@ -551,6 +552,19 @@ end = struct
       | APPLY
       | CHAIN_ID
       as t) -> t
+      
+  and constant = 
+    let open Constant in
+    function
+    | Code ops -> Code (clean_failwith ops)
+    | Option (Some t) -> Option (Some (constant t))
+    | List ts -> List (List.map constant ts)
+    | Set ts -> Set (List.map constant ts)
+    | Map kvs -> Map (List.map (fun (k,v) -> (constant k, constant v)) kvs)
+    | Pair (t1, t2) -> Pair (constant t1, constant t2)
+    | Left t -> Left (constant t)
+    | Right t -> Right (constant t)
+    | (Unit | Bool _ | Int _ | String _ | Bytes _ | Timestamp _ | Option None as c) -> c
 end
 
 module Module = struct
