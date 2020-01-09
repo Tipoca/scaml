@@ -77,6 +77,10 @@ function run () {
 	input=$CONVERSION
     fi
 
+    echo Executing $TEZOS_CLIENT typecheck script $tz
+    
+    $TEZOS_CLIENT typecheck script $tz
+
     echo Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input
 
     if [ -z "$must_fail" ]; then
