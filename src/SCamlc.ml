@@ -48,6 +48,10 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
 
   if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
 
+(*
+  Nonserialize.check t;
+*)
+
   let code = Compile.structure t in
   let m = { M.Module.parameter; storage; code } in
 

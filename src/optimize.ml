@@ -54,7 +54,6 @@ let count_variables t =
   f t VMap.empty
 
 (* 
-   (let x = e in f) e2 => let x = e in f e2
 
    (fun x -> e1) e2  =>  let x = e2 in e1 
 
@@ -81,30 +80,60 @@ let optimize t =
           let t = f t in
           let ts = List.map f ts in
           begin match f u with
+
           | {desc= Fun (pat, body); typ= {desc= TyLambda (_, ty2)} } ->
+              (* (fun x -> e1) e2  =>  let x = e2 in e1 *) 
               f & mk & App ({ desc= Let (pat, t, body);
                               loc= t.loc; (* incorrect *)
                               typ= ty2;
                               attrs= [] },
                             ts)
+
           | {desc= Let (pv, t1, t2); typ; loc; attrs} ->
-              f { desc= Let (pv, t1, mk & App (t2, ts)); typ; loc ; attrs }
+              (* (let x = e in f) e2 => let x = e in f e2 *)
+              f { desc= Let (pv, t1, mk & App (t2, t::ts)); typ; loc ; attrs }
+
           | u -> mk & App (u, t::ts)
           end
+
       | Let (p, ({ desc= Var _ } as t1), t2) -> 
+          (* let x = y in e  =>  e[y/x] *)
           add_attrs 
           & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
+
+(*
+      | Let (p, ({ desc= Fun _ } as t1), t2) -> 
+          (* let x = fun .. -> .. in e  =>  e[fun .. -> ../x] *)
+          add_attrs 
+          & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
+*)
+
       | Let (p, t1, t2) -> 
           let vmap = count_variables t2 in
           begin match VMap.find_opt p.desc vmap with
-            | None -> add_attrs & f t2
-            | Some 1 when p.desc <> Translate.contract_self_id -> 
+            | None -> 
+                (* let x = e1 in e2 => e2[e1/x] *)
+                add_attrs & f t2
+
+            | Some 1 when IdTys.for_all (fun (_, ty) -> Michelson.Type.storable ty) (freevars t1) ->
+                (* let x = e1 in e2 => e2[e1/x] *)
                 (* contract_self_id must not be inlined into LAMBDAs *)
                 (* XXX This is adhoc *)
                 add_attrs 
                 & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
+
+(*  This changes free variable occurrences inside `fun`.  Must be done with care.
+   
+            | Some 1 when p.desc <> Translate.contract_self_id -> 
+                (* let x = e1 in e2 => e2[e1/x] *)
+                (* contract_self_id must not be inlined into LAMBDAs *)
+                (* XXX This is adhoc *)
+                add_attrs 
+                & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
+*)
             | _ -> mk & Let (p, f t1, f t2)
           end
+
       | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create _ -> 
           add_attrs { t with attrs= [] }
       | IML_Some t -> mk & IML_Some (f t)

@@ -144,6 +144,20 @@ module Type = struct
 
   and pp fmt t = Mline.pp fmt & to_micheline t
 
+  let rec storable ty = match ty.desc with
+    | TyContract _ | TyOperation | TyBigMap _ -> false
+
+    | TyLambda (_t1, _t2) -> true (* XXX I beieve. (i.e. not sure) *)
+
+    | TyList t | TyOption t | TySet t -> storable t
+
+    | TyPair (t1, t2) | TyOr (t1, t2)
+    | TyMap (t1, t2) -> storable t1 && storable t2
+
+    | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+    | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+    | TyKey | TySignature -> true
+
 end
 
 module rec Constant : sig

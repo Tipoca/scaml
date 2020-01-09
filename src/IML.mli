@@ -84,3 +84,5 @@ val save : string -> t -> unit
 val freevars : t -> IdTys.t
 val subst : (Ident.t * t) list -> t -> t
 val alpha_conv : (Ident.t * Ident.t) list -> t -> t
+
+val check_unstorable : t -> (unit, Ident.t * Michelson.Type.t) Result.t

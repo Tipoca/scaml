@@ -181,6 +181,14 @@ and desc env t =
         (Format.list ";@ " (fun ppf (id,ty) ->
              Format.fprintf ppf "%s:%a" (Ident.unique_name id) M.Type.pp ty)) env;
       *)
+      (* XXX
+         
+         APPLY stores the values of freevars into a closure.
+         If the values are not serializable, it fails.
+         For example, contracts are not serializable
+
+         operation, contract, and big_map cannot be APPLY'ed
+      *)
       begin match t.typ.desc with
         | TyLambda (ty1, ty2) ->
             begin match fvars with

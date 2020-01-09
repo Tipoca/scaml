@@ -76,6 +76,8 @@ module Type : sig
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
+                            
+  val storable : t -> bool
 end
 
 module rec Constant : sig

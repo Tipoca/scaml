@@ -177,7 +177,7 @@ module P = struct
            let pv = pvar & Ident.unique_name pv.desc in
         *)
         let pv = pvar & Ident.unique_name pv.desc in
-        [%expr let [%p pv] = [%e iml t1] in [%e iml t2]]
+        [%expr let [%p pv]  = [%e iml t1] in [%e iml t2]]
     | Switch_or (t, pv1, t1, pv2, t2) ->
         let pv1 = pvar & Ident.unique_name pv1.desc in
         let pv2 = pvar & Ident.unique_name pv2.desc in
@@ -338,3 +338,25 @@ let alpha_conv id_t_list t2 =
     | Map tts -> mk & Map (List.map (fun (k,v) -> f k, f v) tts)
   in
   f t2
+
+(* Variables with contract, big_map and operations cannot appear freely 
+   inside [fun]'s body.
+*)
+let check_unstorable t = 
+  let module E = struct
+    exception Found of Ident.t * Michelson.Type.t
+  end in
+  match t.desc with
+  | Fun _ ->
+      begin try
+        IdTys.iter (fun (id, ty) ->
+         if not & Michelson.Type.storable ty then
+           raise (E.Found (id, ty)))
+        & freevars t;
+        Ok ()
+      with
+      | E.Found (id, ty) -> Error (id, ty)
+      end
+  | _ -> Ok ()
+
+  
