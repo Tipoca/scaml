@@ -98,6 +98,7 @@ let optimize t =
 
       | Let (p, ({ desc= Var _ } as t1), t2) -> 
           (* let x = y in e  =>  e[y/x] *)
+          let t2 = f t2 in
           add_attrs 
           & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
 
@@ -109,6 +110,7 @@ let optimize t =
 *)
 
       | Let (p, t1, t2) -> 
+          let t2 = f t2 in
           let vmap = count_variables t2 in
           begin match VMap.find_opt p.desc vmap with
             | None -> 
