@@ -138,6 +138,13 @@ module List : sig
   val length : 'a t -> nat
   val map : ('a -> 'b) -> 'a t -> 'b t
   val fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a list -> 'acc
+
+  val fold_left' : ('acc * 'a -> 'acc) -> 'acc -> 'a list -> 'acc
+  (** A variant of [fold_left] which takes an uncurried function.
+      This is useful when the curried function is rejected because of
+      the unstorable type of ['acc].
+  *)
+
   val rev : 'a t -> 'a t
 end
 
@@ -163,6 +170,7 @@ module Set : sig
   *)
       
   val fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc
+  val fold' : ('elt * 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc
 end
 
 
@@ -178,6 +186,7 @@ module Map : sig
   val empty : ('k, 'v) t
   val length : ('k, 'v) t -> nat
   val map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t
+  val map' : (('k * 'v) -> 'w) -> ('k, 'v) t -> ('k, 'w) t
   val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
@@ -192,6 +201,7 @@ module Map : sig
   *)
 
   val fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc
+  val fold' : (('k * 'v * 'acc) -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc
 end
 
 (** Big maps

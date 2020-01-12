@@ -87,21 +87,39 @@ let primitives =
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
   hd : acc : lam : s                       DIP { DIP { DUP } SWAP }
-  hd : lam : acc : lam : s                 EXECx
-  lam' : acc : lam : s                     SWAP EXECx
+  hd : lam : acc : lam : s                 EXEC
+  lam' : acc : lam : s                     SWAP EXEC
   acc' : lam : s                        }
 
   [] : acc : lam : s                    ITER {..}
   acc : lam : s                         DIP { DROP }
   acc : s
 *)           
-
         xs @
         [ SWAP ; DIP (1, [ SWAP ]); SWAP;
           ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
                 @ [ EXEC ]
                 @ [ SWAP ]
                 @ [ EXEC ]);
+          DIP (1, [ DROP 1])
+        ])
+
+  ; "List.fold_left'"    , (3, fun _typ xs -> 
+(*
+  lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
+  list : acc : lam : s                  ITER {
+  hd : acc : lam : s                       SWAP PAIR
+  (acc, hd) : lam : s                      DIP { DUP }  
+  (acc, hd) : lam : lam : s                EXEC
+  acc : lam : s                         }
+
+  [] : acc : lam : s                    ITER {..}
+  acc : lam : s                         DIP { DROP }
+  acc : s
+*)           
+        xs @
+        [ SWAP ; DIP (1, [ SWAP ]); SWAP;
+          ITER [ SWAP ; PAIR ; DIP (1, [ DUP ]); EXEC ];
           DIP (1, [ DROP 1])
         ])
 
@@ -121,6 +139,7 @@ let primitives =
   ; "Set.length"  , (1, simple [SIZE])
   ; "Set.mem"     , (2, simple [MEM])
   ; "Set.update"  , (3, simple [UPDATE])
+
   ; "Set.fold"    , (3, fun _typ xs -> 
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
@@ -144,6 +163,26 @@ let primitives =
                 @ [ EXEC ]
                 @ [ SWAP ]
                 @ [ EXEC ]);
+          DIP (1, [ DROP 1 ])
+        ])
+      
+  ; "Set.fold'"    , (3, fun _typ xs -> 
+(*
+  lam : set : acc : s                   SWAP DIP { SWAP }
+  set : acc : lam : s                   ITER {
+  elt : acc : lam : s                     PAIR
+  (elt, acc) : lam : s                    DIP DUP
+  (elt, acc) : lam : lam : s              EXEC
+  acc : lam : s                         }
+
+  empty : acc : lam : s                 ITER {..}
+  acc : lam : s                         DIP { DROP }
+  acc : s
+*)           
+
+        xs @
+        [ SWAP ; DIP (1, [ SWAP ]);
+          ITER [ PAIR; DIP (1, [ DUP ]); EXEC ];
           DIP (1, [ DROP 1 ])
         ])
       
@@ -217,6 +256,26 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
 
+  ; "Map.map'", (2, fun _typ xs ->
+(* lambda : map : S                 SWAP ;
+   { (k,v); <tl> } : lambda : S     MAP {
+     (k, v) : lambda : S              DIP DUP
+     (k, v) : lambda : lambda : S     EXEC
+     w : : lambda : S
+   
+   {} : lambda : S                  Map {..}
+
+   map' : lambda : S                  DIP DROP
+   map' : S 
+   
+*)
+        xs @
+        [ SWAP ; 
+          MAP [ DIP (1, [ DUP ]);
+                EXEC ];
+          DIP (1, [ DROP 1 ])
+        ])
+
   ; "Map.fold"    , (3, fun _typ xs -> 
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
@@ -244,6 +303,31 @@ let primitives =
                 @ [ EXEC ]
                 @ [ SWAP ]
                 @ [ EXEC ]);
+          DIP (1, [ DROP 1 ])
+        ])
+      
+
+  ; "Map.fold'"    , (3, fun _typ xs -> 
+(*
+  lam : map : acc : s                   SWAP DIP { SWAP }
+  set : acc : lam : s                   ITER {
+  (k,v) : acc : lam : s                   DUP CAR DIP { CDR }
+  k : v : acc : lam : s                   DIP { PAIR } PAIR
+  (k, (v, acc)) : lam : s                 DIP DUP
+  (k, (v, acc)) : lam : lam : s           EXEC
+  acc : lam : s                         } 
+
+  empty : acc : lam : s                 ITER {..}
+  acc : lam : s                         DIP { DROP }
+  acc : s
+*)           
+
+        xs @
+        [ SWAP ; DIP (1, [ SWAP ]);
+          ITER [ DUP; CAR; DIP (1, [ CDR ]);
+                 DIP (1, [ PAIR ]); PAIR;
+                 DIP (1, [ DUP ]);
+                 EXEC ];
           DIP (1, [ DROP 1 ])
         ])
       

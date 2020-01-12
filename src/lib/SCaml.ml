@@ -82,6 +82,7 @@ module List = struct
   let length : 'a t -> nat = fun _ -> assert false
   let map : ('a -> 'b) -> 'a t -> 'b t = fun _ -> assert false
   let fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a list -> 'acc = fun _ -> assert false
+  let fold_left' : ('acc * 'a -> 'acc) -> 'acc -> 'a list -> 'acc = fun _ -> assert false
   let rev : 'a t -> 'a t = fun _ -> assert false
 end
 
@@ -94,6 +95,7 @@ module Set = struct
   let mem : 'a -> 'a t -> bool = fun _ -> assert false 
   let update : 'a -> bool -> 'a t -> 'a t = fun _ -> assert false
   let fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false
+  let fold' : ('elt * 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc = fun _ -> assert false
 end
 
 type ('k, 'v) map = Map of ('k * 'v) list
@@ -103,10 +105,12 @@ module Map = struct
   let empty : ('k, 'v) t = Map []
   let length : ('k, 'v) t -> nat = fun _ -> assert false
   let map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t = fun _ -> assert false
+  let map' : ('k * 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t = fun _ -> assert false
   let get : 'k -> ('k, 'v) t -> 'v option = fun _ -> assert false
   let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false
   let update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t = fun _ -> assert false
   let fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
+  let fold' : ('k * 'v * 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
 end
 
 type ('k, 'v) big_map
