@@ -408,14 +408,14 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_timestamp s with
-              | Error _e -> errorf ~loc "straonge arguments for Timestamp" 
+              | Error _e -> errorf ~loc "strange arguments for Timestamp" 
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
         | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
 
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_bytes s with
-              | Error _e -> errorf ~loc "straonge arguments for Bytes" 
+              | Error _e -> errorf ~loc "strange arguments for Bytes" 
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
         | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
