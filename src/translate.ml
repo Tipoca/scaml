@@ -1351,9 +1351,10 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
          && lenv.fun_level > 0 then
         errorf ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
           (Ident.name id);
-      if List.mem id lenv.local_variables
-         && not (Michelson.Type.storable typ) then
-        Format.eprintf "wow it is properly abstracted: ...@.";
+      (* if List.mem id lenv.local_variables
+           && not (Michelson.Type.storable typ) then
+          Format.eprintf "wow it is properly abstracted: ...@.";
+      *)
       mk & Var id
   | Texp_ident (p, {loc}, _vd) ->
       begin match Path.is_scaml p with
