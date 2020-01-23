@@ -63,7 +63,8 @@ and compile' env t =
   let os = desc env t in 
   let comments = 
     List.filter_map (function
-        | IML.Attr.Comment s -> Some s
+        | IML.Attr.Comment s when !Flags.flags.scaml_debug -> Some s
+        | _ -> None
       ) t.IML.attrs
   in
   match comments with
