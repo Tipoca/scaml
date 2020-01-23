@@ -83,7 +83,7 @@ module P = struct
   open Ast_builder
   let loc = Location.none
 
-  let rec _type_ ty = 
+  let rec type_ ty = 
     let open M.Type in
     match ty.desc with
     | TyString -> [%type: string]
@@ -110,6 +110,8 @@ module P = struct
     | TyOperation -> [%type: operation]
     | TyContract t -> [%type: [%t type_ t] contract]
     | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
+
+  let _type = type_
 
   let rec constant = 
     let open M.Constant in
