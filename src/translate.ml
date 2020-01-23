@@ -95,7 +95,7 @@ module Lenv = struct
   let add_locals vs lenv = { lenv with local_variables = vs @ lenv.local_variables } 
   let into_fun ~loc lenv = 
     { local_variables= []; non_local_variables= lenv.local_variables @ lenv.non_local_variables; fun_loc=loc; fun_level= lenv.fun_level + 1 }
-  let pp ppf lenv = 
+  let _pp ppf lenv = 
     Format.fprintf ppf "local= %s@."
       (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
     Format.fprintf ppf "non_local= %s@."

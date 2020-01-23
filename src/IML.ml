@@ -83,7 +83,7 @@ module P = struct
   open Ast_builder
   let loc = Location.none
 
-  let rec type_ ty = 
+  let rec _type_ ty = 
     let open M.Type in
     match ty.desc with
     | TyString -> [%type: string]
