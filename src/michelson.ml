@@ -85,7 +85,9 @@ module Type = struct
     | TyOperation
     | TyContract of t
     | TyLambda of t * t
-  
+
+  let attribute ss t = { t with attrs= t.attrs @ ss }
+
   let mk desc = { desc ; attrs= [] }
 
   let tyString              = mk TyString

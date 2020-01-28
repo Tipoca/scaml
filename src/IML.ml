@@ -85,6 +85,13 @@ module P = struct
 
   let rec type_ ty = 
     let open M.Type in
+    let attrs = ty.attrs in
+    let add_attrs ty =
+      { ty 
+        with ptyp_attributes = 
+               List.map (fun a -> ({Location.txt=a; loc=Location.none}, PStr [])) attrs }
+    in
+    add_attrs @@
     match ty.desc with
     | TyString -> [%type: string]
     | TyNat    -> [%type: nat]
@@ -174,12 +181,12 @@ module P = struct
     | App (t, ts) -> eapply (iml t) (List.map iml ts)
     | Prim (s, _, ts) -> eapply (evar s) (List.map iml ts)
     | Let (pv, t1, t2) ->
-        (* 
-           let ty = type_ pv.typ in
-           let pv = pvar & Ident.unique_name pv.desc in
-        *)
+        let ty = type_ pv.typ in
         let pv = pvar & Ident.unique_name pv.desc in
+        [%expr let [%p pv] : [%t ty] = [%e iml t1] in [%e iml t2]]
+        (*
         [%expr let [%p pv]  = [%e iml t1] in [%e iml t2]]
+        *)
     | Switch_or (t, pv1, t1, pv2, t2) ->
         let pv1 = pvar & Ident.unique_name pv1.desc in
         let pv2 = pvar & Ident.unique_name pv2.desc in

@@ -17,6 +17,7 @@ open Spotlib.Spot
 open Asttypes
 open Typedtree
 open Tools
+open Result.Infix
     
 let if_debug = Flags.if_debug
 
@@ -166,8 +167,8 @@ let encode_by branch xs =
       ~branch
   & Binplace.place xs
       
+
 let rec type_expr tyenv ty = 
-  let open Result.Infix in
   let ty = Ctype.expand_head tyenv ty in
   match ty.desc with
   | Tvar _ when ty.level = Btype.generic_level -> Error (Type_variable ty)
@@ -202,7 +203,7 @@ let rec type_expr tyenv ty =
       in
       f [] tys >>= fun tys ->
       begin match Path.is_scaml p, tys with
-        | Some "sum", [t1; t2] -> Ok (tyOr (t1, t2))
+        | Some "sum", [t1; t2] -> Ok (attribute [":sum"] & tyOr (t1, t2))
         | Some "int", [] -> Ok (tyInt)
         | Some "nat", [] -> Ok (tyNat)
         | Some "tz",  [] -> Ok (tyMutez)
@@ -222,51 +223,77 @@ let rec type_expr tyenv ty =
         | None, _ -> 
             match Env.find_type_descrs p tyenv with
             | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
-            | [], labels ->
-                let tys = List.map (fun label ->
-                    let _, ty_arg, ty_res = 
-                      Ctype.instance_label false (* XXX I do not know what it is *)
-                        label
-                    in
-                    Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
-                    ty_arg) labels
-                in
-                Result.mapM (type_expr tyenv) tys 
-                >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
-
-            | constrs, [] ->
-                let consts, non_consts =
-                  List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
-                in
-                (* XXX use cstr_consts and cstr_nonconsts *)
-                let non_consts =
-                  match non_consts with
-                  | [] -> Ok None
-                  | _ ->
-                      let tys_list = 
-                        List.map (fun constr ->
-                            let ty_args, ty_res = Ctype.instance_constructor constr in
-                            Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
-                            ty_args
-                          ) non_consts
-                      in
-                      Result.mapM (Result.mapM (type_expr tyenv)) tys_list >>| fun tys_list ->
-                      let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
-                      Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
-                in
-                non_consts >>| fun non_consts ->
-                begin match consts, non_consts with
-                 | [], None -> assert false
-                 | [], Some t -> t
-                 | _::_, None -> tyInt
-                 | _::_, Some t -> tyOr (tyInt, t)
-                end
-
+            | [], labels -> record_type tyenv ty p labels
+            | constrs, [] -> variant_type tyenv ty p constrs >>| fun (_, _, ty) -> ty
             | _ -> assert false (* impossible *)
             | exception _ -> Error (Unsupported_data_type p)
       end
   | Tpoly (ty, []) -> type_expr tyenv ty
   | _ -> Error (Unsupported_type ty)
+
+and record_type tyenv ty p labels = 
+  (* record *)
+  let ltys = List.map (fun label ->
+      let _, ty_arg, ty_res = 
+        Ctype.instance_label false (* XXX I do not know what it is *)
+          label
+      in
+      Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
+      (label.lbl_name, ty_arg)) labels
+  in
+  Result.mapM (fun (l,ty) -> 
+      type_expr tyenv ty >>| M.Type.attribute ["%" ^ l]) ltys 
+  >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
+  >>| M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
+
+and variant_type tyenv ty p constrs = 
+  let consts, non_consts =
+    List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
+  in
+  (* XXX use cstr_consts and cstr_nonconsts *)
+  (match non_consts with
+   | [] -> Ok None
+   | _ ->
+       let ctys_list = 
+         List.map (fun constr ->
+             let ty_args, ty_res = Ctype.instance_constructor constr in
+             Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
+             (constr.cstr_name, ty_args)
+           ) non_consts
+       in
+       Result.mapM (fun (n,tys) -> 
+           Result.mapM (type_expr tyenv) tys >>| fun tys -> (n,tys)) ctys_list 
+       >>| fun ctys_list ->
+       let cty_list = List.map (fun (n,tys) -> 
+           (n, encode_by (fun ty1 ty2 -> tyPair (ty1, ty2)) tys))
+           ctys_list 
+       in
+       Some (
+         List.map fst ctys_list,
+         snd & encode_by (fun (c1,ty1) (c2,ty2) ->
+             let attr c ty = 
+               if c = "" then ty
+               else  M.Type.attribute ["%" ^ c] ty
+             in
+             ("", tyOr (attr c1 ty1, attr c2 ty2))) cty_list)) 
+  >>| fun non_consts_ty ->
+  let consts_ty = match consts with
+    | [] -> None
+    | _::_ -> 
+        let names = List.map (fun c -> c.Types.cstr_name) consts in
+        Some (names, M.Type.attribute ["%" ^ String.concat "_" names] tyInt)
+  in
+  ( consts_ty,
+    non_consts_ty,
+    M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
+    & begin match consts_ty, non_consts_ty with
+      | None, None -> assert false
+      | None, Some (_, nonconsts_ty) -> nonconsts_ty
+      | Some (_, consts_ty), None -> consts_ty
+      | Some (_, consts_ty), Some (_, non_consts_ty) -> 
+          tyOr ( consts_ty, non_consts_ty )
+      end  
+  )
 
 (* Literals *)
 
@@ -430,38 +457,26 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                     | [], _::_ -> assert false (* record cannot come here *)
                     | _::_, _::_ -> assert false
                     | constrs, [] -> 
-                        let consts, non_consts =
-                          List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
-                        in
-                        let non_consts_ty =
-                          match non_consts with
-                          | [] -> None
-                          | _ ->
-                              let tys_list = 
-                                List.map (fun constr ->
-                                    let ty_args, ty_res = Ctype.instance_constructor constr in
-                                    Ctype.unify tyenv mltyp ty_res; (* XXX should succeed *)
-                                    ty_args
-                                  ) non_consts
-                              in
-                              let tys_list = List.map (List.map (fun ty -> from_Ok & type_expr tyenv ty)) tys_list in
-                              let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
-                              Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
+                        let consts_ty, non_consts_ty, _mty =
+                          from_Ok & variant_type tyenv mltyp p constrs 
                         in
                         let rec find_constr i = function
                           | [] -> assert false
-                          | c::_ when c.Types.cstr_name = cdesc.cstr_name -> i
-                          | _::consts -> find_constr (i+1) consts
+                          | n::_ when n = cdesc.cstr_name -> i
+                          | _::names -> find_constr (i+1) names
                         in
-                        match cdesc.cstr_arity, consts, non_consts_ty with
-                        | _, [], None -> assert false
-                        | 0, [], _ -> assert false
-                        | 0, _, None  -> mkpint ~loc:gloc & find_constr 0 consts
-                        | 0, _, Some ty -> mkpleft ~loc:gloc ty & mkpint ~loc:gloc & find_constr 0 consts
+                        match cdesc.cstr_arity, consts_ty, non_consts_ty with
+                        | _, None, None -> assert false
+                        | 0, None, _ -> assert false
+                        | 0, Some (names,_), None  -> 
+                            mkpint ~loc:gloc & find_constr 0 names
+                        | 0, Some (names, _), Some (_, ty) -> 
+                            mkpleft ~loc:gloc ty 
+                            & mkpint ~loc:gloc & find_constr 0 names
                         | _, _, None -> assert false
-                        | _, _, Some ty ->
-                            let i = find_constr 0 non_consts in
-                            let sides = Binplace.path i (List.length non_consts) in
+                        | _, _, Some (names, ty) ->
+                            let i = find_constr 0 names in
+                            let sides = Binplace.path i (List.length names) in
                             let arg = encode_by (mkppair ~loc:gloc) & List.map pattern ps in
                             let rec f ty sides = match ty.M.Type.desc, sides with
                               | _, [] -> arg
@@ -469,8 +484,8 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                               | TyOr (ty1, ty2), Right::sides -> mkpright ~loc:gloc ty1 (f ty2 sides)
                               | _ -> assert false
                             in
-                            match consts with
-                            | [] -> f ty sides
+                            match consts_ty with
+                            | None -> f ty sides
                             | _ -> mkpright ~loc:gloc tyInt & f ty sides
                   end
             | _ ->  unsupported ~loc "pattern %s" cdesc.cstr_name
@@ -1275,53 +1290,42 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
         | _::_, _::_ -> assert false
 
         | constrs, [] -> 
-            let consts, non_consts =
-              List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
-            in
-            let non_consts_ty =
-              match non_consts with
-              | [] -> None
-              | _ ->
-                  let tys_list = 
-                    List.map (fun constr ->
-                        let ty_args, ty_res = Ctype.instance_constructor constr in
-                        Ctype.unify tyenv exp_type ty_res; (* XXX should succeed *)
-                        List.map (fun ty -> 
-                            Result.at_Error (fun e ->
-                                errorf ~loc "This expression has type %a.  One of its constructors %s has type %a, whose %a" 
-                                  Printtyp.type_expr exp_type 
-                                  constr.cstr_name
-                                  Printtyp.type_expr ty
-                                  pp_type_expr_error e)
-                            & type_expr tyenv ty) ty_args) non_consts
-                  in
-                  let ty_list = List.map (encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))) tys_list in
-                  Some (encode_by (fun ty1 ty2 -> tyOr (ty1, ty2)) ty_list)
+            (* XXX mty is already calculated at the beginning *)
+            let consts_ty, non_consts_ty, _mty =
+              from_Ok & variant_type tyenv exp_type p constrs 
             in
             let rec find_constr i = function
               | [] -> assert false
-              | c::_ when c.Types.cstr_name = cstr_name -> i
-              | _::consts -> find_constr (i+1) consts
+              | n::_ when n = cstr_name -> i
+              | _::names -> find_constr (i+1) names
             in
-            match cdesc.cstr_arity, consts, non_consts_ty with
-            | _, [], None -> assert false
-            | 0, [], _ -> assert false
-            | 0, _, None  -> mkint ~loc:gloc & find_constr 0 consts
-            | 0, _, Some ty -> mkleft ~loc:gloc ty & mkint ~loc:gloc & find_constr 0 consts
+            match cdesc.cstr_arity, consts_ty, non_consts_ty with
+            | _, None, None -> assert false
+            | 0, None, _ -> assert false
+            | 0, Some (names, _), None  -> 
+                (* XXX annotate constr name *)
+                mkint ~loc:gloc & find_constr 0 names
+            | 0, Some (names, _), Some (_, ty) ->
+                (* XXX annotate constr name *)
+                mkleft ~loc:gloc ty & mkint ~loc:gloc & find_constr 0 names
             | _, _, None -> assert false
-            | _, _, Some ty ->
-                let i = find_constr 0 non_consts in
-                let sides = Binplace.path i (List.length non_consts) in
+            | _, _, Some (names, ty) ->
+                let i = find_constr 0 names in
+                let sides = Binplace.path i (List.length names) in
                 let arg = encode_by (mkpair ~loc:gloc) & List.map (expression lenv) args in
                 let rec f ty sides = match ty.M.Type.desc, sides with
                   | _, [] -> arg
-                  | TyOr (ty1, ty2), Binplace.Left::sides -> mkleft ~loc:gloc ty2 (f ty1 sides)
-                  | TyOr (ty1, ty2), Right::sides -> mkright ~loc:gloc ty1 (f ty2 sides)
+                  | TyOr (ty1, ty2), Binplace.Left::sides -> 
+                      mkleft ~loc:gloc ty2 (f ty1 sides)
+                  | TyOr (ty1, ty2), Right::sides -> 
+                      mkright ~loc:gloc ty1 (f ty2 sides)
                   | _ -> assert false
                 in
-                match consts with
-                | [] -> f ty sides
-                | _ -> mkright ~loc:gloc tyInt & f ty sides
+                match consts_ty with
+                | None -> f ty sides
+                | Some (_, consts_ty) -> 
+                    (* XXX annotate constr name *)
+                    mkright ~loc:gloc consts_ty & f ty sides
       end
 
   | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false (* XXX *)
@@ -1340,269 +1344,271 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
       & type_expr tyenv mltyp 
   in
   let mk desc = { loc; typ; desc; attrs= [] } in
-  match exp_desc with
-  | Texp_ident (Path.Pident id, {loc=vloc}, _vd) -> 
-      if not (List.mem id (lenv.local_variables @ lenv.non_local_variables)) then 
-        errorf ~loc:vloc "Hey %s is not tracked!  env=%s" 
-          (Ident.unique_name id)
-          (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
-      if not (List.mem id lenv.local_variables)
-         && not (Michelson.Type.storable typ) 
-         && lenv.fun_level > 0 then
-        errorf ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
-          (Ident.name id);
-      (* if List.mem id lenv.local_variables
-           && not (Michelson.Type.storable typ) then
-          Format.eprintf "wow it is properly abstracted: ...@.";
-      *)
-      mk & Var id
-  | Texp_ident (p, {loc}, _vd) ->
-      begin match Path.is_scaml p with
-        | Some "Contract.self" ->
-            if lenv.fun_level > 0 then
-              errorf ~loc:lenv.fun_loc "Contract.self cannot freely occur in a function body except the entrypoints." 
-            else
-              mk & Var contract_self_id
-
-        | Some "Contract.create_raw" ->
-            (* SCaml.Contract.create_raw must be always applied with a string literal.
-               If we see it here, it is not.
-            *)
-            errorf ~loc "Contract.create_raw must be immediately applied with a string literal"
-        | Some n -> mk & primitive ~loc typ n []
-        | None -> unsupported ~loc "complex path %s" (Path.xname p)
-      end
-  | Texp_constant (Const_string (s, _)) -> 
-      mk & Const (String s)
-  | Texp_constant _ -> unsupported ~loc "constant"
-  | Texp_tuple [e1; e2] ->
-      let e1 = expression lenv e1 in
-      let e2 = expression lenv e2 in
-      (* tyPair (e1.typ, e2.typ) = typ *) 
-      mk & Pair (e1, e2)
-  | Texp_tuple es ->
-      Binplace.fold
-        ~leaf:(fun c -> c)
-        ~branch:(fun c1 c2 -> mk & Pair (c1, c2))
-        & Binplace.place 
-        & List.map (expression lenv) es
-
-  | Texp_construct ({loc}, c, args) -> 
-      construct lenv ~loc tyenv mltyp c args
-
-  | Texp_assert e ->
-      begin match e.exp_desc with
-      | Texp_construct (_, {cstr_name="false"}, []) ->
-          (* assert false has type 'a *)
-          mk AssertFalse
-      | _ -> mkassert ~loc & expression lenv e
-      end
-
-  | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
-  | Texp_let (Nonrecursive, vbs, e) ->
-      let lenv' = Lenv.add_locals (Typedtree.let_bound_idents vbs) lenv in
-      if not Flags.(!flags.iml_pattern_match) then begin
-        (* simple let x = e in e' *)
-        let rev_vbs =
-          List.fold_left (fun rev_vbs vb -> 
-              let _, v, e = value_binding lenv vb in
-              (v, e) :: rev_vbs) [] vbs
-        in
-        let e = expression lenv' e in
-        List.fold_left (fun e (v,def) ->
-            { loc; (* XXX inaccurate *)
-              typ= e.typ;
-              desc= Let (v, def, e);
-              attrs= [] } ) e rev_vbs
-      end else begin
-        (* let p = e and p' = e' in e''
-           =>
-           let xnew = e in match xnew with p ->
-           let xnew' = e' in match xnew' with p' -> e''
+  let e = match exp_desc with
+    | Texp_ident (Path.Pident id, {loc=vloc}, _vd) -> 
+        if not (List.mem id (lenv.local_variables @ lenv.non_local_variables)) then 
+          errorf ~loc:vloc "Hey %s is not tracked!  env=%s" 
+            (Ident.unique_name id)
+            (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
+        if not (List.mem id lenv.local_variables)
+           && not (Michelson.Type.storable typ) 
+           && lenv.fun_level > 0 then
+          errorf ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
+            (Ident.name id);
+        (* if List.mem id lenv.local_variables
+             && not (Michelson.Type.storable typ) then
+            Format.eprintf "wow it is properly abstracted: ...@.";
         *)
-        List.fold_right (fun vb e' ->
-            let { vb_pat; vb_expr } = vb in
-            let vb_expr = expression lenv vb_expr in
-            let typ = vb_expr.typ in
-            let i = create_ident "x" in
-            let x = { desc= i; typ; loc= Location.none; attrs= () } in
-            let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
-            { desc= Let (x, vb_expr, 
-                         Pmatch.compile ~loc ex [(pattern vb_pat, None, e')])
-            ; typ= e'.typ
-            ; loc
-            ; attrs= [] 
-            }
-          ) vbs & expression lenv' e
-      end
+        mk & Var id
+    | Texp_ident (p, {loc}, _vd) ->
+        begin match Path.is_scaml p with
+          | Some "Contract.self" ->
+              if lenv.fun_level > 0 then
+                errorf ~loc:lenv.fun_loc "Contract.self cannot freely occur in a function body except the entrypoints." 
+              else
+                mk & Var contract_self_id
 
-  | Texp_apply (_, []) -> assert false
+          | Some "Contract.create_raw" ->
+              (* SCaml.Contract.create_raw must be always applied with a string literal.
+                 If we see it here, it is not.
+              *)
+              errorf ~loc "Contract.create_raw must be immediately applied with a string literal"
+          | Some n -> mk & primitive ~loc typ n []
+          | None -> unsupported ~loc "complex path %s" (Path.xname p)
+        end
+    | Texp_constant (Const_string (s, _)) -> 
+        mk & Const (String s)
+    | Texp_constant _ -> unsupported ~loc "constant"
+    | Texp_tuple [e1; e2] ->
+        let e1 = expression lenv e1 in
+        let e2 = expression lenv e2 in
+        (* tyPair (e1.typ, e2.typ) = typ *) 
+        mk & Pair (e1, e2)
+    | Texp_tuple es ->
+        Binplace.fold
+          ~leaf:(fun c -> c)
+          ~branch:(fun c1 c2 -> mk & Pair (c1, c2))
+          & Binplace.place 
+          & List.map (expression lenv) es
 
-  | Texp_apply (f, args) -> 
-      let args = List.map (function
-          | (Nolabel, Some (e: Typedtree.expression)) -> expression lenv e
-          | _ -> unsupported ~loc "labeled arguments") args
-      in
-      let name = match f with
-        | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
-        | _ -> None
-      in
-      begin match name with
-      | None -> mk & App (expression lenv f, args)
-      | Some n when  String.is_prefix "Contract.create" n ->
-          mk & contract_create ~loc n args
-      | Some n -> 
-          let _fty' = 
-            List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
+    | Texp_construct ({loc}, c, args) -> 
+        construct lenv ~loc tyenv mltyp c args
+
+    | Texp_assert e ->
+        begin match e.exp_desc with
+        | Texp_construct (_, {cstr_name="false"}, []) ->
+            (* assert false has type 'a *)
+            mk AssertFalse
+        | _ -> mkassert ~loc & expression lenv e
+        end
+
+    | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
+    | Texp_let (Nonrecursive, vbs, e) ->
+        let lenv' = Lenv.add_locals (Typedtree.let_bound_idents vbs) lenv in
+        if not Flags.(!flags.iml_pattern_match) then begin
+          (* simple let x = e in e' *)
+          let rev_vbs =
+            List.fold_left (fun rev_vbs vb -> 
+                let _, v, e = value_binding lenv vb in
+                (v, e) :: rev_vbs) [] vbs
           in
-          let fty = Result.at_Error (fun e ->
-              errorf ~loc:f.exp_loc "This primitive has type %a, whose %a"
-                Printtyp.type_expr f.exp_type
-                pp_type_expr_error e)
-              & type_expr f.exp_env f.exp_type 
+          let e = expression lenv' e in
+          List.fold_left (fun e (v,def) ->
+              { loc; (* XXX inaccurate *)
+                typ= e.typ;
+                desc= Let (v, def, e);
+                attrs= [] } ) e rev_vbs
+        end else begin
+          (* let p = e and p' = e' in e''
+             =>
+             let xnew = e in match xnew with p ->
+             let xnew' = e' in match xnew' with p' -> e''
+          *)
+          List.fold_right (fun vb e' ->
+              let { vb_pat; vb_expr } = vb in
+              let vb_expr = expression lenv vb_expr in
+              let typ = vb_expr.typ in
+              let i = create_ident "x" in
+              let x = { desc= i; typ; loc= Location.none; attrs= () } in
+              let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
+              { desc= Let (x, vb_expr, 
+                           Pmatch.compile ~loc ex [(pattern vb_pat, None, e')])
+              ; typ= e'.typ
+              ; loc
+              ; attrs= [] 
+              }
+            ) vbs & expression lenv' e
+        end
+
+    | Texp_apply (_, []) -> assert false
+
+    | Texp_apply (f, args) -> 
+        let args = List.map (function
+            | (Nolabel, Some (e: Typedtree.expression)) -> expression lenv e
+            | _ -> unsupported ~loc "labeled arguments") args
+        in
+        let name = match f with
+          | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
+          | _ -> None
+        in
+        begin match name with
+        | None -> mk & App (expression lenv f, args)
+        | Some n when  String.is_prefix "Contract.create" n ->
+            mk & contract_create ~loc n args
+        | Some n -> 
+            let _fty' = 
+              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
+            in
+            let fty = Result.at_Error (fun e ->
+                errorf ~loc:f.exp_loc "This primitive has type %a, whose %a"
+                  Printtyp.type_expr f.exp_type
+                  pp_type_expr_error e)
+                & type_expr f.exp_env f.exp_type 
+            in
+            (* fty = fty' *)
+            mk & primitive ~loc:f.exp_loc fty n args
+        end
+
+    | Texp_function { arg_label= (Labelled _ | Optional _) } ->
+        unsupported ~loc "labeled arguments"
+
+    | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
+        if partial = Partial then errorf ~loc "Pattern match is partial";
+        (* name the same name of the original if possible *)
+        let i = create_ident & match cases with
+          | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 
+                                     Tpat_alias ({ pat_desc= Tpat_any }, id, _)) } } ] ->
+              Ident.name id
+          | _ -> "arg"
+        in
+        let targ, _tret = match typ.desc with
+          | TyLambda (targ, tret) -> targ, tret
+          | _ -> assert false
+        in
+        let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
+        let lenv = Lenv.add_locals [i] & Lenv.into_fun ~loc lenv in
+        let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
+        if not Flags.(!flags.iml_pattern_match) then begin
+          mkfun ~loc var & switch lenv ~loc evar cases
+        end else begin
+          (* function case1 | .. | casen
+             =>
+             fun xnew -> match xnew with case1 | .. | casen 
+          *)
+          let compile_case case = 
+            let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
+            let guard = Option.fmap (expression lenv) case.c_guard in
+            (pattern case.c_lhs, guard, expression lenv case.c_rhs)
           in
-          (* fty = fty' *)
-          mk & primitive ~loc:f.exp_loc fty n args
-      end
+          let t = Pmatch.compile ~loc evar & List.map compile_case cases in
+          mkfun ~loc var t
+        end
 
-  | Texp_function { arg_label= (Labelled _ | Optional _) } ->
-      unsupported ~loc "labeled arguments"
+    | Texp_ifthenelse (cond, then_, Some else_) -> 
+        let econd = expression lenv cond in
+        let ethen = expression lenv then_ in
+        let eelse = expression lenv else_ in
+        (* ignore (unify ethen.typ eelse.typ);
+           ignore (unify typ ethen.typ); *)
+        mk & IfThenElse (econd, ethen, Some eelse)
 
-  | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
-      if partial = Partial then errorf ~loc "Pattern match is partial";
-      (* name the same name of the original if possible *)
-      let i = create_ident & match cases with
-        | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 
-                                   Tpat_alias ({ pat_desc= Tpat_any }, id, _)) } } ] ->
-            Ident.name id
-        | _ -> "arg"
-      in
-      let targ, _tret = match typ.desc with
-        | TyLambda (targ, tret) -> targ, tret
-        | _ -> assert false
-      in
-      let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
-      let lenv = Lenv.add_locals [i] & Lenv.into_fun ~loc lenv in
-      let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
-      if not Flags.(!flags.iml_pattern_match) then begin
-        mkfun ~loc var & switch lenv ~loc evar cases
-      end else begin
-        (* function case1 | .. | casen
-           =>
-           fun xnew -> match xnew with case1 | .. | casen 
-        *)
-        let compile_case case = 
-          let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
-          let guard = Option.fmap (expression lenv) case.c_guard in
-          (pattern case.c_lhs, guard, expression lenv case.c_rhs)
+    | Texp_ifthenelse (cond, then_, None) ->
+        let econd = expression lenv cond in
+        let ethen = expression lenv then_ in
+        if ethen.typ.desc <> TyUnit then 
+          errorf ~loc:ethen.loc "";
+        mk & IfThenElse (econd, ethen, None)
+
+    | Texp_match (_, _, e::_, _) -> 
+        unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
+
+    | Texp_match (_ , _, _, Partial) -> 
+        unsupported ~loc "non exhaustive pattern match"
+
+    | Texp_match (e , cases, [], Total) -> 
+        let e = expression lenv e in
+        if not Flags.(!flags.iml_pattern_match) then begin
+          switch lenv ~loc e cases
+        end else begin
+          let compile_case case = 
+            let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
+            let guard = Option.fmap (expression lenv) case.c_guard in
+            (pattern case.c_lhs, guard, expression lenv case.c_rhs)
+          in
+          Pmatch.compile ~loc e (List.map compile_case cases)
+        end
+    | Texp_try _ -> unsupported ~loc "try-with"
+    | Texp_variant _ -> unsupported ~loc "polymorphic variant"
+
+    | Texp_record { fields; extended_expression= None; _ } -> 
+        (* I believe fields are already sorted *)
+        let es = 
+          List.map (fun (_ldesc, ldef) -> match ldef with
+              | Overridden (_, e) -> expression lenv e
+              | Kept _ -> assert false) & Array.to_list fields
         in
-        let t = Pmatch.compile ~loc evar & List.map compile_case cases in
-        mkfun ~loc var t
-      end
+        Binplace.fold
+          ~leaf:(fun c -> c)
+          ~branch:(fun c1 c2 -> mkpair ~loc:gloc c1 c2)
+        & Binplace.place es
 
-  | Texp_ifthenelse (cond, then_, Some else_) -> 
-      let econd = expression lenv cond in
-      let ethen = expression lenv then_ in
-      let eelse = expression lenv else_ in
-      (* ignore (unify ethen.typ eelse.typ);
-         ignore (unify typ ethen.typ); *)
-      mk & IfThenElse (econd, ethen, Some eelse)
-
-  | Texp_ifthenelse (cond, then_, None) ->
-      let econd = expression lenv cond in
-      let ethen = expression lenv then_ in
-      if ethen.typ.desc <> TyUnit then 
-        errorf ~loc:ethen.loc "";
-      mk & IfThenElse (econd, ethen, None)
-
-  | Texp_match (_, _, e::_, _) -> 
-      unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
-
-  | Texp_match (_ , _, _, Partial) -> 
-      unsupported ~loc "non exhaustive pattern match"
-
-  | Texp_match (e , cases, [], Total) -> 
-      let e = expression lenv e in
-      if not Flags.(!flags.iml_pattern_match) then begin
-        switch lenv ~loc e cases
-      end else begin
-        let compile_case case = 
-          let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
-          let guard = Option.fmap (expression lenv) case.c_guard in
-          (pattern case.c_lhs, guard, expression lenv case.c_rhs)
+    | Texp_record { fields; extended_expression= Some e; } ->
+        (* optimal code, I hope *)
+        (* I believe fields are already sorted *)
+        let es = 
+          List.map (fun (_ldesc, ldef) -> match ldef with
+              | Overridden (_, e) -> Some (expression lenv e)
+              | Kept _ -> None) & Array.to_list fields
         in
-        Pmatch.compile ~loc e (List.map compile_case cases)
-      end
-  | Texp_try _ -> unsupported ~loc "try-with"
-  | Texp_variant _ -> unsupported ~loc "polymorphic variant"
+        let tree = Binplace.place es in
+        let rec simplify = function
+          | Binplace.Leaf x as t -> t, x = None
+          | Branch (t1, t2) -> 
+              let t1, b1 = simplify t1 in
+              let t2, b2 = simplify t2 in
+              if b1 && b2 then Leaf None, true
+              else Branch (t1, t2), false
+        in
+        let rec f e = function
+          | Binplace.Leaf None -> e (* no override *)
+          | Leaf (Some e) -> e
+          | Branch (t1, t2) ->
+              let e1 = f (mkfst ~loc:gloc e) t1 in
+              let e2 = f (mksnd ~loc:gloc e) t2 in
+              mkpair ~loc:gloc e1 e2
+        in
+        f (expression lenv e) & fst & simplify tree
 
-  | Texp_record { fields; extended_expression= None; _ } -> 
-      (* I believe fields are already sorted *)
-      let es = 
-        List.map (fun (_ldesc, ldef) -> match ldef with
-            | Overridden (_, e) -> expression lenv e
-            | Kept _ -> assert false) & Array.to_list fields
-      in
-      Binplace.fold
-        ~leaf:(fun c -> c)
-        ~branch:(fun c1 c2 -> mkpair ~loc:gloc c1 c2)
-      & Binplace.place es
-
-  | Texp_record { fields; extended_expression= Some e; } ->
-      (* optimal code, I hope *)
-      (* I believe fields are already sorted *)
-      let es = 
-        List.map (fun (_ldesc, ldef) -> match ldef with
-            | Overridden (_, e) -> Some (expression lenv e)
-            | Kept _ -> None) & Array.to_list fields
-      in
-      let tree = Binplace.place es in
-      let rec simplify = function
-        | Binplace.Leaf x as t -> t, x = None
-        | Branch (t1, t2) -> 
-            let t1, b1 = simplify t1 in
-            let t2, b2 = simplify t2 in
-            if b1 && b2 then Leaf None, true
-            else Branch (t1, t2), false
-      in
-      let rec f e = function
-        | Binplace.Leaf None -> e (* no override *)
-        | Leaf (Some e) -> e
-        | Branch (t1, t2) ->
-            let e1 = f (mkfst ~loc:gloc e) t1 in
-            let e2 = f (mksnd ~loc:gloc e) t2 in
-            mkpair ~loc:gloc e1 e2
-      in
-      f (expression lenv e) & fst & simplify tree
-
-  | Texp_field (e, _, label) ->
-      let pos = label.lbl_pos in
-      let nfields = Array.length label.lbl_all in
-      if_debug (fun () -> Format.eprintf "field %d %s of %d @." pos label.lbl_name nfields);
-      let e = expression lenv e in
-      let rec f e = function
-        | [] -> e
-        | Binplace.Left  :: dirs -> f (mkfst ~loc:gloc e) dirs
-        | Binplace.Right :: dirs -> f (mksnd ~loc:gloc e) dirs
-      in
-      f e & Binplace.path pos nfields
-  | Texp_sequence (e1, e2) -> mk & Seq ( expression lenv e1, expression lenv e2 )
-  | Texp_setfield _ -> unsupported ~loc "record field set"
-  | Texp_array _ -> unsupported ~loc "array"
-  | Texp_while _ -> unsupported ~loc "while-do-done"
-  | Texp_for _ -> unsupported ~loc "for-do-done"
-  | Texp_send _ -> unsupported ~loc "method call"
-  | Texp_new _ -> unsupported ~loc "new"
-  | Texp_instvar _ -> unsupported ~loc "class instance variable"
-  | Texp_setinstvar _ -> unsupported ~loc "class instance variable set"
-  | Texp_override _ -> unsupported ~loc "override"
-  | Texp_letmodule _ -> unsupported ~loc "let-module"
-  | Texp_letexception _ -> unsupported ~loc "let-exception"
-  | Texp_lazy _ -> unsupported ~loc "lazy"
-  | Texp_object _ -> unsupported ~loc "object"
-  | Texp_pack _ -> unsupported ~loc "first class module"
-  | Texp_extension_constructor _ -> unsupported ~loc "open variant"
-  | Texp_unreachable -> unsupported ~loc "this type of expression"
+    | Texp_field (e, _, label) ->
+        let pos = label.lbl_pos in
+        let nfields = Array.length label.lbl_all in
+        if_debug (fun () -> Format.eprintf "field %d %s of %d @." pos label.lbl_name nfields);
+        let e = expression lenv e in
+        let rec f e = function
+          | [] -> e
+          | Binplace.Left  :: dirs -> f (mkfst ~loc:gloc e) dirs
+          | Binplace.Right :: dirs -> f (mksnd ~loc:gloc e) dirs
+        in
+        f e & Binplace.path pos nfields
+    | Texp_sequence (e1, e2) -> mk & Seq ( expression lenv e1, expression lenv e2 )
+    | Texp_setfield _ -> unsupported ~loc "record field set"
+    | Texp_array _ -> unsupported ~loc "array"
+    | Texp_while _ -> unsupported ~loc "while-do-done"
+    | Texp_for _ -> unsupported ~loc "for-do-done"
+    | Texp_send _ -> unsupported ~loc "method call"
+    | Texp_new _ -> unsupported ~loc "new"
+    | Texp_instvar _ -> unsupported ~loc "class instance variable"
+    | Texp_setinstvar _ -> unsupported ~loc "class instance variable set"
+    | Texp_override _ -> unsupported ~loc "override"
+    | Texp_letmodule _ -> unsupported ~loc "let-module"
+    | Texp_letexception _ -> unsupported ~loc "let-exception"
+    | Texp_lazy _ -> unsupported ~loc "lazy"
+    | Texp_object _ -> unsupported ~loc "object"
+    | Texp_pack _ -> unsupported ~loc "first class module"
+    | Texp_extension_constructor _ -> unsupported ~loc "open variant"
+    | Texp_unreachable -> unsupported ~loc "this type of expression"
+  in
+  { e with typ }
 
 and primitive ~loc fty n args =
   match n with

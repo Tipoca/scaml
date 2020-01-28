@@ -33,7 +33,9 @@ module PatVar : sig
 end
 
 module Attr : sig
-  type t = Comment of string
+  type t = 
+    | Comment of string
+
   type ts = t list
       
   val add : t -> ('a, ts) with_loc_and_type -> ('a, ts) with_loc_and_type

@@ -78,6 +78,8 @@ module Type : sig
   val to_micheline : t -> Mline.t
                             
   val storable : t -> bool
+    
+  val attribute : string list -> t -> t
 end
 
 module rec Constant : sig
