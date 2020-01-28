@@ -77,7 +77,10 @@ module Type : sig
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
                             
-  val storable : t -> bool
+  val validate : t -> (unit, (t * string)) Result.t
+  val is_comparable : t -> bool
+  val is_packable : t -> bool
+  val is_parameterable : t -> bool
     
   val attribute : string list -> t -> t
 end

@@ -152,6 +152,7 @@ type type_expr_error =
   | Type_variable of Types.type_expr
   | Unsupported_type of Types.type_expr
   | Unsupported_data_type of Path.t
+  | Invalid_michelson of M.Type.t * string
 
 let pp_type_expr_error ppf = function
   | Type_variable ty -> 
@@ -160,6 +161,8 @@ let pp_type_expr_error ppf = function
       Format.fprintf ppf "type %a is not supported in SCaml." Printtyp.type_expr ty
   | Unsupported_data_type p ->
       Format.fprintf ppf "data type %s is not supported in SCaml." (Path.name p)
+  | Invalid_michelson (mty, s) ->
+      Format.fprintf ppf "Michelson type %a is invalid: %s" M.Type.pp mty s
 
 let encode_by branch xs =
   Binplace.fold 
@@ -169,67 +172,74 @@ let encode_by branch xs =
       
 
 let rec type_expr tyenv ty = 
-  let ty = Ctype.expand_head tyenv ty in
-  match ty.desc with
-  | Tvar _ when ty.level = Btype.generic_level -> Error (Type_variable ty)
-  | Tvar _ ->
-      (* Non generalized type variable.  We are brave enough to unify it with Unit *)
-      Ctype.unify tyenv ty Predef.type_unit; (* must succeed *)
-      type_expr tyenv ty
-  | Tarrow (Nolabel, f, t, _) -> 
-      type_expr tyenv f >>= fun f ->
-      type_expr tyenv t >>= fun t -> 
-      Ok (tyLambda (f, t))
-  | Ttuple [t1; t2] -> 
-      type_expr tyenv t1 >>= fun t1 ->
-      type_expr tyenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
-  | Ttuple tys -> 
-      Result.mapM (type_expr tyenv) tys 
-      >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
-  | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
-  | Tconstr (p, [t], _) when p = Predef.path_list -> 
-      type_expr tyenv t >>= fun t -> Ok (tyList t)
-  | Tconstr (p, [t], _) when p = Predef.path_option -> 
-      type_expr tyenv t >>= fun t -> Ok (tyOption t)
-  | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
-  | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
-  | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes)
-  | Tconstr (p, tys, _) ->
-      let rec f res = function
-        | [] -> Ok (List.rev res)
-        | ty::tys ->
-            type_expr tyenv ty >>= fun ty -> 
-            f (ty::res) tys
-      in
-      f [] tys >>= fun tys ->
-      begin match Path.is_scaml p, tys with
-        | Some "sum", [t1; t2] -> Ok (attribute [":sum"] & tyOr (t1, t2))
-        | Some "int", [] -> Ok (tyInt)
-        | Some "nat", [] -> Ok (tyNat)
-        | Some "tz",  [] -> Ok (tyMutez)
-        | Some "set"         , [ty]       -> Ok (tySet ty)
-        | Some "map"         , [ty1; ty2] -> Ok (tyMap (ty1, ty2))
-        | Some "big_map"     , [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
-        | Some "operation"   , []         -> Ok (tyOperation)
-        | Some "contract"    , [ty]       -> Ok (tyContract ty)
-        | Some "timestamp"   , []         -> Ok (tyTimestamp)
-        | Some "address"     , []         -> Ok (tyAddress)
-        | Some "key"         , []         -> Ok (tyKey)
-        | Some "signature"   , []         -> Ok (tySignature)
-        | Some "key_hash"    , []         -> Ok (tyKeyHash)
-        | Some "bytes"       , []         -> Ok (tyBytes)
-        | Some "chain_id"    , []         -> Ok (tyChainID)
-        | Some _, _ -> Error (Unsupported_data_type p)
-        | None, _ -> 
-            match Env.find_type_descrs p tyenv with
-            | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
-            | [], labels -> record_type tyenv ty p labels
-            | constrs, [] -> variant_type tyenv ty p constrs >>| fun (_, _, ty) -> ty
-            | _ -> assert false (* impossible *)
-            | exception _ -> Error (Unsupported_data_type p)
-      end
-  | Tpoly (ty, []) -> type_expr tyenv ty
-  | _ -> Error (Unsupported_type ty)
+  let rec fn tyenv ty = 
+    let ty = Ctype.expand_head tyenv ty in
+    match ty.desc with
+    | Tvar _ when ty.level = Btype.generic_level -> Error (Type_variable ty)
+    | Tvar _ ->
+        (* Non generalized type variable.  We are brave enough to unify it with Unit *)
+        Ctype.unify tyenv ty Predef.type_unit; (* must succeed *)
+        fn tyenv ty
+    | Tarrow (Nolabel, f, t, _) -> 
+        fn tyenv f >>= fun f ->
+        fn tyenv t >>= fun t -> 
+        Ok (tyLambda (f, t))
+    | Ttuple [t1; t2] -> 
+        fn tyenv t1 >>= fun t1 ->
+        fn tyenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
+    | Ttuple tys -> 
+        Result.mapM (fn tyenv) tys 
+        >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
+    | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
+    | Tconstr (p, [t], _) when p = Predef.path_list -> 
+        fn tyenv t >>= fun t -> Ok (tyList t)
+    | Tconstr (p, [t], _) when p = Predef.path_option -> 
+        fn tyenv t >>= fun t -> Ok (tyOption t)
+    | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
+    | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
+    | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes)
+    | Tconstr (p, tys, _) ->
+        let rec f res = function
+          | [] -> Ok (List.rev res)
+          | ty::tys ->
+              fn tyenv ty >>= fun ty -> 
+              f (ty::res) tys
+        in
+        f [] tys >>= fun tys ->
+        begin match Path.is_scaml p, tys with
+          | Some "sum", [t1; t2] -> Ok (attribute [":sum"] & tyOr (t1, t2))
+          | Some "int", [] -> Ok (tyInt)
+          | Some "nat", [] -> Ok (tyNat)
+          | Some "tz",  [] -> Ok (tyMutez)
+          | Some "set"         , [ty]       -> Ok (tySet ty)
+          | Some "map"         , [ty1; ty2] -> Ok (tyMap (ty1, ty2))
+          | Some "big_map"     , [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
+          | Some "operation"   , []         -> Ok (tyOperation)
+          | Some "contract"    , [ty]       -> Ok (tyContract ty)
+          | Some "timestamp"   , []         -> Ok (tyTimestamp)
+          | Some "address"     , []         -> Ok (tyAddress)
+          | Some "key"         , []         -> Ok (tyKey)
+          | Some "signature"   , []         -> Ok (tySignature)
+          | Some "key_hash"    , []         -> Ok (tyKeyHash)
+          | Some "bytes"       , []         -> Ok (tyBytes)
+          | Some "chain_id"    , []         -> Ok (tyChainID)
+          | Some _, _ -> Error (Unsupported_data_type p)
+          | None, _ -> 
+              match Env.find_type_descrs p tyenv with
+              | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
+              | [], labels -> record_type tyenv ty p labels
+              | constrs, [] -> variant_type tyenv ty p constrs >>| fun (_, _, ty) -> ty
+              | _ -> assert false (* impossible *)
+              | exception _ -> Error (Unsupported_data_type p)
+        end
+    | Tpoly (ty, []) -> fn tyenv ty
+    | _ -> Error (Unsupported_type ty)
+  in
+  fn tyenv ty >>= fun mty ->
+  (* double check type invariants in Michelson *)
+  match M.Type.validate mty with
+  | Ok () -> Ok mty
+  | Error (mty', mes) -> Error (Invalid_michelson (mty', mes))
 
 and record_type tyenv ty p labels = 
   (* record *)
@@ -987,7 +997,7 @@ module Pmatch = struct
                 (freevars action)
                 (if vars = [] then [] else List.tl (List.rev vars)) (* the last one cannot be free inside the body *)
             in
-            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.storable ty) fvs 
+            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ty) fvs 
           in
           let _must_expand = not & IdTys.is_empty nonstorables in
           (* It's inefficient for the storage, but we do not want to get troubled 
@@ -1351,7 +1361,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
             (Ident.unique_name id)
             (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
         if not (List.mem id lenv.local_variables)
-           && not (Michelson.Type.storable typ) 
+           && not (Michelson.Type.is_packable typ) 
            && lenv.fun_level > 0 then
           errorf ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
             (Ident.name id);

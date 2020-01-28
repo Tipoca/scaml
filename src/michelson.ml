@@ -146,20 +146,98 @@ module Type = struct
 
   and pp fmt t = Mline.pp fmt & to_micheline t
 
-  let rec storable ty = match ty.desc with
-    | TyContract _ | TyOperation | TyBigMap _ -> false
+  let rec validate ty = 
+    let open Result.Infix in
+    let rec f ty = match ty.desc with
+      | TyBigMap (k, v) ->
+          f k >>= fun () -> f v >>= fun () ->
+          if not (is_comparable k) then
+            Error (ty, "big_map's key type must be comparable")
+          else if not (is_packable v) then
+            Error (ty, "big_map's value type must be packable")
+          else 
+            Ok ()
+            
+      | TySet e ->
+          f e >>= fun () ->
+          if not (is_comparable e) then 
+            Error (ty, "set's element type must be comparable")
+          else
+            Ok ()
 
-    | TyLambda (_t1, _t2) -> true (* XXX I beieve. (i.e. not sure) *)
+      | TyMap (k, v) ->
+          f k >>= fun () -> f v >>= fun () ->
+          if not (is_comparable k) then
+            Error (ty, "map's key type must be comparable")
+          else 
+            Ok ()
+         
+      | TyContract p ->
+          f p >>= fun () ->
+          if not (is_parameterable p) then
+            Error (ty, "contract's parameter type cannot contain operation")
+          else
+            Ok ()
+          
+      | (TyList ty | TyOption ty) -> f ty
+      | (TyPair (ty1, ty2) | TyOr (ty1, ty2) | TyLambda (ty1, ty2)) -> 
+          f ty1 >>= fun () -> f ty2
 
-    | TyList t | TyOption t | TySet t -> storable t
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit | TyMutez
+      | TyKeyHash | TyTimestamp | TyAddress |TyChainID | TyKey | TySignature
+      | TyOperation -> Ok ()
+    in
+    f ty
+      
+  and is_comparable ty = 
+    let rec f ty = match ty.desc with
+      | TyBigMap _ | TyChainID | TyContract _ | TyKey 
+      | TyLambda _ | TyList _ | TyMap _ | TyOperation
+      | TyOption _ | TyOr _ | TySet _ | TySignature | TyUnit -> false
+        
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyMutez 
+      | TyKeyHash | TyTimestamp | TyAddress -> true
+        
+      | TyPair (ty1, ty2) -> f ty1 && f ty2 (* since 005_Babylon *)
+    in
+    f ty
+      
+  and is_packable ty =
+    (* ~allow_big_map:false
+       ~allow_operation:false
+       ~allow_contract:legacy
+    *)
+    let rec f ty = match ty.desc with
+      | TyBigMap _ -> false
+      | TyOperation -> false
+      | TyContract _ -> false
+      | TyLambda (_t1, _t2) -> true
+      | TyList t | TyOption t | TySet t -> f t
+      | TyPair (t1, t2) | TyOr (t1, t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+      | TyKey | TySignature -> true
+    in
+    f ty
+      
+  and is_parameterable ty = 
+      (* ~allow_big_map:true
+         ~allow_operation:false
+         ~allow_contract:true
+      *)
+    let rec f ty = match ty.desc with
+      | TyBigMap _ -> true
+      | TyOperation -> false
+      | TyContract _ -> true
 
-    | TyPair (t1, t2) | TyOr (t1, t2)
-    | TyMap (t1, t2) -> storable t1 && storable t2
-
-    | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
-    | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
-    | TyKey | TySignature -> true
-
+      | TyList t | TyOption t | TySet t -> f t
+      | TyLambda (_t1, _t2) -> true
+      | TyPair (t1, t2) | TyOr (t1, t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+      | TyKey | TySignature -> true
+    in
+    f ty
 end
 
 module rec Constant : sig
