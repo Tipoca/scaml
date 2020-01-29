@@ -4,7 +4,7 @@
 (*                                                                        *)
 (*                       Jun Furuse, DaiLambda, Inc.                      *)
 (*                                                                        *)
-(*                     Copyright 2019  DaiLambda, Inc.                    *)
+(*                   Copyright 2019,2020  DaiLambda, Inc.                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -36,7 +36,7 @@ let init () =
           internal_error ~loc:Location.none "Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e)
     in
     Clflags.include_dirs := !Clflags.include_dirs @ [dir];
-    List.iter (fun s -> prerr_endline @@ "Include: " ^ s) !Clflags.include_dirs
+    (* List.iter (fun s -> prerr_endline @@ "Include: " ^ s) !Clflags.include_dirs *)
   end
   
 let implementation sourcefile outputprefix _modulename (str, _coercion) =

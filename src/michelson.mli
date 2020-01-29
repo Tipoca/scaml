@@ -4,7 +4,7 @@
 (*                                                                        *)
 (*                       Jun Furuse, DaiLambda, Inc.                      *)
 (*                                                                        *)
-(*                     Copyright 2019  DaiLambda, Inc.                    *)
+(*                   Copyright 2019,2020  DaiLambda, Inc.                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -77,7 +77,12 @@ module Type : sig
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
                             
-  val storable : t -> bool
+  val validate : t -> (unit, (t * string)) Result.t
+  val is_comparable : t -> bool
+  val is_packable : t -> bool
+  val is_parameterable : t -> bool
+    
+  val attribute : string list -> t -> t
 end
 
 module rec Constant : sig
@@ -183,6 +188,7 @@ and Opcode : sig
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
   val clean_failwith : t list -> t list
+  val dip_1_drop_n_compaction : t list -> t list
 end
 
 module Module : sig

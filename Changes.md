@@ -1,3 +1,8 @@
+# 1.0.2
+
+* Fixed typos of messages
+* Fixed OPAM version constraints
+
 # 1.0.1
 
 ## Language
@@ -26,3 +31,7 @@
 # 1.0.0
 
 Initial release
+
+# 1.0.1
+
+* Free occurrences of variables of types with `contract`, `operation`, and `big_map` in function abstractions are 

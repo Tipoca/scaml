@@ -4,7 +4,7 @@
 (*                                                                        *)
 (*                       Jun Furuse, DaiLambda, Inc.                      *)
 (*                                                                        *)
-(*                     Copyright 2019  DaiLambda, Inc.                    *)
+(*                   Copyright 2019,2020  DaiLambda, Inc.                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -117,7 +117,7 @@ let optimize t =
                 (* let x = e1 in e2 => e2[e1/x] *)
                 add_attrs & f t2
 
-            | Some 1 when IdTys.for_all (fun (_, ty) -> Michelson.Type.storable ty) (freevars t1) ->
+            | Some 1 when IdTys.for_all (fun (_, ty) -> Michelson.Type.is_packable ty) (freevars t1) ->
                 (* let x = e1 in e2 => e2[e1/x] *)
                 (* contract_self_id must not be inlined into LAMBDAs *)
                 (* XXX This is adhoc *)

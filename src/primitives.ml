@@ -4,7 +4,7 @@
 (*                                                                        *)
 (*                       Jun Furuse, DaiLambda, Inc.                      *)
 (*                                                                        *)
-(*                     Copyright 2019  DaiLambda, Inc.                    *)
+(*                   Copyright 2019,2020  DaiLambda, Inc.                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -18,20 +18,40 @@
 module M = Michelson
 open M.Opcode
 open M.Type
+open Tools
+open Spotlib.Spot
 
-let simple os = fun _ty pre -> pre @ os
+let simple ~loc:_ os = fun _ty pre -> pre @ os
+
+let rec args ty = function
+  | 0 -> []
+  | n ->
+      match ty.desc with
+      | TyLambda (ty1, ty2) -> ty1 :: args ty2 (n-1)
+      | _ -> assert false
+  
+let comparison ~loc os ty pre = 
+  match args ty 2 with
+  | [ty1; _ty2] -> (* ty1 == ty2 *)
+      if not & M.Type.is_comparable ty1 then
+        errorf ~loc "Comparison operator takes a non comparable type %a"
+          M.Type.pp ty1;
+      pre @ os
+  | _ -> assert false
 
 let primitives = 
   [ "fst"     , (1, simple [CAR])
   ; "snd"     , (1, simple [CDR])
+
   (* XXXX comparable type check *)
-  ; "compare" , (2, simple [COMPARE])
-  ; "="       , (2, simple [COMPARE; EQ])
-  ; "<>"      , (2, simple [COMPARE; NEQ])
-  ; "<"       , (2, simple [COMPARE; LT])
-  ; ">"       , (2, simple [COMPARE; GT])
-  ; "<="      , (2, simple [COMPARE; LE])
-  ; ">="      , (2, simple [COMPARE; GE])
+  ; "compare" , (2, comparison [COMPARE])
+  ; "="       , (2, comparison [COMPARE; EQ])
+  ; "<>"      , (2, comparison [COMPARE; NEQ])
+  ; "<"       , (2, comparison [COMPARE; LT])
+  ; ">"       , (2, comparison [COMPARE; GT])
+  ; "<="      , (2, comparison [COMPARE; LE])
+  ; ">="      , (2, comparison [COMPARE; GE])
+
   ; "+"       , (2, simple [ADD])
   ; "+^"      , (2, simple [ADD])
   ; "+$"      , (2, simple [ADD])
@@ -60,7 +80,7 @@ let primitives =
   ; "lnot"         , (1, simple [NOT])
 
   ; "List.length"  , (1, simple [SIZE])
-  ; "List.map"     , (2, fun _typ xs ->
+  ; "List.map"     , (2, fun ~loc:_ _typ xs ->
 (* lambda : map : S              SWAP ;
    { hd; <tl> } : lambda : S     MAP {
      hd : lambda : S              DIP DUP
@@ -82,7 +102,7 @@ let primitives =
         ])
 
 
-  ; "List.fold_left"    , (3, fun _typ xs -> 
+  ; "List.fold_left"    , (3, fun ~loc:_ _typ xs -> 
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
@@ -104,7 +124,7 @@ let primitives =
           DIP (1, [ DROP 1])
         ])
 
-  ; "List.fold_left'"    , (3, fun _typ xs -> 
+  ; "List.fold_left'"    , (3, fun ~loc:_ _typ xs -> 
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
@@ -123,14 +143,14 @@ let primitives =
           DIP (1, [ DROP 1])
         ])
 
-  ; "List.rev", (1, fun ty xs -> 
+  ; "List.rev", (1, fun ~loc:_ ty xs -> 
         match ty.desc with
         | TyLambda ({ desc= TyList ty }, { desc= TyList _ty' }) ->
             (* ty = _ty' *)
             xs @ [DIP (1, [NIL ty]); ITER [CONS]]
         | _ -> assert false)
 
-  ; "Set.empty", (0, fun typ xs ->
+  ; "Set.empty", (0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
         | TySet ty -> [EMPTY_SET ty]
@@ -140,7 +160,7 @@ let primitives =
   ; "Set.mem"     , (2, simple [MEM])
   ; "Set.update"  , (3, simple [UPDATE])
 
-  ; "Set.fold"    , (3, fun _typ xs -> 
+  ; "Set.fold"    , (3, fun ~loc:_ _typ xs -> 
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -166,7 +186,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
       
-  ; "Set.fold'"    , (3, fun _typ xs -> 
+  ; "Set.fold'"    , (3, fun ~loc:_ _typ xs -> 
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -186,7 +206,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
       
-  ; "Loop.left"    , (2, fun typ xs -> 
+  ; "Loop.left"    , (2, fun ~loc:_ typ xs -> 
         let rty =
           match typ.desc with
           | TyLambda (_, { desc= TyLambda(_, rty) }) -> rty
@@ -216,7 +236,7 @@ let primitives =
   ; "Bytes.concat",    (2, simple [CONCAT])
   ; "Bytes.length",    (1, simple [SIZE]) 
 
-  ; "Map.empty", (0, fun typ xs ->
+  ; "Map.empty", (0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
         | TyMap (ty1,ty2) -> [EMPTY_MAP (ty1, ty2)]
@@ -227,7 +247,7 @@ let primitives =
   ; "Map.mem", (2, simple [MEM])
   ; "Map.update", (3, simple [UPDATE])
 
-  ; "Map.map", (2, fun _typ xs ->
+  ; "Map.map", (2, fun ~loc:_ _typ xs ->
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
@@ -256,7 +276,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.map'", (2, fun _typ xs ->
+  ; "Map.map'", (2, fun ~loc:_ _typ xs ->
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
@@ -276,7 +296,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.fold"    , (3, fun _typ xs -> 
+  ; "Map.fold"    , (3, fun ~loc:_ _typ xs -> 
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -307,7 +327,7 @@ let primitives =
         ])
       
 
-  ; "Map.fold'"    , (3, fun _typ xs -> 
+  ; "Map.fold'"    , (3, fun ~loc:_ _typ xs -> 
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -334,7 +354,7 @@ let primitives =
 
   (* big map *)
 
-  ; "BigMap.empty", (0, fun typ xs ->
+  ; "BigMap.empty", (0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
         | TyBigMap (ty1,ty2) -> [EMPTY_BIG_MAP (ty1, ty2)]
@@ -343,18 +363,28 @@ let primitives =
   ; "BigMap.mem", (2, simple [MEM])
   ; "BigMap.update", (3, simple [UPDATE])
                
-  ; "Obj.pack", (1, simple [ PACK ])
+  ; "Obj.pack", (1, fun ~loc ty pre ->
+        match args ty 1 with
+        | [ aty ] ->
+            if not & M.Type.is_packable aty then
+              errorf ~loc "Obj.pack cannot take a non packable type %a"
+                M.Type.pp aty;
+            pre @ [ PACK ]
+        | _ -> assert false)
 
-  ; "Obj.unpack", (1, fun ty xs ->
+  ; "Obj.unpack", (1, fun ~loc ty xs ->
       match ty.desc with
       | TyLambda (_, { desc= TyOption ty }) ->
+          if not & M.Type.is_packable ty then
+            errorf ~loc "Obj.unpack cannot unpack to a non packable type %a"
+              M.Type.pp ty;
           xs @ [ UNPACK ty ]
       | _ -> assert false)
       
   ; "String.slice", (3, simple [ SLICE ])
   ; "Bytes.slice", (3, simple [ SLICE ]) (* XXX not tested *)
                    
-  ; "Contract.contract", (1, fun ty xs ->
+  ; "Contract.contract", (1, fun ~loc:_ ty xs ->
         match ty.desc with
         | TyLambda (_, { desc= TyOption ({ desc= TyContract ty }) }) ->
             xs @ [ CONTRACT ty ]

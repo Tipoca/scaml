@@ -4,7 +4,7 @@
 (*                                                                        *)
 (*                       Jun Furuse, DaiLambda, Inc.                      *)
 (*                                                                        *)
-(*                     Copyright 2019  DaiLambda, Inc.                    *)
+(*                   Copyright 2019,2020  DaiLambda, Inc.                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -55,15 +55,32 @@ let var ~loc env id = match Env.find id env with
   | Some (n,_typ) ->
       [ COMMENT( "var " ^ Ident.unique_name id, [ DIG n; DUP; DUG (n+1) ]) ] 
 
+(* Field annotation cannot appear at the first level of type tree.
+   The followings are rejectred:
+   
+   PUSH (nat %nat) 1
+   RIGHT (string %Vote) 
+*)
+let clean_field_annot typ = 
+  let attrs = List.filter (fun s ->
+      match s with
+      | "" -> false
+      | s when s.[0] = '%' -> false
+      | _ -> true) typ.attrs 
+  in
+  { typ with attrs }
+
 let rec compile env t = match constant t with
   | None -> compile' env t 
-  | Some c -> [ PUSH (t.IML.typ, c) ]
+  | Some c -> 
+      [ PUSH (clean_field_annot t.IML.typ, c) ]
     
 and compile' env t = 
   let os = desc env t in 
   let comments = 
     List.filter_map (function
-        | IML.Attr.Comment s -> Some s
+        | IML.Attr.Comment s when !Flags.flags.scaml_debug -> Some s
+        | _ -> None
       ) t.IML.attrs
   in
   match comments with
@@ -75,13 +92,14 @@ and desc env t =
   match t.IML.desc with
   | IML.Set _ -> errorf ~loc "Set elements must be constants"
   | Map _ -> errorf ~loc "Map bindings must be constants"
-  | Const c -> [ PUSH (t.typ, c) ]
+  | Const c -> 
+      [ PUSH (clean_field_annot t.typ, c) ]
   | Nil -> 
       let ty = match t.typ.desc with
         | TyList ty -> ty
         | _ -> assert false
       in
-      [ NIL ty ]
+      [ NIL (clean_field_annot ty) ]
   | Cons (t1, t2) -> 
       let os2 = compile env t2 in
       let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
@@ -91,7 +109,7 @@ and desc env t =
         | TyOption ty -> ty
         | _ -> assert false
       in
-      [ NONE ty ]
+      [ NONE (clean_field_annot ty) ]
   | IML_Some t1 -> 
       let os1 = compile env t1 in
       os1 @ [ SOME ]
@@ -101,14 +119,14 @@ and desc env t =
         | _ -> assert false
       in
       let os = compile env t' in
-      os @ [ LEFT ty ]
+      os @ [ LEFT (clean_field_annot ty) ]
   | Right t' -> 
       let ty = match t.typ.desc with
         | TyOr (ty, _) -> ty
         | _ -> assert false
       in
       let os = compile env t' in
-      os @ [ RIGHT ty ]
+      os @ [ RIGHT (clean_field_annot ty) ]
   | Unit -> [ UNIT ]
 
   | Var id -> var ~loc env id
@@ -196,7 +214,7 @@ and desc env t =
                   let env = [p.desc,p.typ] in
                   let o = compile env body in
                   let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP 1 ]) ]) ] in
-                  [ LAMBDA (ty1, ty2, o @ clean) ]
+                  [ LAMBDA (clean_field_annot ty1, clean_field_annot ty2, o @ clean) ]
               | _ -> 
                   (* fvars: x1:ty1 :: x2:ty2 :: .. :: xn:tyn 
 
@@ -230,7 +248,7 @@ and desc env t =
                     in
                     let len = List.length fvars in
                     let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP (len + 1) ]) ]) ] in
-                    LAMBDA (ity, ty2, extractor @ compile env body @ clean)
+                    LAMBDA (clean_field_annot ity, clean_field_annot ty2, extractor @ compile env body @ clean)
                   in
                   let partial_apply =
                     (* Apply fvars from xn to x1 *)
@@ -412,3 +430,4 @@ let structure t =
   ; COMMENT ("entry point", os )
   ; COMMENT ("final clean up", [ DIP (1, [ DROP (List.length env) ]) ])]
   |> clean_failwith
+  |> dip_1_drop_n_compaction

@@ -4,7 +4,7 @@
 (*                                                                        *)
 (*                       Jun Furuse, DaiLambda, Inc.                      *)
 (*                                                                        *)
-(*                     Copyright 2019  DaiLambda, Inc.                    *)
+(*                   Copyright 2019,2020  DaiLambda, Inc.                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -85,6 +85,13 @@ module P = struct
 
   let rec type_ ty = 
     let open M.Type in
+    let attrs = ty.attrs in
+    let add_attrs ty =
+      { ty 
+        with ptyp_attributes = 
+               List.map (fun a -> ({Location.txt=a; loc=Location.none}, PStr [])) attrs }
+    in
+    add_attrs @@
     match ty.desc with
     | TyString -> [%type: string]
     | TyNat    -> [%type: nat]
@@ -110,6 +117,8 @@ module P = struct
     | TyOperation -> [%type: operation]
     | TyContract t -> [%type: [%t type_ t] contract]
     | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
+
+  let _type = type_
 
   let rec constant = 
     let open M.Constant in
@@ -172,12 +181,12 @@ module P = struct
     | App (t, ts) -> eapply (iml t) (List.map iml ts)
     | Prim (s, _, ts) -> eapply (evar s) (List.map iml ts)
     | Let (pv, t1, t2) ->
-        (* 
-           let ty = type_ pv.typ in
-           let pv = pvar & Ident.unique_name pv.desc in
-        *)
+        let ty = type_ pv.typ in
         let pv = pvar & Ident.unique_name pv.desc in
+        [%expr let [%p pv] : [%t ty] = [%e iml t1] in [%e iml t2]]
+        (*
         [%expr let [%p pv]  = [%e iml t1] in [%e iml t2]]
+        *)
     | Switch_or (t, pv1, t1, pv2, t2) ->
         let pv1 = pvar & Ident.unique_name pv1.desc in
         let pv2 = pvar & Ident.unique_name pv2.desc in
@@ -350,7 +359,7 @@ let check_unstorable t =
   | Fun _ ->
       begin try
         IdTys.iter (fun (id, ty) ->
-         if not & Michelson.Type.storable ty then
+         if not & Michelson.Type.is_packable ty then
            raise (E.Found (id, ty)))
         & freevars t;
         Ok ()
