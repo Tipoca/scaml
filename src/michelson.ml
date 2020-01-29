@@ -390,6 +390,7 @@ and Opcode : sig
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
   val clean_failwith : t list -> t list
+  val dip_1_drop_n_compaction : t list -> t list
 end = struct
 
   type module_ = 
@@ -524,8 +525,8 @@ end = struct
   
       | EXEC -> !"EXEC"
       | FAILWITH -> !"FAILWITH"
-      | COMMENT (s, ts) ->
-          add_comment (Some s) & seq (List.map f ts)
+      | COMMENT (s, [t]) -> add_comment (Some s) & f t
+      | COMMENT (s, ts) -> add_comment (Some s) & seq (List.map f ts)
       | IF_LEFT (t1, t2) ->
           prim "IF_LEFT" [ seq & List.map f t1;
                            seq & List.map f t2 ]
@@ -659,6 +660,48 @@ end = struct
     | Left t -> Left (constant t)
     | Right t -> Right (constant t)
     | (Unit | Bool _ | Int _ | String _ | Bytes _ | Timestamp _ | Option None as c) -> c
+
+  let dip_1_drop_n_compaction ts =
+    let rec loop n comments = function
+      | DIP (1, [DROP m]) :: ts -> loop (n + m) comments ts
+      | COMMENT (c, [DIP (1, [DROP m])]) :: ts -> loop (n + m) (c :: comments) ts
+      | ts when n > 0 -> 
+          if comments <> [] then
+            COMMENT (String.concat ", " (List.rev comments),
+                     [ DIP (1, [DROP n]) ]) :: loop 0 [] ts
+          else
+            DIP (1, [DROP n]) :: loop 0 [] ts
+      | [] -> []
+      | t :: ts -> 
+          let t' = match t with
+            | DIP (n, ts) -> DIP (n, loop 0 [] ts)
+            | LAMBDA (t1, t2, ts) -> LAMBDA (t1, t2, loop 0 [] ts)
+            | IF (ts1, ts2) -> IF (loop 0 [] ts1, loop 0 [] ts2)
+            | IF_NONE (ts1, ts2) -> IF_NONE (loop 0 [] ts1, loop 0 [] ts2)
+            | IF_LEFT (ts1, ts2) -> IF_LEFT (loop 0 [] ts1, loop 0 [] ts2)
+            | IF_CONS (ts1, ts2) -> IF_CONS (loop 0 [] ts1, loop 0 [] ts2)
+            | COMMENT (c, ts) -> COMMENT (c, loop 0 [] ts)
+            | ITER ts -> ITER (loop 0 [] ts)
+            | MAP ts -> ITER (loop 0 [] ts)
+            | LOOP ts -> LOOP (loop 0 [] ts)
+            | LOOP_LEFT ts -> LOOP_LEFT (loop 0 [] ts)
+
+            | DUP | DIG _ | DUG _ | DROP _ | SWAP | PAIR | ASSERT | CAR | CDR
+            | LEFT _ | RIGHT _ | APPLY | PUSH _ | NIL _ | CONS | NONE _
+            | SOME | COMPARE | EQ | LT | LE | GT | GE | NEQ
+            | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
+            | AND | OR | XOR | NOT | EXEC | FAILWITH | UNIT
+            | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
+            | SIZE | MEM | UPDATE | CONCAT | SELF | GET
+            | RENAME _ | PACK | UNPACK _ | SLICE | CAST 
+            | CONTRACT _ | TRANSFER_TOKENS | SET_DELEGATE | CREATE_ACCOUNT
+            | CREATE_CONTRACT _ | IMPLICIT_ACCOUNT | NOW | AMOUNT | BALANCE
+            | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
+            | SOURCE | SENDER | ADDRESS | CHAIN_ID -> t
+          in
+          t' :: loop 0 [] ts
+    in
+    loop 0 [] ts
 end
 
 module Module = struct

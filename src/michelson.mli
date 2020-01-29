@@ -188,6 +188,7 @@ and Opcode : sig
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
   val clean_failwith : t list -> t list
+  val dip_1_drop_n_compaction : t list -> t list
 end
 
 module Module : sig

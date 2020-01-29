@@ -430,3 +430,4 @@ let structure t =
   ; COMMENT ("entry point", os )
   ; COMMENT ("final clean up", [ DIP (1, [ DROP (List.length env) ]) ])]
   |> clean_failwith
+  |> dip_1_drop_n_compaction
