@@ -111,7 +111,7 @@ let mkfst ~loc e =
     | TyPair (ty, _) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "fst" Primitives.primitives) (tyLambda (e.typ, ty)) in
+  let prim = snd (List.assoc "fst" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
   mke ~loc ty (Prim ("fst", prim, [e]))
 
 let mksnd ~loc e =
@@ -119,14 +119,14 @@ let mksnd ~loc e =
     | TyPair (_, ty) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "snd" Primitives.primitives) (tyLambda (e.typ, ty)) in
+  let prim = snd (List.assoc "snd" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
   mke ~loc ty (Prim ("snd", prim, [e]))
 
 let mkleft ~loc ty e = mke ~loc (tyOr (e.typ, ty)) (Left e)
 let mkright ~loc ty e = mke ~loc (tyOr (ty, e.typ)) (Right e)
 
 let mkeq ~loc e1 e2 =
-  let prim = snd (List.assoc "=" Primitives.primitives) 
+  let prim = snd (List.assoc "=" Primitives.primitives) ~loc
              & tyLambda (e1.typ, tyLambda (e2.typ, tyBool)) in
   mke ~loc tyBool (Prim ("=", prim, [e1; e2]))
 
@@ -404,8 +404,10 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
       (* quoted string *)
       mk (P.Constr (Cnstr.Constant (C.String s), []))
 
-  | Tpat_constant _ -> unsupported ~loc "constant pattern of type %s"
-                         (Format.sprintf "%a" Printtyp.type_scheme mltyp)
+  | Tpat_constant _ -> 
+      (* Since the numbers are variant wrapped, i.e. Int 32 *)
+      unsupported ~loc "constant pattern of type %s"
+        (Format.sprintf "%a" Printtyp.type_scheme mltyp)
 
   | Tpat_or (p1, p2, None)   -> mk & P.Or (pattern p1, pattern p2)
 
@@ -437,11 +439,9 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
             mk & P.Constr (Cnstr.Constant (C.String s), [])
         | "Key_hash", TyKeyHash, [_] -> unsupported ~loc "Key_hash can only take a string constant"
 
-
         | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             mk & P.Constr (Cnstr.Constant (C.String s), [])
         | "Address", TyAddress, [_] -> unsupported ~loc "Address can only take a string constant"
-
 
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_timestamp s with
@@ -965,19 +965,23 @@ module Pmatch = struct
   
       | Switch (v, cases, Some d) ->
           (* all cases must be about constants with infinite members *)
-          if not & List.for_all (function (Cnstr.Constant _, [], _) -> true
-                                        | (Constant _, _, _) -> assert false
-                                        | (c, _, _) -> 
-                                            if_debug (fun () -> prerr_endline (Cnstr.to_string c));
-                                            false) cases
+          if 
+            not & List.for_all (function
+             | (Cnstr.Constant _, [], _) -> true
+             | (Constant _, _, _) -> assert false
+             | (c, _, _) -> 
+                 if_debug (fun () -> prerr_endline (Cnstr.to_string c));
+                 false) cases
           then assert false;
           List.fold_right (fun case telse ->
               match case with 
               | (Cnstr.Constant c, [], t) ->
+                  (* XXX comparable check *)
                   let t = f t in
-                  mke ~loc:noloc aty & IfThenElse (mkeq ~loc:noloc (mkvar ~loc:noloc v) 
-                                                     (mke ~loc:noloc (snd v) & Const c),
-                                        t, Some telse)
+                  mke ~loc:noloc aty 
+                  & IfThenElse (mkeq ~loc:noloc (mkvar ~loc:noloc v) 
+                                  (mke ~loc:noloc (snd v) & Const c),
+                                t, Some telse)
               | _ -> assert false) cases  & f d
     in
     f t
@@ -1631,12 +1635,7 @@ and primitive ~loc fty n args =
             unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
           let args, left = List.split_at arity args in
           match left with
-          | [] -> 
-              (* Bit tricky.  fty will be unified and its closure info will be
-                 modified.  The changes will be fixed when [conv fty] is used
-                 in compile.ml
-              *)
-              Prim (n, conv fty, args)
+          | [] -> Prim (n, conv ~loc fty, args)
           | _ -> 
               let typ = 
                 let rec f ty = function
@@ -1650,7 +1649,7 @@ and primitive ~loc fty n args =
               in
               App ({ loc; (* XXX inaccurate *)
                      typ;
-                     desc= Prim (n, conv fty, args);
+                     desc= Prim (n, conv ~loc fty, args);
                      attrs= [] }, left)
 
 and switch lenv ~loc:loc0 e cases =
@@ -1943,6 +1942,10 @@ let compile_global_entry ty_storage ty_return node =
           | { desc= TyLambda (t1, _); _ } -> t1
           | _ -> assert false
         in
+        if not (M.Type.is_parameterable param_type) then begin
+          errorf ~loc:var.loc "The entry point has a contract parameter of %a which is not parameterable.  It cannot conatin operation.@." 
+            M.Type.pp param_type
+        end;
         let param_var = mkvar ~loc:noloc (param_id, param_type) in
         (* <var> <param_var> <e_storage> *)
         Attr.add (Attr.Comment ("entry " ^ Ident.unique_name id))
@@ -1963,6 +1966,14 @@ let compile_global_entry ty_storage ty_return node =
   in
   let param_id = Ident.create "global_param" in
   let e, param_typ = f param_id node in
+
+  (* This is the last defence.  We should check it earlier where the locations 
+     are known. *)
+  if not (M.Type.is_parameterable param_typ) then begin
+    errorf ~loc:noloc "Contract's parameter type %a is not parameterable.  It cannot conatin operation.@." 
+      M.Type.pp param_typ
+  end;
+
   let param_pat = mkp ~loc:noloc param_typ param_id in
   let f1 = mkfun ~loc:noloc pat_storage e in
   mkfun ~loc:noloc param_pat f1
