@@ -37,6 +37,7 @@ end
 module Attr = struct
   type t = 
     | Comment of string
+    | Annot of string
   
   type ts = t list
   

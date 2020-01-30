@@ -35,6 +35,7 @@ end
 module Attr : sig
   type t = 
     | Comment of string
+    | Annot of string
 
   type ts = t list
       

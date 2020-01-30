@@ -1981,7 +1981,8 @@ let compile_global_entry ty_storage ty_return node =
 let add_self self_typ t =
   (* let __contract_id = SELF in t *)
   (* This variable must not be inlined *)
-  mklet ~loc:noloc
+  Attr.add (Attr.Annot "not_expand")
+  & mklet ~loc:noloc
     { desc= contract_self_id; typ= self_typ; loc= Location.none; attrs= () }
     (mke ~loc:noloc self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
     t
