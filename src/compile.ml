@@ -425,9 +425,9 @@ let structure t =
   let p2, t = get_abst t in
   let env = ((p2.desc,p2.typ)::(p1.desc,p1.typ)::env) in
   let os = compile env t in
-  [ COMMENT ("defs", if ops = [] then [] else [DIP (1, ops)]) 
+  [ COMMENT ("top defs", if ops = [] then [] else [DIP (1, ops)]) 
   ; COMMENT ("entry point init", [DUP ; CDR; DIP (1, [CAR])])
-  ; COMMENT ("entry point", os )
+  ; COMMENT ("entry point code", os )
   ; COMMENT ("final clean up", [ DIP (1, [ DROP (List.length env) ]) ])]
   |> clean_failwith
   |> dip_1_drop_n_compaction
