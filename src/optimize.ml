@@ -118,7 +118,7 @@ let optimize t =
                 (* let x = e1 in e2 => e2[e1/x] *)
                 add_attrs & f t2
 
-            | Some 1 when IdTys.for_all (fun (_, ty) -> Michelson.Type.is_packable ty) (freevars t1) && not not_expand ->
+            | Some 1 when IdTys.for_all (fun (_, ty) -> Michelson.Type.is_packable ~legacy:false ty) (freevars t1) && not not_expand ->
                 (* let x = e1 in e2 => e2[e1/x] *)
                 (* contract_self_id must not be inlined into LAMBDAs *)
                 (* XXX This is adhoc *)
