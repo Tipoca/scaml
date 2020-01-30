@@ -366,7 +366,7 @@ let primitives =
   ; "Obj.pack", (1, fun ~loc ty pre ->
         match args ty 1 with
         | [ aty ] ->
-            if not & M.Type.is_packable aty then
+            if not & M.Type.is_packable ~legacy:true aty then
               errorf ~loc "Obj.pack cannot take a non packable type %a"
                 M.Type.pp aty;
             pre @ [ PACK ]
@@ -375,7 +375,7 @@ let primitives =
   ; "Obj.unpack", (1, fun ~loc ty xs ->
       match ty.desc with
       | TyLambda (_, { desc= TyOption ty }) ->
-          if not & M.Type.is_packable ty then
+          if not & M.Type.is_packable ~legacy:false ty then
             errorf ~loc "Obj.unpack cannot unpack to a non packable type %a"
               M.Type.pp ty;
           xs @ [ UNPACK ty ]

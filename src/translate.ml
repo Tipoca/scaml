@@ -1001,7 +1001,7 @@ module Pmatch = struct
                 (freevars action)
                 (if vars = [] then [] else List.tl (List.rev vars)) (* the last one cannot be free inside the body *)
             in
-            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ty) fvs 
+            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ~legacy:false ty) fvs 
           in
           let _must_expand = not & IdTys.is_empty nonstorables in
           (* It's inefficient for the storage, but we do not want to get troubled 
@@ -1365,7 +1365,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
             (Ident.unique_name id)
             (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
         if not (List.mem id lenv.local_variables)
-           && not (Michelson.Type.is_packable typ) 
+           && not (Michelson.Type.is_packable ~legacy:false typ) 
            && lenv.fun_level > 0 then
           errorf ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
             (Ident.name id);
@@ -1981,7 +1981,8 @@ let compile_global_entry ty_storage ty_return node =
 let add_self self_typ t =
   (* let __contract_id = SELF in t *)
   (* This variable must not be inlined *)
-  mklet ~loc:noloc
+  Attr.add (Attr.Annot "not_expand")
+  & mklet ~loc:noloc
     { desc= contract_self_id; typ= self_typ; loc= Location.none; attrs= () }
     (mke ~loc:noloc self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
     t

@@ -153,7 +153,7 @@ module Type = struct
           f k >>= fun () -> f v >>= fun () ->
           if not (is_comparable k) then
             Error (ty, "big_map's key type must be comparable")
-          else if not (is_packable v) then
+          else if not (is_packable ~legacy:false v) then
             Error (ty, "big_map's value type must be packable")
           else 
             Ok ()
@@ -190,6 +190,7 @@ module Type = struct
     f ty
       
   and is_comparable ty = 
+    (* See Script_ir_translator.parse_comparable_ty *)
     let rec f ty = match ty.desc with
       | TyBigMap _ | TyChainID | TyContract _ | TyKey 
       | TyLambda _ | TyList _ | TyMap _ | TyOperation
@@ -202,15 +203,14 @@ module Type = struct
     in
     f ty
       
-  and is_packable ty =
-    (* ~allow_big_map:false
-       ~allow_operation:false
-       ~allow_contract:legacy
+  and is_packable ~legacy ty =
+    (* leagcy: allow to pack contracts for hash/signature checks 
+       See Script_ir_translator.I_PACK case.
     *)
     let rec f ty = match ty.desc with
       | TyBigMap _ -> false
       | TyOperation -> false
-      | TyContract _ -> false
+      | TyContract _ -> legacy
       | TyLambda (_t1, _t2) -> true
       | TyList t | TyOption t | TySet t -> f t
       | TyPair (t1, t2) | TyOr (t1, t2) | TyMap (t1, t2) -> f t1 && f t2

@@ -180,14 +180,21 @@ let parameter =
                                 ; dest= Contract.implicit_account (Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx")
                                 }
              }
-  ; sigs= [ Some (Signature "edsigu4chLHh7rDAUxHyifHYTJyuS8zybSSFQ5eSXydXD7PWtHXrpeS19ds3hA587p5JNjyJcZbLx8QtemuJBEFkLyzjAhTjjta"); None ]
+  (* signature is obtained by 
+
+     tezos-client sign bytes 0x0507070707002a050507070080897a0a00000016000002298c03ed7d454a101eb7022bc95f7e5f41ac7807070a00000016011d23c1d3d2f8a4ea5e8784b8f7ecf2ad304c0fe6000a000000047a06a770 for bootstrap1
+     
+     The binary is obtained by app_multisig_target.ml
+  *)
+  ; sigs= [ Some (Signature "edsigtteMcYkviZ3rTaM6N7DWvgsyoTmEHGo91Q63qNJNYXFhTwWzmytanUj8G44aEZ8QDJt3myyxjuVwvRMikSJauZ96AvshWJ"); None ]
   }
 
 let storage = 
   { stored_counter= Nat 42
   ; threshold= Nat 1
-  ; keys= [ Key "edpkuSR6ywqsk17myFVRcw2eXhVib2MeLc9D1QkEQb98ctWUBwSJpF"
-          ; Key "edpkuSR6ywqsk17myFVRcw2eXhVib2MeLc9D1QkEQb98ctWUBwSJpF"
+    (* keys are obtained from public_keys of sandboxed node *)
+  ; keys= [ Key "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav" (* bootstrap1 *)
+          ; Key "edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9" (* bootstrap2 *)
           ]
   }
   

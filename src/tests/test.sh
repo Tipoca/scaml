@@ -41,10 +41,13 @@ function compile () {
 # Input: <code>
 # Output: CONVERSION
 function convert () {
+    echo "converting $1 ..."
     tmp=`mktemp`
     echo "open SCaml" > $tmp
     echo "let x = $1" >> $tmp
+    cat $tmp
     CONVERSION=$($COMP --scaml-convert -impl $tmp | sed -e 's/^x: //')
+    echo "converted to $CONVERSION"
 }
 
 # Input <ML> <TZ>
@@ -62,7 +65,7 @@ function run () {
     if [ -z "$storage" ]; then
 	storage='Unit'
     else
-	storage=`echo $storage | sed -e 's/.*STORAGE=//'`
+	storage=`echo "$storage" | sed -e 's/.*STORAGE=//'`
 	convert "$storage"
 	storage=$CONVERSION
     fi
@@ -81,14 +84,15 @@ function run () {
     
     $TEZOS_CLIENT typecheck script $tz
 
-    echo Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input
+    # Really weird but --source is to set SENDER and --payer to set SOURCE
+    echo Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input --source bootstrap1 --payer bootstrap2
 
     if [ -z "$must_fail" ]; then
-	$TEZOS_CLIENT run script $tz on storage "$storage" and input "$input"
+	$TEZOS_CLIENT run script $tz on storage "$storage" and input "$input" --source bootstrap1 --payer bootstrap2
     else
 	echo THIS TEST MUST FAIL
 	if
-    	    $TEZOS_CLIENT run script $tz on storage "$storage" and input "$input"
+    	    $TEZOS_CLIENT run script $tz on storage "$storage" and input "$input" --source bootstrap1 --payer bootstrap2
 	then
 	    echo "Error: TEST UNEXPECTEDLY SUCCEEEDED"; exit 2
 	else
