@@ -206,8 +206,10 @@ let main () =
     (* SCaml *)
     ; "--scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
       "Print SCaml debug messages"
-    ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_convert = true })),
+    ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := set_mode !flags Convert)),
       "Convert types and values, instead of compling a smart contract"
+    ; "--scaml-revert", Arg.String (fun s -> Flags.(flags := set_mode !flags (Revert s))),
+      "Revert values, instead of compling a smart contract"
     ; "--scaml-noscamlib", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_noscamlib = true })),
       "Do not add default directory for SCamlib to the list of include directories"
     ; "--scaml-version", Arg.Unit (fun () -> 

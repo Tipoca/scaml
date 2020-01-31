@@ -197,7 +197,7 @@ let rec type_expr tyenv ty =
         fn tyenv t >>= fun t -> Ok (tyOption t)
     | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
     | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
-    | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes)
+    (* | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes) *)
     | Tconstr (p, tys, _) ->
         let rec f res = function
           | [] -> Ok (List.rev res)

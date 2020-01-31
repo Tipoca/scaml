@@ -83,9 +83,19 @@ let convert _sourcefile _outputprefix _modulename (str, _coercion) =
                     Format.printf "%s: @[<2>%a@]@." (Ident.name id) M.Constant.pp c
           end) ts
     
+let revert m _sourcefile _outputprefix _modulename (str, _coercion) =
+  match File.to_string m with
+  | Error (`Exn e) -> raise e
+  | Ok m ->
+      match Revert.do_revert str m with
+      | Error e -> failwith e
+      | Ok parsetree -> 
+          Format.eprintf "%a@." Pprintast.expression parsetree
+
 let compile sourcefile outputprefix modulename (typedtree, coercion) =
-  let f = 
-    if !Flags.flags.scaml_convert then convert
-    else implementation
+  let f = match !Flags.flags.scaml_mode with
+    | None | Some Compile -> implementation
+    | Some Convert -> convert
+    | Some (Revert s) -> revert s
   in
   f sourcefile outputprefix modulename (typedtree, coercion)

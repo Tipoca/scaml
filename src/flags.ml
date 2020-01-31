@@ -16,18 +16,28 @@ open Spotlib.Spot
 
 open Ocaml_conv.Default
 
-type t = 
+type mode =
+  | Compile
+  | Convert
+  | Revert of string
+
+and t = 
   { iml_optimization : bool
   ; iml_pattern_match : bool
   ; scaml_debug : bool
-  ; scaml_convert : bool
+  ; scaml_mode : mode option
   ; scaml_noscamlib : bool
   ; dump_iml0 : bool
   ; dump_iml : bool
   } [@@deriving conv{ocaml}]
 
 let pp = Camlon.Ocaml.format_with ocaml_of_t
-      
+
+let set_mode t m =
+  match t.scaml_mode with
+  | None -> { t with scaml_mode = Some m }
+  | Some _ -> failwith "You cannot change SCaml running mode twice"
+
 let eval flags (k, v) =
   let must_be_a_bool () = Error "attribute type error: must be a bool" in
   match String.concat "." & Longident.flatten k, v with
@@ -37,8 +47,12 @@ let eval flags (k, v) =
   | "iml_pattern_match", _ -> must_be_a_bool ()
   | "scaml_debug", `Bool b -> Ok { flags with scaml_debug= b }
   | "scaml_debug", _ -> must_be_a_bool ()
-  | "scaml_convert", `Bool b -> Ok { flags with scaml_convert= b }
-  | "scaml_convert", _ -> must_be_a_bool ()
+(*
+  | "scaml_convert", `Unit -> set_mode flags Convert
+  | "scaml_convert", _ -> must_be_a_unit ()
+  | "scaml_revert", `String s -> set_mode flags (Revert s)
+  | "scaml_revert", _ -> must_be_a_unit ()
+*)
   | "scaml_noscamlib", `Bool b -> Ok { flags with scaml_noscamlib= b }
   | "scaml_noscamlib", _ -> must_be_a_bool ()
   | "dump_iml0", `Bool b -> Ok { flags with dump_iml0= b }
@@ -51,7 +65,7 @@ let flags = ref
     { iml_optimization  = true
     ; iml_pattern_match = true 
     ; scaml_debug       = begin try ignore (Sys.getenv "SCAML_DEBUG"); true with _ -> false end 
-    ; scaml_convert     = false
+    ; scaml_mode        = None
     ; scaml_noscamlib   = false
     ; dump_iml0         = false
     ; dump_iml          = false
