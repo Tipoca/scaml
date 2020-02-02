@@ -1,3 +1,12 @@
+# 1.0.3
+
+* Field and constructor annotations in output Michelson code
+* Very rough implementation of --scaml-revert, which is to revert SCaml expression from a Michelson value and its SCaml type.
+* Checks for comparable, packable, and parameterable types.
+* Fixed the compilation of SELF by introducing Annot "not_expand" not to expand let-def.
+* Michelson optimziation : DIP { DROP } x n => DIP { DROP n }
+* Introduce docker file
+
 # 1.0.2
 
 * Fixed typos of messages
