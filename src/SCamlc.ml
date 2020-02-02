@@ -18,26 +18,40 @@ open Tools
 module M = Michelson
 
 let init () =
-  if not !Flags.flags.scaml_noscamlib then begin
-    (* exec opam config var prefix *)
-    let dir = match 
-        let open Command in
-        exec ["opam"; "config"; "var"; "prefix"]
-        |> stdout
-        |> wait
-        |> must_exit_with 0
-      with
-      | dir::_ -> String.chop_eols dir ^/ "lib/scaml"
-      | [] ->  
-          internal_error ~loc:Location.none "Command 'opam config var prefix' answered nothing"
-      | exception (Failure s) -> 
-          internal_error ~loc:Location.none "Command 'opam config var prefix' has failed: %s" s
-      | exception e ->
-          internal_error ~loc:Location.none "Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e)
-    in
-    Clflags.include_dirs := !Clflags.include_dirs @ [dir];
-    (* List.iter (fun s -> prerr_endline @@ "Include: " ^ s) !Clflags.include_dirs *)
-  end
+  (* If --scaml-noscamlib is specified, None.
+
+    If SCAMLLIB is specified, SCAMLLIB is chosen.
+
+    Otherwise, `opam config var prefix`/lib/scaml is used.
+    If `opam config var prefix` does not print a directory nor crashes,
+    scamlc prints out a warning and continues with None
+  *)
+  let scamllib =
+    if !Flags.flags.scaml_noscamlib then None
+    else 
+      match Sys.getenv "SCAMLIB" with
+      | dir -> Some dir
+      | exception Not_found ->
+          (* exec opam config var prefix *)
+          match 
+            let open Command in
+            exec ["opam"; "config"; "var"; "prefix"]
+            |> stdout
+            |> wait
+            |> must_exit_with 0
+          with
+          | dir::_ -> Some (String.chop_eols dir ^/ "lib/scaml")
+          | [] ->  
+              Format.eprintf "Warning: Command 'opam config var prefix' answered nothing@."; None
+          | exception (Failure s) -> 
+              Format.eprintf "Warning: Command 'opam config var prefix' has failed: %s" s; None
+          | exception e ->
+              Format.eprintf "Warning: Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e); None
+                
+  in
+  match scamllib with
+  | None -> ()
+  | Some dir -> Clflags.include_dirs := !Clflags.include_dirs @ [dir]
   
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   let parameter, storage, t = Translate.implementation sourcefile str in

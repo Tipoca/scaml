@@ -82,3 +82,15 @@ Boo
 
 Note that the values must be constants.  Constructors and types can refer to types
 defined in other modules, as far as they are already compiled to `.cmi` files.
+
+## Where to find "SCamlib" module
+
+To compile smart contracts, you need to use `SCaml` module which declares the primitives for them.  The module `SCaml` is seeked in directories in the following order:
+
+* In the current directory.
+* Directories specified by `-I <dir>` option.
+* If `--scaml-noscamlib` is not specified:
+    * Directory specified by the environment variable `SCAMLIB`.
+	* If `SCAMLIB` is not speicified, directory `` `opam config var prefix`/lib/scaml``.
+
+
