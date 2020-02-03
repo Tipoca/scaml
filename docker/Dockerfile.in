@@ -72,4 +72,5 @@ RUN du -sh /usr /scaml /root /var
 RUN SCAMLIB=/scaml/_opam/lib/scaml /scaml/_opam/bin/scamlc /scaml/src/tests/app_vote.ml && echo OK
 ENV SCAMLIB /scaml/_opam/lib/scaml
 ENV PATH /scaml/_opam/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WORKDIR /root
 CMD [ "scamlc", "--scaml-version"  ]

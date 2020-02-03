@@ -9,4 +9,5 @@ if [ -z $COMMIT ]; then
 fi
 
 sed -e "s/@COMMIT@/$COMMIT/g" Dockerfile.in > Dockerfile
+echo docker build --squash=true -t dailambda/scaml:$COMMIT .
 docker build --squash=true -t dailambda/scaml:$COMMIT .
