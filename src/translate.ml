@@ -18,7 +18,7 @@ open Asttypes
 open Typedtree
 open Tools
 open Result.Infix
-    
+
 let if_debug = Flags.if_debug
 
 module M = Michelson
@@ -345,7 +345,9 @@ let constructions_by_string =
 
 let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
   let typ = 
-    Result.at_Error (fun e -> errorf ~loc "This pattern has type %a.  It contains %a" Printtyp.type_expr mltyp pp_type_expr_error e) 
+    Result.at_Error (fun e -> 
+        errorf_type_expr ~loc "This pattern has type %a.  It contains %a" 
+          Printtyp.type_expr mltyp pp_type_expr_error e) 
     & type_expr tyenv mltyp 
   in
   let mk loc id typ = { loc; desc=id; typ; attrs= () } in
@@ -373,7 +375,9 @@ let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
   let gloc = Location.ghost loc in
   let typ = 
-    Result.at_Error (fun e -> errorf ~loc "This pattern has type %a.  It contains %a" Printtyp.type_expr mltyp pp_type_expr_error e) 
+    Result.at_Error (fun e -> errorf_type_expr ~loc 
+                        "This pattern has type %a.  It contains %a" 
+                        Printtyp.type_expr mltyp pp_type_expr_error e) 
     & type_expr tyenv mltyp 
   in
   let mk desc = { loc; desc; typ; attrs= () } in
@@ -430,34 +434,38 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "false", TyBool, [] -> mk (P.Constr (Cnstr.Bool false, []))
         | "Int", TyInt, [{pat_desc= Tpat_constant (Const_int n)}] ->
             mk & P.Constr (Cnstr.Constant (C.Int (Z.of_int n)), [])
-        | "Int", TyInt, [_] -> errorf ~loc "Int can only take an integer constant"
+        | "Int", TyInt, [_] -> 
+            errorf_constant ~loc "Int can only take an integer constant"
         | "Nat", TyNat, [{pat_desc= Tpat_constant (Const_int n)}] ->
             if n < 0 then 
-              errorf ~loc "Nat can only take a positive integer constant";
+              errorf_constant ~loc "Nat can only take a positive integer constant";
             mk & P.Constr (Cnstr.Constant (C.Int (Z.of_int n)), [])
-        | "Nat", TyNat, [_] -> errorf ~loc "Nat can only take an integer constant"
-        | _, TyMutez, [_] -> errorf ~loc "tz constant cannot be used as a pattern"
+        | "Nat", TyNat, [_] -> 
+            errorf_constant ~loc "Nat can only take an integer constant"
+        | _, TyMutez, [_] -> errorf_constant ~loc "tz constant cannot be used as a pattern"
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             mk & P.Constr (Cnstr.Constant (C.String s), [])
         | "Key_hash", TyKeyHash, [_] -> unsupported ~loc "Key_hash can only take a string constant"
 
         | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             mk & P.Constr (Cnstr.Constant (C.String s), [])
-        | "Address", TyAddress, [_] -> unsupported ~loc "Address can only take a string constant"
+        | "Address", TyAddress, [_] -> 
+            errorf_constant ~loc "Address can only take a string constant"
 
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_timestamp s with
-              | Error _e -> errorf ~loc "strange arguments for Timestamp" 
+              | Error _e -> errorf_constant ~loc "strange arguments for Timestamp" 
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
         | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
 
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_bytes s with
-              | Error _e -> errorf ~loc "strange arguments for Bytes" 
+              | Error _e -> errorf_constant ~loc "strange arguments for Bytes" 
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
-        | "Bytes", TyBytes, [_] -> unsupported ~loc "Bytes can only take a string constant"
+        | "Bytes", TyBytes, [_] -> 
+            errorf_constant ~loc "Bytes can only take a string constant"
                                      
         | _, _, _ ->
             
@@ -465,7 +473,9 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
               | Tconstr (p, _, _) ->
                   begin match Env.find_type_descrs p tyenv with
                     | [], [] -> 
-                        errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
+                        errorf_type_expr ~loc 
+                          "Abstract data type %s is not supported in SCaml" 
+                          (Path.name p)
                     | [], _::_ -> assert false (* record cannot come here *)
                     | _::_, _::_ -> assert false
                     | constrs, [] -> 
@@ -525,7 +535,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                   | (n, typ)::labels, _ ->
                       let typ = 
                         Result.at_Error (fun e -> 
-                            errorf ~loc "This pattern has a field %s with type %a, whose %a" 
+                            errorf_type_expr ~loc "This pattern has a field %s with type %a, whose %a" 
                               n 
                               Printtyp.type_expr typ
                               pp_type_expr_error e) 
@@ -545,12 +555,12 @@ let attr_has_entry_point =
   List.find_map_opt (function
       | ({ txt = "entry"; loc }, payload) -> 
           begin match Attribute.parse_options_in_payload "entry" ~loc payload with
-            | _::_::_ -> errorf ~loc "@entry cannot specify more than one options"
+            | _::_::_ -> errorf_entry ~loc "@entry cannot specify more than one options"
             | [] -> Some (loc, None)
             | [{txt=Longident.Lident "name"}, `Constant (Parsetree.Pconst_string (s, _))] ->
                 Some (loc, Some s)
-            | [{txt=Longident.Lident "name"}, _] -> errorf ~loc "@entry can take only a string literal"
-            | [_, _] -> errorf ~loc "@entry can take at most one name=<name> binding"
+            | [{txt=Longident.Lident "name"}, _] -> errorf_entry ~loc "@entry can take only a string literal"
+            | [_, _] -> errorf_entry ~loc "@entry can take at most one name=<name> binding"
           end
       | _ -> None)
   
@@ -1113,13 +1123,13 @@ end
 let rec list_elems e = match e.desc with
   | Cons (e,es) -> e :: list_elems es
   | Nil -> []
-  | _ -> errorf ~loc:e.loc "List is expected"
+  | _ -> errorf_constant ~loc:e.loc "List is expected"
 
 let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   let gloc = Location.ghost loc in
   let typ = 
     Result.at_Error (fun e ->
-        errorf ~loc "This has type %a, whose %a" Printtyp.type_expr exp_type pp_type_expr_error e)
+        errorf_type_expr ~loc "This has type %a, whose %a" Printtyp.type_expr exp_type pp_type_expr_error e)
     & type_expr tyenv exp_type 
   in
   let make typ desc = { loc; typ; desc; attrs= [] } in
@@ -1186,7 +1196,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
           in
           match arg.exp_desc with
             | Texp_constant (Const_int n) -> Const (Int (Z.of_int n))
-            | _ -> errorf ~loc "Int can only take an integer constant"
+            | _ -> errorf_constant ~loc "Int can only take an integer constant"
         end
 
   | Tconstr (p, [], _), TyNat when Path.is_scaml_dot "nat" p ->
@@ -1198,9 +1208,9 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
         match arg.exp_desc with
           | Texp_constant (Const_int n) -> 
               if n < 0 then 
-                errorf ~loc "Nat can only take a positive integer constant";
+                errorf_constant ~loc "Nat can only take a positive integer constant";
               Const (Int (Z.of_int n))
-          | _ -> errorf ~loc "Nat can only take an integer constant"
+          | _ -> errorf_constant ~loc "Nat can only take an integer constant"
       end
 
   | Tconstr (p, [], _), TyMutez when Path.is_scaml_dot "tz" p ->
@@ -1219,22 +1229,22 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                   for i = 0 to String.length s - 1 do
                     match String.unsafe_get s i with
                     | '0'..'9' -> ()
-                    | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
+                    | _ -> errorf_constant ~loc "%s: Tz can only take simple decimal floats" f
                   done
                 in
                 all_dec dec;
                 all_dec sub;
                 let sub = 
                   if String.length sub > 6 then 
-                    errorf ~loc "%s: the smallest expressive franction of tz is micro" f;
+                    errorf_constant ~loc "%s: the smallest expressive franction of tz is micro" f;
 
                   sub ^ String.init (6 - String.length sub) (fun _ -> '0')
                 in
                 Const (Int (Z.of_string (dec ^ sub)))
               with
-              | _ -> errorf ~loc "%s: Tz can only take simple decimal floats" f
+              | _ -> errorf_constant ~loc "%s: Tz can only take simple decimal floats" f
             end
-          | _ -> errorf ~loc "Nat can only take an integer constant"
+          | _ -> errorf_constant ~loc "Nat can only take an integer constant"
       end
 
   (* set *)
@@ -1267,7 +1277,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
             let kvs = List.map (fun e -> match e.desc with
                 | Pair (k,v) -> (k,v)
                 | _ -> 
-                    errorf ~loc:e.loc "Map binding must be a pair expression")
+                    errorf_constant ~loc:e.loc "Map binding must be a pair expression")
                 es
             in
             { loc; typ; desc= Map kvs; attrs= [] }
@@ -1293,15 +1303,15 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                     | Const (String s) -> 
                         begin match parse s with
                           | Ok v -> { e with typ; desc= Const v }
-                          | Error s -> errorf ~loc "Parse error of %s string: %s" tyname s
+                          | Error s -> errorf_constant ~loc "Parse error of %s string: %s" tyname s
                         end
-                    | _ -> errorf ~loc "%s only takes a string literal" cname
+                    | _ -> errorf_constant ~loc "%s only takes a string literal" cname
       end
 
   | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
       begin match Env.find_type_descrs p tyenv with
         | [], [] -> 
-            errorf ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
+            errorf_type_expr ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
         | [], _::_ -> assert false (* record cannot come here *)
         | _::_, _::_ -> assert false
 
@@ -1353,23 +1363,23 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
   begin match attr_has_entry_point exp_attributes with
     | None -> ()
     | Some (loc, _) ->
-        errorf ~loc "entry declaration is only allowed for the toplevel definitions";
+        errorf_entry ~loc "entry declaration is only allowed for the toplevel definitions";
   end;
   let typ = Result.at_Error (fun e ->
-      errorf ~loc "This expression has type %a, whose %a" Printtyp.type_expr mltyp pp_type_expr_error e)
+      errorf_type_expr ~loc "This expression has type %a, whose %a" Printtyp.type_expr mltyp pp_type_expr_error e)
       & type_expr tyenv mltyp 
   in
   let mk desc = { loc; typ; desc; attrs= [] } in
   let e = match exp_desc with
     | Texp_ident (Path.Pident id, {loc=vloc}, _vd) -> 
         if not (List.mem id (lenv.local_variables @ lenv.non_local_variables)) then 
-          errorf ~loc:vloc "Hey %s is not tracked!  env=%s" 
+          internal_error ~loc:vloc "Hey %s is not tracked!  env=%s" 
             (Ident.unique_name id)
             (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
         if not (List.mem id lenv.local_variables)
            && not (Michelson.Type.is_packable ~legacy:false typ) 
            && lenv.fun_level > 0 then
-          errorf ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
+          errorf_freevar ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
             (Ident.name id);
         (* if List.mem id lenv.local_variables
              && not (Michelson.Type.storable typ) then
@@ -1380,7 +1390,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         begin match Path.is_scaml p with
           | Some "Contract.self" ->
               if lenv.fun_level > 0 then
-                errorf ~loc:lenv.fun_loc "Contract.self cannot freely occur in a function body except the entrypoints." 
+                errorf_self ~loc:lenv.fun_loc "Contract.self cannot freely occur in a function body except the entrypoints." 
               else
                 mk & Var contract_self_id
 
@@ -1388,7 +1398,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               (* SCaml.Contract.create_raw must be always applied with a string literal.
                  If we see it here, it is not.
               *)
-              errorf ~loc "Contract.create_raw must be immediately applied with a string literal"
+              errorf_contract ~loc "Contract.create_raw must be immediately applied with a string literal"
           | Some n -> mk & primitive ~loc typ n []
           | None -> unsupported ~loc "complex path %s" (Path.xname p)
         end
@@ -1476,7 +1486,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
             in
             let fty = Result.at_Error (fun e ->
-                errorf ~loc:f.exp_loc "This primitive has type %a, whose %a"
+                errorf_type_expr ~loc:f.exp_loc "This primitive has type %a, whose %a"
                   Printtyp.type_expr f.exp_type
                   pp_type_expr_error e)
                 & type_expr f.exp_env f.exp_type 
@@ -1489,7 +1499,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         unsupported ~loc "labeled arguments"
 
     | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
-        if partial = Partial then errorf ~loc "Pattern match is partial";
+        if partial = Partial then errorf_pattern_match ~loc "Pattern match is partial";
         (* name the same name of the original if possible *)
         let i = create_ident & match cases with
           | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 
@@ -1531,8 +1541,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_ifthenelse (cond, then_, None) ->
         let econd = expression lenv cond in
         let ethen = expression lenv then_ in
-        if ethen.typ.desc <> TyUnit then 
-          errorf ~loc:ethen.loc "";
+        if ethen.typ.desc <> TyUnit then internal_error ~loc:ethen.loc "else None has non unit type";
         mk & IfThenElse (econd, ethen, None)
 
     | Texp_match (_, _, e::_, _) -> 
@@ -1631,7 +1640,7 @@ and primitive ~loc fty n args =
   | "Contract.self" -> assert false (* must be handled already *)
   | _ -> 
       match List.assoc_opt n Primitives.primitives with
-      | None -> errorf ~loc "Unknown primitive SCaml.%s" n
+      | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
       | Some (arity, conv) ->
           if arity > List.length args then
             unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
@@ -1759,12 +1768,12 @@ and contract_create ~loc n args = match n with
   | "Contract.create_raw" | "Contract.create_from_tz_code" ->
       begin match args with
       | [] | [_] | [_;_] | [_;_;_] ->
-          errorf ~loc "%s cannot be partially applied" n
+          errorf_contract ~loc "%s cannot be partially applied" n
       | [e0; e1; e2; e3] ->
           let s = match e0.desc with
             | Const (C.String s) -> s
             | _ -> 
-                errorf ~loc:e0.loc
+                errorf_contract ~loc:e0.loc
                   "The first argument of %s must be a string literal of Michelson code" n
           in
           Contract_create (Tz_code s, e0.loc, e1, e2, e3)
@@ -1773,18 +1782,18 @@ and contract_create ~loc n args = match n with
   | "Contract.create_from_tz_file" ->
       begin match args with
       | [] | [_] | [_;_] | [_;_;_] ->
-          errorf ~loc "%s cannot be partially applied" n
+          errorf_contract ~loc "%s cannot be partially applied" n
       | [e0; e1; e2; e3] ->
           let s = match e0.desc with
             | Const (C.String s) -> s
             | _ -> 
-                errorf ~loc:e0.loc
+                errorf_contract ~loc:e0.loc
                   "The first argument of %s must be a string literal of Michelson file path" n
           in
           Contract_create (Tz_file s, e0.loc, e1, e2, e3)
       | _ -> assert false (* too many args must be rejeced by OCaml type system *)
       end
-  | _ -> errorf ~loc "Unknown Contract.create* function: %s" n
+  | _ -> internal_error ~loc "Unknown Contract.create* function: %s" n
 
 (* parameter and storage types *)
 
@@ -1823,11 +1832,20 @@ let type_check_entry templ vb =
     let loc = vb.vb_pat.pat_loc in
     try unify env ty ty' with
     | Unify trace ->
-        raise(Typecore.Error(loc, env, Pattern_type_clash(trace)))
+        wrap_ocaml_exn
+          (Typecore.Error(loc, env, Pattern_type_clash(trace)))
+          310
+          ~loc:vb.vb_loc 
+          "Entry point typing error"
     | Tags(l1,l2) ->
-        raise(Typetexp.Error(loc, env, Typetexp.Variant_tags (l1, l2)))
-    | e ->  (* XXX *)
-        prerr_endline "unify raised something unfamiliar"; raise e
+        wrap_ocaml_exn
+          (Typetexp.Error(loc, env, Typetexp.Variant_tags (l1, l2)))
+          310
+          ~loc:vb.vb_loc 
+          "Entry point typing error"
+    | e ->
+        internal_error ~loc:vb.vb_loc
+          "unify raised something unfamiliar: %s" (Printexc.to_string e)
   in
   unify 
     vb.vb_pat.pat_type (* the actual type of the pattern *)
@@ -1909,16 +1927,25 @@ let check_self ty_self str =
       let loc = self.exp_loc in
       try unify tyenv ty ty' with
       | Unify trace ->
-          raise(Typecore.Error(loc, tyenv, Expr_type_clash(trace, None)))
+          wrap_ocaml_exn
+            (Typecore.Error(loc, tyenv, Expr_type_clash(trace, None)))
+            510
+            ~loc
+            "Contract.self typing error"
       | Tags(l1,l2) ->
-          raise(Typetexp.Error(loc, tyenv, Typetexp.Variant_tags (l1, l2)))
-      | e -> (* XXX *)
-          prerr_endline "unify raised something unfamiliar"; raise e
+          wrap_ocaml_exn
+            (Typetexp.Error(loc, tyenv, Typetexp.Variant_tags (l1, l2)))
+            510
+            ~loc
+            "Contract.self typing error"
+      | e ->
+          internal_error ~loc
+            "unify raised something unfamiliar: %s" (Printexc.to_string e)
     in
     match (Ctype.expand_head self.exp_env self.exp_type).Types.desc with
     | Tconstr (p, [t], _) when Path.is_scaml p =  Some "contract" ->
         if t.level = Btype.generic_level then
-          errorf ~loc:self.exp_loc "Contract.self cannot have a generic type, but it has type %a.  Please use a type constraint to instantiate its type." Printtyp.type_scheme self.exp_type;
+          errorf_self ~loc:self.exp_loc "Contract.self cannot have a generic type, but it has type %a.  Please use a type constraint to instantiate its type." Printtyp.type_scheme self.exp_type;
         unify self.exp_type ty_self
     | _ -> assert false
     ) !selfs
@@ -1945,7 +1972,7 @@ let compile_global_entry ty_storage ty_return node =
           | _ -> assert false
         in
         if not (M.Type.is_parameterable param_type) then begin
-          errorf ~loc:var.loc "The entry point has a contract parameter of %a which is not parameterable.  It cannot conatin operation.@." 
+          errorf_entry_typing ~loc:var.loc "The entry point has a contract parameter of %a which is not parameterable.  It cannot contain operation.@." 
             M.Type.pp param_type
         end;
         let param_var = mkvar ~loc:noloc (param_id, param_type) in
@@ -1972,7 +1999,7 @@ let compile_global_entry ty_storage ty_return node =
   (* This is the last defence.  We should check it earlier where the locations 
      are known. *)
   if not (M.Type.is_parameterable param_typ) then begin
-    errorf ~loc:noloc "Contract's parameter type %a is not parameterable.  It cannot conatin operation.@." 
+    errorf_entry_typing ~loc:noloc "Contract's parameter type %a is not parameterable.  It cannot contain operation.@." 
       M.Type.pp param_typ
   end;
 
@@ -2009,12 +2036,12 @@ let implementation sourcefile str =
             )
         ) attrs);
   Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
-      Result.at_Error (errorf ~loc "%s") & Flags.eval t (txt, v))
+      Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
       t attrs);
   let vbs = toplevel_value_bindings str in
   match get_entries vbs with
   | [] -> 
-      errorf ~loc:(Location.in_file sourcefile)
+      errorf_entry ~loc:(Location.in_file sourcefile)
         "SCaml requires at least one value definition for an entry point"
   | entry_vbns ->
       let _entry_ids = 
@@ -2027,8 +2054,8 @@ let implementation sourcefile str =
                    This avoids transforming a warning 27 into a 26.
                  *)
                 id
-            | Tpat_any -> errorf ~loc:vb.vb_pat.pat_loc "Entrypoint must have a name"
-            | _ -> errorf ~loc:vb.vb_pat.pat_loc "Entrypoint must have a simple variable"
+            | Tpat_any -> errorf_entry ~loc:vb.vb_pat.pat_loc "Entrypoint must have a name"
+            | _ -> errorf_entry ~loc:vb.vb_pat.pat_loc "Entrypoint must have a simple variable"
           ) entry_vbns
       in
       let tyenv = str.str_final_env in
@@ -2057,26 +2084,34 @@ let implementation sourcefile str =
           Ctype.newconstr path []
         in
         Result.at_Error (fun e ->
-            errorf ~loc:(Location.in_file sourcefile) 
+            errorf_type_expr ~loc:(Location.in_file sourcefile) 
               "SCaml.operations failed to be converted to Michelson type: %a"
               pp_type_expr_error e)
           & type_expr tyenv ty_operations
       in
 
-      let ty_storage = 
-        Result.at_Error (fun e ->
-            errorf ~loc:(Location.in_file sourcefile) "Contract has storage type %a, whose %a"
-              Printtyp.type_expr ty_storage
-              pp_type_expr_error e)
-          & type_expr tyenv ty_storage 
+      let ty_storage =
+        let res = 
+          Result.at_Error (fun e ->
+              errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a, whose %a"
+                Printtyp.type_expr ty_storage
+                pp_type_expr_error e)
+            & type_expr tyenv ty_storage 
+        in
+        if not & M.Type.is_storable res then
+          errorf_entry_typing ~loc:(Location.in_file sourcefile) "Contract has non storable type %a for the storage.@." 
+            (* XXX show the original type if the expansion is different from it *)
+            Printtyp.type_expr (Ctype.full_expand tyenv ty_storage);
+        res
       in
+
       let ty_return = tyPair (ty_operations, ty_storage) in
-      
+
       let global_entry = compile_global_entry ty_storage ty_return entry_tree in
 
       let ty_param = 
         Result.at_Error (fun e ->
-            errorf ~loc:(Location.in_file sourcefile) "Contract has parameter type %a, whose %a"
+            errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a, whose %a"
               Printtyp.type_expr ty_param
               pp_type_expr_error e)
           & type_expr tyenv ty_param 
@@ -2116,7 +2151,7 @@ let implementation sourcefile str =
 let convert str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
   Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
-      Result.at_Error (errorf ~loc "%s") & Flags.eval t (txt, v))
+      Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
       t attrs);
 
   let structure_item lenv str_final_env { str_desc; str_loc= loc } =
@@ -2140,21 +2175,21 @@ let convert str =
               | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> (Some id, vb_expr)
               | Tpat_any -> (None, vb_expr)
               | _ -> 
-                  errorf ~loc:vb_pat.pat_loc "Conversion mode does not support complex patterns"
+                  errorf_pattern_match ~loc:vb_pat.pat_loc "Conversion mode does not support complex patterns"
             in
             `Value (ido, expression lenv e)
           ) vbs
     | Tstr_open _open_description -> []
     | Tstr_type (_, tds) -> 
         List.map (fun td -> match td.typ_params with
-            | _::_ -> errorf ~loc:td.typ_loc "Conversion mode does not support parameterized type declarations"
+            | _::_ -> errorf_type_expr ~loc:td.typ_loc "Conversion mode does not support parameterized type declarations"
             | [] ->
                 let id = td.typ_id in
                 let ty = Btype.newgenty (Tconstr (Path.Pident td.typ_id, [], ref Types.Mnil)) in
                 match type_expr str_final_env ty with
                 | Ok x -> `Type (id, x)
                 | Error e -> 
-                    errorf ~loc:td.typ_loc "Type %a.  It contains %a" Printtyp.type_expr ty pp_type_expr_error e) tds
+                    errorf_type_expr ~loc:td.typ_loc "Type %a.  It contains %a" Printtyp.type_expr ty pp_type_expr_error e) tds
     | Tstr_attribute _ -> []
   in
   let structure { str_items= sitems ; str_final_env } =

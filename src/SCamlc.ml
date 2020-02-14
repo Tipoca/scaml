@@ -88,7 +88,7 @@ let convert _sourcefile _outputprefix _modulename (str, _coercion) =
           Format.printf "type %s: @[<2>%a@]@." (Ident.name id) M.Type.pp t
       | `Value (n, t) ->
           begin match Compile.constant t with
-            | None -> errorf ~loc:t.loc "Constant expression expected"
+            | None -> errorf_constant ~loc:t.loc "Constant expression expected"
             | Some c -> 
                 match n with
                 | None -> 

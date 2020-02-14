@@ -24,7 +24,7 @@ let parse_options_in_payload ~loc name payload =match payload with
       let parse { pstr_desc; pstr_loc=loc } =
         match pstr_desc with
         | Pstr_eval (_, _::_ ) ->
-            errorf ~loc "%s attribute expression cannot take attributes" name
+            errorf_attribute ~loc "%s attribute expression cannot take attributes" name
         | Pstr_eval (e, []) ->
             let rec parse { pexp_desc; pexp_loc=loc } = match pexp_desc with
               | Pexp_sequence (e1, e2) -> parse e1 @ parse e2
@@ -32,23 +32,23 @@ let parse_options_in_payload ~loc name payload =match payload with
                             [ Nolabel, e1; Nolabel, e2 ]) ->
                   let key = match e1.pexp_desc with
                     | Pexp_ident lloc -> lloc
-                    | _ -> errorf ~loc: e1.pexp_loc "%s attribute item key must be an identifier" name
+                    | _ -> errorf_attribute ~loc: e1.pexp_loc "%s attribute item key must be an identifier" name
                   in
                   let value = match e2.pexp_desc with
                     | Pexp_constant c -> `Constant c
                     | Pexp_construct ({txt=Longident.Lident "true"}, None) -> `Bool true
                     | Pexp_construct ({txt=Longident.Lident "false"}, None) -> `Bool false
-                    | _ -> errorf ~loc: e2.pexp_loc "%s attribute item value must be a constant or a bool" name
+                    | _ -> errorf_attribute ~loc: e2.pexp_loc "%s attribute item value must be a constant or a bool" name
                   in
                   [(key, value)]
               | _ -> 
-                  errorf ~loc "%s attribute item must have a form key=value" name
+                  errorf_attribute ~loc "%s attribute item must have a form key=value" name
             in
             parse e
-        | _ -> errorf ~loc "%s attribute must have a form of key=value; ..; key_value" name
+        | _ -> errorf_attribute ~loc "%s attribute must have a form of key=value; ..; key_value" name
       in
       List.concat (List.map parse str)
-  | PSig _ | PTyp _ | PPat _ -> errorf ~loc "%s attribute requires a structure" name
+  | PSig _ | PTyp _ | PPat _ -> errorf_attribute ~loc "%s attribute requires a structure" name
 
 let get_scaml_toplevel_attributes str =
   let structure_item (st, nomore) { str_desc; _ } =
@@ -56,12 +56,12 @@ let get_scaml_toplevel_attributes str =
       | Tstr_attribute ({txt=s; loc}, payload) 
         when match String.lowercase_ascii s with "scaml" | "scam" -> true | _ -> false ->
           begin match s with
-            | "Scaml" -> errorf ~loc "SCaml, not Scaml."
-            | "scaml" -> errorf ~loc "SCaml, not scaml."
-            | "scam" -> errorf ~loc "SCaml: it's not a scam."
+            | "Scaml" -> errorf_attribute ~loc "SCaml, not Scaml."
+            | "scaml" -> errorf_attribute ~loc "SCaml, not scaml."
+            | "scam" ->  errorf_attribute ~loc "SCaml: it's not a scam."
             | _ -> ()
           end;
-          if nomore then errorf ~loc "SCaml attributes must appear at the head of the source file.";
+          if nomore then errorf_attribute ~loc "SCaml attributes must appear at the head of the source file.";
           parse_options_in_payload ~loc "SCaml" payload @ st, false
       | _ -> st, true (* we cannot have SCaml attributes later *)
   in

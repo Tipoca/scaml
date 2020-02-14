@@ -34,7 +34,7 @@ let comparison ~loc os ty pre =
   match args ty 2 with
   | [ty1; _ty2] -> (* ty1 == ty2 *)
       if not & M.Type.is_comparable ty1 then
-        errorf ~loc "Comparison operator takes a non comparable type %a"
+        errorf_primitive ~loc "Comparison operator takes a non comparable type %a"
           M.Type.pp ty1;
       pre @ os
   | _ -> assert false
@@ -367,7 +367,7 @@ let primitives =
         match args ty 1 with
         | [ aty ] ->
             if not & M.Type.is_packable ~legacy:true aty then
-              errorf ~loc "Obj.pack cannot take a non packable type %a"
+              errorf_primitive ~loc "Obj.pack cannot take a non packable type %a"
                 M.Type.pp aty;
             pre @ [ PACK ]
         | _ -> assert false)
@@ -376,7 +376,7 @@ let primitives =
       match ty.desc with
       | TyLambda (_, { desc= TyOption ty }) ->
           if not & M.Type.is_packable ~legacy:false ty then
-            errorf ~loc "Obj.unpack cannot unpack to a non packable type %a"
+            errorf_primitive ~loc "Obj.unpack cannot unpack to a non packable type %a"
               M.Type.pp ty;
           xs @ [ UNPACK ty ]
       | _ -> assert false)

@@ -77,14 +77,65 @@ module Location = struct
   let ghost t = { t with loc_ghost= true } 
 end
     
-let errorf = Location.raise_errorf
-let unsupported ~loc fmt = Printf.ksprintf (fun s -> errorf ~loc "SCaml does not support %s" s) fmt
-exception Not_yet_implemented
-let not_yet () = raise Not_yet_implemented
+let errorf n ~loc fmt = 
+  Location.raise_errorf ~loc ("[ESCaml%03d] " ^^ fmt) n
+
+let errorf_type_expr fmt = errorf 100 fmt
+let errorf_constant fmt = errorf 200 fmt
+let errorf_entry fmt = errorf 300 fmt
+let errorf_entry_typing fmt = errorf 310 fmt
+let errorf_freevar fmt = errorf 400 fmt
+let errorf_self fmt = errorf 500 fmt
+let errorf_contract fmt = errorf 600 fmt
+let errorf_pattern_match fmt = errorf 700 fmt
+let errorf_primitive fmt = errorf 800 fmt
+let errorf_flags fmt = errorf 900 fmt
+let errorf_attribute fmt = errorf 910 fmt
+
+let unsupported ~loc fmt = 
+  Printf.ksprintf (fun s -> 
+      errorf 0 ~loc "SCaml does not support %s" s) fmt
+
 let internal_error ~loc fmt = 
   Printf.ksprintf (fun s -> 
-      errorf ~loc "SCaml internal error: %s\n%s" s
+      errorf 999 ~loc "SCaml internal error: %s\n%s" s
         Printexc.(raw_backtrace_to_string (get_callstack 20))
     ) fmt
 
+exception Wrapped_OCaml_error of Location.t * string * exn
 
+let () = 
+  let rec f = function
+    | Wrapped_OCaml_error (_, _, (Wrapped_OCaml_error _ as exn)) -> f exn
+    | Wrapped_OCaml_error (loc, msg, exn) ->
+        Some (
+          match Location.error_of_exn exn with
+          | Some (`Ok ocaml) ->
+              { Location.loc
+              ; msg
+              ; sub= [ocaml]
+              ; if_highlight= ""
+              }
+          | _ ->
+              { Location.loc
+              ; msg= "unknown exception: " ^ (Printexc.to_string exn)
+              ; sub= []
+              ; if_highlight= ""
+              }
+        )
+    | _ -> None
+  in
+  Location.register_error_of_exn f
+
+let wrap_ocaml_exn exn n ~loc fmt =
+  let open Format in
+  let buf = Buffer.create 64 in
+  let ppf = formatter_of_buffer buf in
+  Misc.Color.set_color_tag_handling ppf;
+  kfprintf
+    (fun _ ->
+      pp_print_flush ppf ();
+      let msg = Buffer.contents buf in
+      raise (Wrapped_OCaml_error (loc, msg, exn))
+    )
+    ppf ("[ESCaml%03d] " ^^ fmt) n
