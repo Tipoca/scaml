@@ -4,6 +4,8 @@ open SCaml
 let main param storage =
   [], assert (
     Obj.pack (Global.get_chain_id ())
-    = Obj.pack (Chain_id "NetXdQprcVkpaWU")
+    = Obj.pack (Global.get_chain_id ()) 
+               (* chain_id changes in networks 
+                  Obj.pack (Chain_id "NetXdQprcVkpaWU") *)
   )
 

@@ -38,7 +38,8 @@ let main parameter storage =
   let signature_target = 
     Obj.pack ( parameter.payload
              , Contract.address Contract.self
-             , Global.get_chain_id ()
+             , (match (Obj.unpack (Obj.pack (Chain_id "NetXdQprcVkpaWU")) : SCaml.chain_id option) with None -> failwith "failed" | Some x -> x)
+               (* Global.get_chain_id () varies in different networks *)
              )
   in
   (* Check that the counters *)
