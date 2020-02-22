@@ -1499,7 +1499,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         unsupported ~loc "labeled arguments"
 
     | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
-        if partial = Partial then errorf_pattern_match ~loc "Pattern match is partial";
+        if partial = Partial then errorf_pattern_match ~loc "Pattern match is not exhaustive";
         (* name the same name of the original if possible *)
         let i = create_ident & match cases with
           | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 

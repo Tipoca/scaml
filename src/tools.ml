@@ -80,17 +80,17 @@ end
 let errorf n ~loc fmt = 
   Location.raise_errorf ~loc ("[ESCaml%03d] " ^^ fmt) n
 
-let errorf_type_expr fmt = errorf 100 fmt
-let errorf_constant fmt = errorf 200 fmt
-let errorf_entry fmt = errorf 300 fmt
-let errorf_entry_typing fmt = errorf 310 fmt
-let errorf_freevar fmt = errorf 400 fmt
-let errorf_self fmt = errorf 500 fmt
-let errorf_contract fmt = errorf 600 fmt
+let errorf_type_expr     fmt = errorf 100 fmt
+let errorf_constant      fmt = errorf 200 fmt
+let errorf_entry         fmt = errorf 300 fmt
+let errorf_entry_typing  fmt = errorf 310 fmt
+let errorf_freevar       fmt = errorf 400 fmt
+let errorf_self          fmt = errorf 500 fmt
+let errorf_contract      fmt = errorf 600 fmt
 let errorf_pattern_match fmt = errorf 700 fmt
-let errorf_primitive fmt = errorf 800 fmt
-let errorf_flags fmt = errorf 900 fmt
-let errorf_attribute fmt = errorf 910 fmt
+let errorf_primitive     fmt = errorf 800 fmt
+let errorf_flags         fmt = errorf 900 fmt
+let errorf_attribute     fmt = errorf 910 fmt
 
 let unsupported ~loc fmt = 
   Printf.ksprintf (fun s -> 
