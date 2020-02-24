@@ -305,8 +305,6 @@ and variant_type tyenv ty p constrs =
       end  
   )
 
-module Revert = Revert
-
 (* Literals *)
 
 let parse_timestamp s = match Ptime.of_rfc3339 s with

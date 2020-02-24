@@ -20,13 +20,13 @@ module M = Michelson
 let init () =
   (* If --scaml-noscamlib is specified, None.
 
-    If SCAMLLIB is specified, SCAMLLIB is chosen.
+    If SCAMLIB is specified, SCAMLIB is chosen.
 
     Otherwise, `opam config var prefix`/lib/scaml is used.
     If `opam config var prefix` does not print a directory nor crashes,
     scamlc prints out a warning and continues with None
   *)
-  let scamllib =
+  let scamlib =
     if !Flags.flags.scaml_noscamlib then None
     else 
       match Sys.getenv "SCAMLIB" with
@@ -49,10 +49,10 @@ let init () =
               Format.eprintf "Warning: Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e); None
                 
   in
-  match scamllib with
+  match scamlib with
   | None -> ()
   | Some dir -> Clflags.include_dirs := !Clflags.include_dirs @ [dir]
-  
+
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   let parameter, storage, t = Translate.implementation sourcefile str in
 
