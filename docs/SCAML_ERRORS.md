@@ -1,31 +1,38 @@
 # SCaml error codes
 
+SCaml is a restricted version of OCaml.  In addition to the ordinary OCaml
+parsing and typing errors (consult OCaml documents for these OCaml errors), SCaml
+may reject your code with its own errors.
+
+SCaml errors are prefixed with `[ESCaml<error code>]`.  Do *not* consult OCaml documents for these SCaml specific errors.  Here are the list of SCaml errors.
+
 ## 000 Unsupported OCaml feature
 
 SCaml does not support that OCaml language feature.
 
-SCaml team has good reasons not to support it:  it could be too hard to
-give a proper compilation to Michelson.  Or, it would not be a very essential
-language feature.
+### Reason
+
+SCaml team has good reasons not to support it:  it could be too hard to give a proper compilation to Michelson.  Or, it would not be a very essential language feature.
+
+### Workaround
 
 The best way to avoid this error is not to use that language feature.
 
 ## 100 Unsupported type
 
-A type expression explicitly written, of an expression, or of a pattern
-is unsupported or invalid in SCaml.
+A type expression explicitly written, of an expression, or of a pattern is unsupported or invalid in SCaml.
 
-Do not use the type construction.
+### Workaround
+
+Do not use that type construction.
 
 ## 200 Constant error
 
-Invalid use of smart contract related data constructors
-which can only take constants.
+Invalid use of smart contract related data constructors which can only take constants.
 
-Smart contract related data constructors such as `Int`, `Address`, `Set`
-etc can only take constant expressions.  Some of them can only take
-some specific form of data: for example, `Timestamp` can only take
-a constant string in the RFC3339 time representation.
+### Reason
+
+Smart contract related data constructors such as `Int`, `Address`, `Set` etc can only take constant expressions.  Some of them can only take some specific form of data: for example, `Timestamp` can only take a constant string in the RFC3339 time representation.
 
 ## 300 Entry point
 
@@ -36,7 +43,11 @@ Something wrong has been found in the form of entry points.  Possibilities:
 
 ## 310 Entry point typing error
 
-One of the entry points failed to type.  Several conditions must hold:
+One of the entry points failed to type to make a program valid as a smart contract.
+
+### Reason
+
+Several conditions must hold:
 
 * The entry points in a contract must have the form:
   `(param, storage) SCaml.entry` for some type `param` and `storage`,
@@ -95,18 +106,27 @@ The principle is to avoid free occurrences of non packable variables.  There are
 
 ## 510 Self typing error
 
-## 600 Contract
+## 600 Invalid contract creation
 
-Error around `Contract.create_*`.
+Error around `Contract.create_*`.  They have the following restrictions:
 
-## 700 Pattern match
+* They must be fully applied.
+* Code text and file name of the contract source must be in constant.
+
+
+## 700 Pattern match error
+
+SCaml introduces some additional restrictions to pattern matching:
 
 * SCaml rejects non exhaustive pattern matches.
 * Conversion mode does not support complex patterns.
 
 ## 800 Primitive
 
-An illegal use of a SCaml primitive is found.
+An illegal use of a SCaml primitive is found:
+
+* Comparison primitives only take comparable types.
+* Packing primitives only take packable types.
 
 ## 900 Flags
 
