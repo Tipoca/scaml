@@ -1005,7 +1005,7 @@ module Pmatch = struct
           let gloc = Location.ghost action.loc in
           let vars = IdTys.elements & P.vars pat in
 
-          let nonstorables = 
+          let unpackables = 
             let fvs = List.fold_left (fun fvs idty -> 
                 IdTys.remove idty fvs) 
                 (freevars action)
@@ -1013,9 +1013,9 @@ module Pmatch = struct
             in
             IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ~legacy:false ty) fvs 
           in
-          let _must_expand = not & IdTys.is_empty nonstorables in
+          let _must_expand = not & IdTys.is_empty unpackables in
           (* It's inefficient for the storage, but we do not want to get troubled 
-             by unstorable around the LAMBDAs introduced by pmatch.
+             by unpackables around the LAMBDAs introduced by pmatch.
           *)
           let must_expand = true in
           let case = 
@@ -1377,7 +1377,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         if not (List.mem id lenv.local_variables)
            && not (Michelson.Type.is_packable ~legacy:false typ) 
            && lenv.fun_level > 0 then
-          errorf_freevar ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with non storable type." 
+          errorf_freevar ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with unpackable type." 
             (Ident.name id);
         (* if List.mem id lenv.local_variables
              && not (Michelson.Type.storable typ) then
