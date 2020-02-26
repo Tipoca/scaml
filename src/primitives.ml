@@ -43,7 +43,6 @@ let primitives =
   [ "fst"     , (1, simple [CAR])
   ; "snd"     , (1, simple [CDR])
 
-  (* XXXX comparable type check *)
   ; "compare" , (2, comparison [COMPARE])
   ; "="       , (2, comparison [COMPARE; EQ])
   ; "<>"      , (2, comparison [COMPARE; NEQ])
