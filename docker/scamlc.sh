@@ -1,2 +1,5 @@
 #!/bin/sh
-docker run -v `pwd`:/work dailambda/scaml:master scamlc "$*"
+docker run --rm		 \
+  -v `pwd`:/work	 \
+  dailambda/scaml:master \
+  scamlc "$*"
