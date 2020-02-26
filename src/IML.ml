@@ -147,7 +147,13 @@ module P = struct
         from_Some & pexp_tuple_opt [ constant t1 ; constant t2 ]
     | Left t -> [%expr Left [%e constant t]]
     | Right t -> [%expr Right [%e constant t]]
-    | Timestamp z -> [%expr Timestamp [%e eint (Z.to_int z)]] (* XXX correct string *)
+    | Timestamp z -> 
+        begin match Ptime.of_float_s (Z.to_float z) with
+        | Some t -> 
+            [%expr Timestamp [%e estring (Ptime.to_rfc3339 t)]]
+        | None ->
+            [%expr Timestamp [%e eint (Z.to_int z)]]
+        end
     | Code ops -> 
         let s = Format.sprintf "@[<2>{ %a }@]" (Format.list ";@ " M.Opcode.pp) ops in
         { pexp_desc= Pexp_constant (Pconst_string (s, Some "michelson"))
@@ -192,8 +198,8 @@ module P = struct
         let pv1 = pvar & Ident.unique_name pv1.desc in
         let pv2 = pvar & Ident.unique_name pv2.desc in
         [%expr match [%e iml t] with
-          | [%p pv1] -> [%e iml t1]
-          | [%p pv2] -> [%e iml t2] ]
+          | Left [%p pv1] -> [%e iml t1]
+          | Right [%p pv2] -> [%e iml t2] ]
     | Switch_cons (t, pv1, pv2, t1, t2) ->
         let pv1 = pvar & Ident.unique_name pv1.desc in
         let pv2 = pvar & Ident.unique_name pv2.desc in
