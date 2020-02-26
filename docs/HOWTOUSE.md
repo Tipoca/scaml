@@ -92,5 +92,3 @@ To compile smart contracts, you need to use `SCaml` module which declares the pr
 * If `--scaml-noscamlib` is not specified:
     * Directory specified by the environment variable `SCAMLIB`.
 	* If `SCAMLIB` is not speicified, directory `` `opam config var prefix`/lib/scaml``.
-
-

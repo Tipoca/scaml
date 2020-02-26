@@ -291,7 +291,7 @@ and revert_variant_type tyenv ty _p constrs =
 let get_type str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
   Flags.update (fun t -> List.fold_left (fun t ({Location.txt; loc}, v) -> 
-      Result.at_Error (errorf ~loc "%s") & Flags.eval t (txt, v))
+      Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
       t attrs);
 
   let structure_item _str_final_env { Typedtree.str_desc; str_loc= loc } =
@@ -311,7 +311,7 @@ let get_type str =
     | Tstr_open _open_description -> []
     | Tstr_type (_, tds) -> 
         List.map (fun td -> match td.Typedtree.typ_params with
-            | _::_ -> errorf ~loc:td.typ_loc "Revert mode does not support parameterized type declarations"
+            | _::_ -> errorf_type_expr ~loc:td.typ_loc "Revert mode does not support parameterized type declarations"
             | [] ->
                 let id = td.typ_id in
                 let ty = Btype.newgenty (Tconstr (Path.Pident td.typ_id, [], ref Types.Mnil)) in
@@ -340,8 +340,8 @@ let get_michelson_value s =
 
 let do_revert str v = 
   match get_type str with
-  | [] -> errorf ~loc:Location.none "Needs one type definition"
-  | _::_::_ -> errorf ~loc:Location.none "Cannot have more than one type definitions"
+  | [] -> errorf_type_expr ~loc:Location.none "Needs one type definition"
+  | _::_::_ -> errorf_type_expr ~loc:Location.none "Cannot have more than one type definitions"
   | [`Type (_id, ty)] ->
       match revert str.str_final_env ty with
       | Error e -> failwith e

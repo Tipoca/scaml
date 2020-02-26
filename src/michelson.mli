@@ -81,6 +81,7 @@ module Type : sig
   val is_comparable : t -> bool
   val is_packable : legacy: bool -> t -> bool
   val is_parameterable : t -> bool
+  val is_storable : t -> bool
     
   val attribute : string list -> t -> t
 end

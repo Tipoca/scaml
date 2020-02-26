@@ -238,6 +238,25 @@ module Type = struct
       | TyKey | TySignature -> true
     in
     f ty
+
+  and is_storable ty = 
+      (* ~allow_big_map:true
+         ~allow_operation:false
+         ~allow_contract:legacy -> false
+      *)
+    let rec f ty = match ty.desc with
+      | TyBigMap _ -> true
+      | TyOperation -> false
+      | TyContract _ -> false
+
+      | TyList t | TyOption t | TySet t -> f t
+      | TyLambda (_t1, _t2) -> true
+      | TyPair (t1, t2) | TyOr (t1, t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+      | TyKey | TySignature -> true
+    in
+    f ty
 end
 
 module rec Constant : sig

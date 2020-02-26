@@ -90,8 +90,8 @@ and compile' env t =
 and desc env t =
   let loc = t.IML.loc in
   match t.IML.desc with
-  | IML.Set _ -> errorf ~loc "Set elements must be constants"
-  | Map _ -> errorf ~loc "Map bindings must be constants"
+  | IML.Set _ -> errorf_constant ~loc "Set elements must be constants"
+  | Map _ -> errorf_constant ~loc "Map bindings must be constants"
   | Const c -> 
       [ PUSH (clean_field_annot t.typ, c) ]
   | Nil -> 
@@ -274,7 +274,7 @@ and desc env t =
             match File.to_string path with
             | Ok s -> s
             | Error (`Exn exn) ->
-                errorf ~loc:sloc "Loading of %s failed: %s"
+                errorf_contract ~loc:sloc "Loading of %s failed: %s"
                   path (Printexc.to_string exn) 
           in
           let nodes =
@@ -291,11 +291,11 @@ and desc env t =
                          (fun x -> x))
                       nodes
                 | _nodes, es ->
-                    errorf ~loc:sloc "Michelson parse error: %a"
+                    errorf_contract ~loc:sloc "Michelson parse error: %a"
                       Error_monad.pp_print_error es
                 end
             | _tkns, es ->
-                errorf ~loc:sloc "Michelson parse error: %a"
+                errorf_contract ~loc:sloc "Michelson parse error: %a"
                   Error_monad.pp_print_error es
           in
           List.fold_left (fun os arg ->
@@ -317,11 +317,11 @@ and desc env t =
                          (fun x -> x))
                       nodes
                 | _nodes, es ->
-                    errorf ~loc:sloc "Michelson parse error: %a"
+                    errorf_contract ~loc:sloc "Michelson parse error: %a"
                       Error_monad.pp_print_error es
                 end
             | _tkns, es ->
-                errorf ~loc:sloc "Michelson parse error: %a"
+                errorf_contract ~loc:sloc "Michelson parse error: %a"
                   Error_monad.pp_print_error es
           in
           List.fold_left (fun os arg ->
@@ -369,15 +369,15 @@ and constant t =
                 (List.map (fun t -> 
                     match constant t with
                     | Some c -> c
-                    | None -> errorf ~loc:t.loc "Set expects constant elements") ts))
+                    | None -> errorf_constant ~loc:t.loc "Set expects constant elements") ts))
     | Map kvs ->
         let kvs =
           List.map (fun (k,v) -> 
               match constant k with
-              | None -> errorf ~loc:k.loc "Map expects constant bindings"
+              | None -> errorf_constant ~loc:k.loc "Map expects constant bindings"
               | Some k ->
                   match constant v with
-                  | None -> errorf ~loc:v.loc "Map expects contant bindings"
+                  | None -> errorf_constant ~loc:v.loc "Map expects contant bindings"
                   | Some v -> (k,v)) kvs
         in
         (* XXX do not use OCaml's comparison *)
@@ -385,7 +385,7 @@ and constant t =
         let rec check_uniq = function
           | [] | [_] -> ()
           | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
-              errorf ~loc:t.loc "Map literal contains duplicated key %a" C.pp c1 
+              errorf_constant ~loc:t.loc "Map literal contains duplicated key %a" C.pp c1 
           | _::xs -> check_uniq xs
         in
         check_uniq kvs;
