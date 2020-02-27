@@ -423,6 +423,14 @@ let primitives =
   ; "ediv_nat_nat", (2, simple [EDIV])
   ; "ediv_tz_tz", (2, simple [EDIV])
   ; "ediv_tz_nat", (2, simple [EDIV])
-                    
+
+  ; "/", (2, simple [EDIV; IF_NONE( [PUSH (tyInt, Int Z.zero); FAILWITH], 
+                                    [CAR])])
+  ; "/^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+                                     [CAR])])
+  ; "/$", (2, simple [EDIV; IF_NONE( [PUSH (tyMutez, Int Z.zero); FAILWITH], 
+                                     [CAR])])
+  ; "/$^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+                                      [CAR])])
   ]
     

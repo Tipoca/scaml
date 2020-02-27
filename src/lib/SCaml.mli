@@ -66,6 +66,18 @@ val ediv_nat_nat : nat -> nat -> (nat * nat) option
 val ediv_tz_tz : tz -> tz -> (nat * tz) option
 val ediv_tz_nat : tz -> nat -> (tz * tz) option
 
+val (/) : int -> int -> int
+(** Fail with [Int 0] if the divisor is [Int 0] *)
+
+val (/^) : nat -> nat -> nat
+(** Fail with [Nat 0] if the divisor is [Nat 0] *)
+
+val (/$) : tz -> tz -> nat  
+(** Fail with [Tz 0.] if the divisor is [Tz 0.] *)
+
+val (/$^) : tz -> nat -> tz
+(** Fail with [Nat 0] if the divisor is [Nat 0] *)
+
 val (lsl) : nat -> nat -> nat
 val (lsr) : nat -> nat -> nat
 val (lor) : nat -> nat -> nat
