@@ -94,9 +94,6 @@ val isnat : int -> nat option
 
     They are fully polymorphic, but they only work for limited set 
     of Michelson types.
-    
-    Use Michelson type-checker to find invalid uses of comparisons
-    for now.
 *)
 
 val compare : 'a -> 'a -> int
@@ -122,13 +119,14 @@ val snd : ('a * 'b) -> 'b
 (** Errors *)
 module Error : sig
   val failwith : 'a -> 'b
+  [@@deprecated "Use SCaml.failwith"]
   (** Deprecated.  Use [SCaml.failwith] *)
 end
 
 val failwith : 'a -> 'b
 (** Fail the execution of the smart contract.
 
-    You can use [assert b] to fail the execution conditinally.
+    You can use [assert b] to fail the execution conditionally.
     [assert b] fails if and only if [b] is evaluated to [false].
 *)
 
@@ -154,7 +152,7 @@ module List : sig
   val fold_left' : ('acc * 'a -> 'acc) -> 'acc -> 'a list -> 'acc
   (** A variant of [fold_left] which takes an uncurried function.
       This is useful when the curried function is rejected because of
-      the unstorable type of ['acc].
+      the unpackable type of ['acc].
   *)
 
   val rev : 'a t -> 'a t
@@ -245,7 +243,6 @@ end
 module String : sig
   val length : string -> nat
   val concat : string -> string -> string
-  (* XXX (^) *)
   val slice : nat -> nat -> string -> string option
   (** Substring. [slice n1 n2 s] returns a substring of length [n2]
       from the position [n1] (zero based). 
@@ -254,6 +251,8 @@ module String : sig
       it returns [None].
   *)
 end
+
+val (^) : string -> string -> string
 
 (** Bytes 
 
