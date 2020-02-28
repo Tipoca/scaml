@@ -38,5 +38,5 @@ RUN rm -rf /var/lib/apt
 RUN du -sh /usr /scaml /root /var
 
 RUN scamlc /scaml/src/tests/app_vote.ml && echo OK
-WORKDIR /root
+WORKDIR /work
 CMD [ "scamlc", "--scaml-version"  ]

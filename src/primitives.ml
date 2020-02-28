@@ -231,6 +231,7 @@ let primitives =
           DIP (1, [ DROP 1 ]) ])
       
   ; "String.concat",   (2, simple [CONCAT])
+  ; "^",               (2, simple [CONCAT])
   ; "String.length",   (1, simple [SIZE])
   ; "Bytes.concat",    (2, simple [CONCAT])
   ; "Bytes.length",    (1, simple [SIZE]) 
@@ -423,6 +424,14 @@ let primitives =
   ; "ediv_nat_nat", (2, simple [EDIV])
   ; "ediv_tz_tz", (2, simple [EDIV])
   ; "ediv_tz_nat", (2, simple [EDIV])
-                    
+
+  ; "/", (2, simple [EDIV; IF_NONE( [PUSH (tyInt, Int Z.zero); FAILWITH], 
+                                    [CAR])])
+  ; "/^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+                                     [CAR])])
+  ; "/$", (2, simple [EDIV; IF_NONE( [PUSH (tyMutez, Int Z.zero); FAILWITH], 
+                                     [CAR])])
+  ; "/$^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+                                      [CAR])])
   ]
     

@@ -60,15 +60,54 @@ let var ~loc env id = match Env.find id env with
    
    PUSH (nat %nat) 1
    RIGHT (string %Vote) 
+   
+   XXX should be fixed at the creation of these types.
 *)
-let clean_field_annot typ = 
-  let attrs = List.filter (fun s ->
-      match s with
-      | "" -> false
-      | s when s.[0] = '%' -> false
-      | _ -> true) typ.attrs 
+let clean_field_annot typ =
+  let fix attrs = 
+    List.filter (fun s ->
+        match s with
+        | "" -> false
+        | s when s.[0] = '%' -> false
+        | _ -> true) attrs 
   in
-  { typ with attrs }
+  (* remove field annotations
+     * not under Pair
+     * not under Or
+  *)
+  let rec f parent_can_have_annotations typ = 
+    let attrs = 
+      if parent_can_have_annotations then typ.attrs
+      else fix typ.attrs
+    in
+    let desc = match typ.desc with
+      | TyPair (t1, t2) -> TyPair (f true t1, f true t2)
+      | TyOr (t1, t2) -> TyOr (f true t1, f true t2)
+      | TyString
+      | TyNat
+      | TyInt
+      | TyBytes
+      | TyBool
+      | TyUnit
+      | TyMutez
+      | TyKeyHash
+      | TyTimestamp
+      | TyAddress
+      | TyChainID
+      | TyKey
+      | TySignature
+      | TyOperation -> typ.desc
+      | TyList t -> TyList (f false t)
+      | TyOption t -> TyOption (f false t)
+      | TySet t -> TySet (f false t)
+      | TyMap (t1, t2) -> TyMap (f false t1, f false t2)
+      | TyBigMap (t1, t2) -> TyBigMap (f false t1, f false t2)
+      | TyContract t -> TyContract (f false t)
+      | TyLambda (t1, t2) -> TyLambda (f false t1, f false t2)
+    in
+    { desc; attrs }
+  in
+  f false typ
 
 let rec compile env t = match constant t with
   | None -> compile' env t 

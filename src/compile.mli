@@ -15,3 +15,5 @@
 val structure : IML.t -> Michelson.Opcode.t list
 
 val constant : IML.t -> Michelson.Constant.t option
+
+val clean_field_annot : Michelson.Type.t -> Michelson.Type.t
