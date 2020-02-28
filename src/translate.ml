@@ -252,8 +252,15 @@ and record_type tyenv ty p labels =
       Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
       (label.lbl_name, ty_arg)) labels
   in
-  Result.mapM (fun (l,ty) -> 
-      type_expr tyenv ty >>| M.Type.attribute ["%" ^ l]) ltys 
+  begin match ltys with
+    | [] -> assert false
+    | [_l, ty] -> 
+        (* sole field cannot have annotation... *)
+        type_expr tyenv ty >>| fun x -> [x]
+    | _ ->
+        Result.mapM (fun (l,ty) -> 
+        type_expr tyenv ty >>| M.Type.attribute ["%" ^ l]) ltys 
+  end
   >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
   >>| M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
 
