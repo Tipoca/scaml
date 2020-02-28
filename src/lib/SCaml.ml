@@ -45,6 +45,11 @@ let ediv_nat_nat : nat -> nat -> (nat * nat) option = fun _ -> assert false
 let ediv_tz_tz : tz -> tz -> (nat * tz) option = fun _ -> assert false
 let ediv_tz_nat : tz -> nat -> (tz * tz) option = fun _ -> assert false
 
+let (/) = fun _ -> assert false
+let (/^) = fun _ -> assert false
+let (/$) = fun _ -> assert false
+let (/$^) = fun _ -> assert false
+  
 let (lsl) : nat -> nat -> nat = fun _ -> assert false
 let (lsr) : nat -> nat -> nat = fun _ -> assert false
 let (lor) : nat -> nat -> nat = fun _ -> assert false
@@ -138,6 +143,8 @@ module String = struct
   let slice : nat -> nat -> string -> string option = fun _ -> assert false
   let length : string -> nat = fun _ -> assert false
 end
+
+let (^) = String.concat
 
 type bytes = Bytes of string
 

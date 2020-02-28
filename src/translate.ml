@@ -139,7 +139,7 @@ let mkcons ~loc h t = mke ~loc t.typ (Cons (h, t))
 let mksome ~loc t = mke ~loc (tyOption t.typ) (IML_Some t)
 let mkunit ~loc () = mke ~loc tyUnit Unit
 let mkassert ~loc t = mke ~loc tyUnit & Assert t
-let mkassertfalse ~loc t = mke ~loc tyUnit & AssertFalse
+let mkassertfalse ~loc ty = mke ~loc ty & AssertFalse
 let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
 let mkvar ~loc (id, typ) = mke ~loc typ & Var id
 
@@ -929,7 +929,7 @@ module Pmatch = struct
       | Fail -> 
           (* Nullary constructor is converted to integer.
              We need the default case for them. *)
-          mke ~loc:noloc aty AssertFalse
+          mkassertfalse ~loc:noloc aty
       | Leaf (binders, i) -> 
           List.fold_right (fun (v,loc,(v',ty)) st ->
               mklet ~loc (mkp ~loc ty v) (mkvar ~loc (v',ty)) st) 
