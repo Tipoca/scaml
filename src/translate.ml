@@ -139,6 +139,7 @@ let mkcons ~loc h t = mke ~loc t.typ (Cons (h, t))
 let mksome ~loc t = mke ~loc (tyOption t.typ) (IML_Some t)
 let mkunit ~loc () = mke ~loc tyUnit Unit
 let mkassert ~loc t = mke ~loc tyUnit & Assert t
+let mkassertfalse ~loc t = mke ~loc tyUnit & AssertFalse
 let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
 let mkvar ~loc (id, typ) = mke ~loc typ & Var id
 
@@ -722,19 +723,20 @@ module Pmatch = struct
   
   let pp_osmatrix ppf (os, matrix) =
     let open Format in
-    fprintf ppf "match %a with@." (list ", " (fun ppf (id,_) ->
+    fprintf ppf "match %a with@ " (list ", " (fun ppf (id,_) ->
         fprintf ppf "%s" & Ident.unique_name id)) os;
     List.iter (function
         | { pats; guard= None; action= i } ->
-            fprintf ppf "| %a -> %d@."
+            fprintf ppf "| %a -> %d@ "
                (list ", " P.pp) pats
                i
         | { pats; guard= Some g; action= i } ->
-            fprintf ppf "| %a when %d -> %d@."
+            fprintf ppf "| %a when %d -> %d@ "
               (list ", " P.pp) pats
               g
               i
       ) matrix
+
   
   let specialize o c matrix =
     if_debug (fun () -> Format.eprintf "specializing... %a@." pp_matrix matrix);
@@ -770,7 +772,7 @@ module Pmatch = struct
     List.map (fun ({ pats } as case) -> { case with pats= f [] i pats }) matrix
   
   let rec cc os matrix = 
-    if_debug (fun () -> Format.eprintf "compile: %a" pp_osmatrix (os, matrix));
+    if_debug (fun () -> Format.eprintf "@[<v2>Pmatch.cc:@ @[%a@]@]@." pp_osmatrix (os, matrix));
     match matrix with
     | [] -> Fail
     | { pats=ps; guard= g; action= a; bindings }::_ ->
@@ -848,6 +850,8 @@ module Pmatch = struct
               | [Pair]
               | [Unit]
               | [(Bool true) ; (Bool false)] -> true
+                (* XXX If it is an integer for nullary constructors,
+                   no default case is required *)
               | _ -> false
             in
             assert (constructors <> []);
@@ -899,12 +903,12 @@ module Pmatch = struct
                         in
                         c, 
                         vs, 
-                        (if_debug (fun () -> prerr_endline ("specialize on " ^ Cnstr.to_string c));
+                        (if_debug (fun () -> Format.eprintf "specialize on %s@." (Cnstr.to_string c));
                         cc (vs @ os) (specialize ivty c matrix))
                        ) constructors),
   
                     if is_signature then None
-                    else Some (if_debug (fun () -> prerr_endline "default"); cc (List.tl os) (default ivty matrix))
+                    else Some (if_debug (fun () -> Format.eprintf "default@."); cc (List.tl os) (default ivty matrix))
                    )
             in
             if i = 0 then algo os column
@@ -915,7 +919,10 @@ module Pmatch = struct
   
   let build aty acts guards t = 
     let rec f = function
-      | Fail -> assert false (* ? *)
+      | Fail -> 
+          (* Nullary constructor is converted to integer.
+             We need the default case for them. *)
+          mke ~loc:noloc aty AssertFalse
       | Leaf (binders, i) -> 
           List.fold_right (fun (v,loc,(v',ty)) st ->
               mklet ~loc (mkp ~loc ty v) (mkvar ~loc (v',ty)) st) 

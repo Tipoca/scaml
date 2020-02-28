@@ -56,6 +56,21 @@ let init () =
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   let parameter, storage, t = Translate.implementation sourcefile str in
 
+
+  (*
+     Storage 
+
+      type t = A 
+                 
+                 produces
+                         
+      storage (int %A :t) ;
+     
+     which is illegal
+   *)
+  let parameter = Compile.clean_field_annot parameter in
+  let storage = Compile.clean_field_annot storage in
+
   if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
 
   let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
