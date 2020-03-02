@@ -399,7 +399,7 @@ and constant t =
     | Fun _ when IML.IdTys.is_empty (IML.freevars t) ->
         begin try 
             match compile' [] t with
-            | [LAMBDA (_, _, os)] -> Some (C.Code os)
+            | [LAMBDA (_, _, os)] -> Some (C.Code (clean_failwith os))
             | _ -> assert false (* impossible *)
           with _ -> None 
         end
