@@ -92,7 +92,7 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
   Format.fprintf ppf "@[<2>%a@]@." M.Module.pp m;
   close_out oc
 
-let convert _sourcefile _outputprefix _modulename (str, _coercion) =
+let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
   let ts = Translate.convert str in
   let ts = List.map (fun t -> match t with
       | `Type _ -> t
@@ -113,7 +113,38 @@ let convert _sourcefile _outputprefix _modulename (str, _coercion) =
                 | Some id ->
                     Format.printf "%s: @[<2>%a@]@." (Ident.name id) M.Constant.pp c
           end) ts
-    
+
+let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
+  let ts = Translate.convert str in
+  let t = try List.find
+                (fun t -> match t with
+                          | `Value (Some id, _) -> Ident.name id = ident
+                          | _ -> false
+                ) ts
+          with Not_found -> errorf_convert_ident ~loc:Location.none
+                              "no such value: %s" ident
+  in match t with
+     | `Value (_, t) ->
+        let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
+        begin match Compile.constant t with
+        | None -> errorf_constant ~loc:t.loc "Constant expression expected"
+        | Some c -> Format.printf "@[<2>%a@]@." M.Constant.pp c
+        end
+     | _ -> failwith "panic"
+
+let convert_type ident _sourcefile _outputprefix _modulename (str, _coercion) =
+  let ts = Translate.convert str in
+  let t = try List.find
+                (fun t -> match t with
+                          | `Type (id, _) -> Ident.name id = ident
+                          | _ -> false
+                ) ts
+          with Not_found -> errorf_convert_ident ~loc:Location.none
+                              "no such type: %s" ident
+  in match t with
+     | `Type (_, t) -> Format.printf "@[<2>%a@]@." M.Type.pp t
+     | _ -> failwith "panic"
+
 let revert m _sourcefile _outputprefix _modulename (str, _coercion) =
   match File.to_string m with
   | Error (`Exn e) -> raise e
@@ -126,7 +157,9 @@ let revert m _sourcefile _outputprefix _modulename (str, _coercion) =
 let compile sourcefile outputprefix modulename (typedtree, coercion) =
   let f = match !Flags.flags.scaml_mode with
     | None | Some Compile -> implementation
-    | Some Convert -> convert
+    | Some ConvertAll -> convert_all
+    | Some (ConvertSingleValue ident) -> convert_value ident
+    | Some (ConvertSingleType ident) -> convert_type ident
     | Some (Revert s) -> revert s
   in
   f sourcefile outputprefix modulename (typedtree, coercion)

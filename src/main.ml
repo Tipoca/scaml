@@ -208,8 +208,14 @@ let main () =
     (* SCaml *)
     ; "--scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
       "Print SCaml debug messages"
-    ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := set_mode !flags Convert)),
+    ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := set_mode !flags ConvertAll)),
       "Convert types and values, instead of compling a smart contract"
+    ; "--scaml-convert-value", Arg.String (fun s -> Flags.(flags := set_mode !flags
+                                                                      (ConvertSingleValue s))),
+      "<ident> Convert a single value, instead of compling a smart contract"
+    ; "--scaml-convert-type", Arg.String (fun s -> Flags.(flags := set_mode !flags
+                                                                      (ConvertSingleType s))),
+      "<ident> Convert a single type, instead of compling a smart contract"
     ; "--scaml-revert", Arg.String (fun s -> Flags.(flags := set_mode !flags (Revert s))),
       "Revert values, instead of compling a smart contract"
     ; "--scaml-noscamlib", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_noscamlib = true })),

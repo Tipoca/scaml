@@ -18,7 +18,9 @@ open Ocaml_conv.Default
 
 type mode =
   | Compile
-  | Convert
+  | ConvertAll
+  | ConvertSingleValue of string
+  | ConvertSingleType of string
   | Revert of string
 
 and t = 
