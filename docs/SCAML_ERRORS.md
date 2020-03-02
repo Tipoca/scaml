@@ -59,11 +59,11 @@ Several conditions must hold:
 
 ## 400 Free variable
 
-This is the most non intutive SCaml restriciton.
+This is the most non intuitive SCaml restriciton.
 
 SCaml's functions do not allow free variable occurrences of non packable types (note: older Michelson documents refer them as "unstorable") in their bodies:
 
-* Non packable types are `SCaml.big_map`, `SCaml.operation`, `SCaml.contract`, and types containing these two types.
+* Non packable types are `SCaml.big_map`, `SCaml.operation`, `SCaml.contract`, and types containing these types.
 * The free variable occurrences of a function are variables defined outside of the function body.  For example, `fun x -> (x, y, let z = 1 in z)`, `y` is the sole free variable occurrence of the function; `x` is bound by the function abstractrion and `z` is locally defined.
 
 This may sound strange but is forced by the same restriction of Michelson's function closures.

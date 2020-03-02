@@ -2,7 +2,7 @@
 
 * <release-name>: Stable version.  Should work with the corresponding Tezos mainnet.  Point to the latest patch level tag.
 * pre-<release-name>:  Should work with the next Tezos mainnet candidate.
-* master: Development version for the current or next Tezos mainnet candidate.
+* master: Development version for the next Tezos mainnet candidate.
 
 # Release names
 
