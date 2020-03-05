@@ -86,6 +86,8 @@ let show_config () =
 let scaml_print_version_and_library compiler =
   Printf.printf "The SCaml %s, version %s for Tezos protocol version %s" 
     compiler Version.scaml Version.protocol; print_newline();
+  Printf.printf "SCaml library directory: ";
+  print_string begin match !SCamlc.scamlib with None -> "none" | Some d -> d end; print_newline ();
   Printf.printf "The OCaml %s, version " compiler;
   print_string Config.version; print_newline();
   print_string "Standard library directory: ";
@@ -222,9 +224,9 @@ let main () =
     ];
   try
     readenv ppf Before_args;
+    SCamlc.init ();
     Clflags.parse_arguments anonymous usage;
     Compmisc.read_color_env ppf;
-    SCamlc.init ();
     begin try
       Compenv.process_deferred_actions
         (ppf,

@@ -17,6 +17,8 @@ open Tools
 
 module M = Michelson
 
+let scamlib = ref None
+
 let init () =
   (* If --scaml-noscamlib is specified, None.
 
@@ -26,30 +28,30 @@ let init () =
     If `opam config var prefix` does not print a directory nor crashes,
     scamlc prints out a warning and continues with None
   *)
-  let scamlib =
+  scamlib := begin
     if !Flags.flags.scaml_noscamlib then None
     else 
       match Sys.getenv "SCAMLIB" with
       | dir -> Some dir
       | exception Not_found ->
           (* exec opam config var prefix *)
-          match 
-            let open Command in
-            exec ["opam"; "config"; "var"; "prefix"]
-            |> stdout
-            |> wait
-            |> must_exit_with 0
-          with
-          | dir::_ -> Some (String.chop_eols dir ^/ "lib/scaml")
-          | [] ->  
-              Format.eprintf "Warning: Command 'opam config var prefix' answered nothing@."; None
-          | exception (Failure s) -> 
-              Format.eprintf "Warning: Command 'opam config var prefix' has failed: %s" s; None
-          | exception e ->
-              Format.eprintf "Warning: Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e); None
-                
-  in
-  match scamlib with
+          begin match 
+              let open Command in
+              exec ["opam"; "config"; "var"; "prefix"]
+              |> stdout
+              |> wait
+              |> must_exit_with 0
+            with
+            | dir::_ -> Some (String.chop_eols dir ^/ "lib/scaml")
+            | [] ->  
+                Format.eprintf "Warning: Command 'opam config var prefix' answered nothing@."; None
+            | exception (Failure s) -> 
+                Format.eprintf "Warning: Command 'opam config var prefix' has failed: %s" s; None
+            | exception e ->
+                Format.eprintf "Warning: Command 'opam config var prefix' raised an exception: %s" (Printexc.to_string e); None
+          end;
+  end;
+  match !scamlib with
   | None -> ()
   | Some dir -> Clflags.include_dirs := !Clflags.include_dirs @ [dir]
 

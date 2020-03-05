@@ -1,4 +1,4 @@
-FROM dailambda/ocaml:4.07.1.1
+FROM dailambda/ocaml:4.07.1.1 AS ocaml
 MAINTAINER Jun FURUSE <jun.furuse@dailambda.jp>
 
 # SCaml
@@ -22,6 +22,11 @@ RUN opam clean -a
 RUN rm -rf /root/.opam/4.07.1/.opam-switch
 RUN tar zcf /tmp/opam.tgz /root/.opam/4.07.1/lib/stublibs /root/.opam/4.07.1/lib/ocaml/stdlib.cmi /root/.opam/4.07.1/bin/scamlc /root/.opam/4.07.1/lib/scaml
 RUN rm -rf /root/.opam
+
+FROM ubuntu:18.04
+COPY --from=ocaml /tmp/opam.tgz /tmp
+COPY --from=ocaml /scaml/src/tests/app_vote.ml /tmp
+
 RUN tar xvf /tmp/opam.tgz
 RUN rm /tmp/opam.tgz
 ENV SCAMLIB /root/.opam/4.07.1/lib/scaml
@@ -29,14 +34,13 @@ ENV SCAMLIB /root/.opam/4.07.1/lib/scaml
 # Clean and destroy APT
 
 RUN rm -rf /usr/local
-RUN apt remove -y git gcc cpp-7 perl make
 RUN apt remove -y '*-dev' > /dev/null 2>&1
 RUN apt-get clean
 RUN apt autoremove -y
 RUN rm -rf /var/lib/apt
 
-RUN du -sh /usr /scaml /root /var
+RUN du -sh /usr /root /var
 
-RUN scamlc /scaml/src/tests/app_vote.ml && echo OK
+RUN /root/.opam/4.07.1/bin/scamlc /tmp/app_vote.ml && echo OK
 WORKDIR /work
 CMD [ "scamlc", "--scaml-version"  ]
