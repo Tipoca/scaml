@@ -91,6 +91,7 @@ let errorf_pattern_match fmt = errorf 700 fmt
 let errorf_primitive     fmt = errorf 800 fmt
 let errorf_flags         fmt = errorf 900 fmt
 let errorf_attribute     fmt = errorf 910 fmt
+let errorf_convert_ident fmt = errorf 920 fmt
 
 let unsupported ~loc fmt = 
   Printf.ksprintf (fun s -> 
