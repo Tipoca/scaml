@@ -188,7 +188,7 @@ and Opcode : sig
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
-  val clean_failwith : t list -> t list
+  val clean_failwith : t list -> t list * bool (* ends with FAILWITH or not *)
   val dip_1_drop_n_compaction : t list -> t list
 end
 
