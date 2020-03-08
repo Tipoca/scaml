@@ -123,14 +123,15 @@ let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
                 ) ts
           with Not_found -> errorf_convert_ident ~loc:Location.none
                               "no such value: %s" ident
-  in match t with
-     | `Value (_, t) ->
-        let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
-        begin match Compile.constant t with
-        | None -> errorf_constant ~loc:t.loc "Constant expression expected"
-        | Some c -> Format.printf "@[<2>%a@]@." M.Constant.pp c
-        end
-     | _ -> failwith "panic"
+  in 
+  match t with
+  | `Value (_, t) ->
+     let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
+     begin match Compile.constant t with
+     | None -> errorf_constant ~loc:t.loc "Constant expression expected"
+     | Some c -> Format.printf "@[%a@]@." M.Constant.pp c
+     end
+  | _ -> assert false
 
 let convert_type ident _sourcefile _outputprefix _modulename (str, _coercion) =
   let ts = Translate.convert str in
@@ -141,9 +142,10 @@ let convert_type ident _sourcefile _outputprefix _modulename (str, _coercion) =
                 ) ts
           with Not_found -> errorf_convert_ident ~loc:Location.none
                               "no such type: %s" ident
-  in match t with
-     | `Type (_, t) -> Format.printf "@[<2>%a@]@." M.Type.pp t
-     | _ -> failwith "panic"
+  in
+  match t with
+  | `Type (_, t) -> Format.printf "@[%a@]@." M.Type.pp t
+  | _ -> assert false
 
 let revert m _sourcefile _outputprefix _modulename (str, _coercion) =
   match File.to_string m with

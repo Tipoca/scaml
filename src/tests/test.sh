@@ -46,7 +46,7 @@ function convert () {
     echo "open SCaml" > $tmp
     echo "let x = $1" >> $tmp
     cat $tmp
-    CONVERSION="   "$($COMP --scaml-convert -impl $tmp | sed -e 's/^x: //')
+    CONVERSION=$($COMP --scaml-convert-value x -impl $tmp | sed -e 's/^x: //')
     echo "converted to $CONVERSION"
 }
 
