@@ -21,7 +21,7 @@ The following OCaml features are **not** supported:
 
 ### Recursion
 
-Michelson has no recursion opcode.  Therefore neither for SCaml: no `let rec` construct.  
+Michelson has no recursion opcode.  Therefore neither for SCaml: no `let rec` construct.
 
 Map/iter/folding over lists, sets, maps and big maps are supported.
 `Loop.left` is also available to uses `LOOP` Michelson opcode.
@@ -49,12 +49,6 @@ A contract must be written in one file.
 
 ## Unsupported features of Michelson for now
 
-### Check of pushable/comparable or not
-
-SCaml itself does not type-check its Michelson output.  The output
-must be checked by Tezos node's Michelson type checker to find out
-illegal uses of `PUSH` and comparisons for now.
-
 ### Validity checks of string representations of addresses, keys, key hashes and signatures
 
 Michelson type-checker must be used to detect invalid string based literals.
@@ -70,7 +64,7 @@ Parsing is done by the original OCaml parser.
 Typing is done by the original OCaml type checker.
 It uses module `SCaml` which defines primitive values and types for Michelson.
 
-### SCaml typing 
+### SCaml typing
 
 An additional small typing phase to enforce the types of the entry points
 to be `'parameter -> 'storage -> (SCaml.operation list, 'storage)`
@@ -95,7 +89,11 @@ It is a trivial compilation from FP to stack VM.
 
 Under `src/tests/`
 
-Library functions are listed in `src/tests/SCaml.ml`.
+Library functions are listed in `src/lib/SCaml.mli`.
+
+### 1.1 Salting (2020-03-04, released)
+
+1.1 "Salting" fixed bugs of 1.0 Pyramid and support the coming upgrade of Tezos 006 Carthage.
 
 ## 1.0 Pyramid (2020-01-01, released)
 
@@ -106,12 +104,11 @@ for a while.
 
 ## Road-map
 
-> "Road-map" is another expression of "promises almost never fulfilled in time". 
+> "Road-map" is another expression of "promises almost never fulfilled in time".
 
-### 1.1 Salting (around 2020-03)
+### 1.2 Green Goods
 
-1.1 "Salting" will support the coming upgrade of Tezos (likely called Carthage)
-and bug fixes.
+1.2 "Green Goods" will support the next protocol upgrade of Tezos, mainly covering Michelson's ZK sapling opcodes.
 
 ## Further information
 

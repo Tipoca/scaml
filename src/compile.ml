@@ -399,7 +399,7 @@ and constant t =
     | Fun _ when IML.IdTys.is_empty (IML.freevars t) ->
         begin try 
             match compile' [] t with
-            | [LAMBDA (_, _, os)] -> Some (C.Code (clean_failwith os))
+            | [LAMBDA (_, _, os)] -> Some (C.Code (fst (clean_failwith os)))
             | _ -> assert false (* impossible *)
           with _ -> None 
         end
@@ -469,4 +469,5 @@ let structure t =
   ; COMMENT ("entry point code", os )
   ; COMMENT ("final clean up", [ DIP (1, [ DROP (List.length env) ]) ])]
   |> clean_failwith
+  |> fst
   |> dip_1_drop_n_compaction

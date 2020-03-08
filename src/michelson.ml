@@ -408,7 +408,7 @@ and Opcode : sig
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
-  val clean_failwith : t list -> t list
+  val clean_failwith : t list -> t list * bool
   val dip_1_drop_n_compaction : t list -> t list
 end = struct
 
@@ -598,24 +598,47 @@ end = struct
   let pp ppf t = Mline.pp ppf & to_micheline t
 
   let rec clean_failwith = function
-    | [] -> []
-    | FAILWITH::_ -> [FAILWITH]
-    | x::xs -> aux x :: clean_failwith xs
+    | [] -> [], false
+    | x::xs -> 
+        let x, end_with_failwith = aux x in
+        if end_with_failwith then [x], true
+        else begin
+          let xs, b = clean_failwith xs in
+          x :: xs, b
+        end
 
+  and clean_failwith' xs = fst @@ clean_failwith xs
   and aux = function
-    | DIP (n, ts) -> DIP (n, clean_failwith ts)
-    | ITER ts -> ITER (clean_failwith ts)
-    | MAP ts -> MAP (clean_failwith ts)
-    | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_failwith ts)
-    | IF (t1, t2) -> IF (clean_failwith t1, clean_failwith t2)
-    | IF_NONE (t1, t2) -> IF_NONE (clean_failwith t1, clean_failwith t2)
-    | IF_LEFT (t1, t2) -> IF_LEFT (clean_failwith t1, clean_failwith t2)
-    | IF_CONS (t1, t2) -> IF_CONS (clean_failwith t1, clean_failwith t2)
-    | COMMENT (s, t) -> COMMENT (s, clean_failwith t)
-    | LOOP t -> LOOP (clean_failwith t)
-    | LOOP_LEFT t -> LOOP_LEFT (clean_failwith t)
-    | CREATE_CONTRACT m -> CREATE_CONTRACT m
-    | PUSH (ty, c) -> PUSH (ty, constant c)
+    | FAILWITH -> FAILWITH, true
+    | DIP (n, ts) -> 
+        let ts, b = clean_failwith ts in
+        DIP (n, ts), b
+    | ITER ts -> ITER (clean_failwith' ts), false
+    | MAP ts -> MAP (clean_failwith' ts), false
+    | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_failwith' ts), false
+    | IF (t1, t2) -> 
+        let t1, b1 = clean_failwith t1 in
+        let t2, b2 = clean_failwith t2 in
+        IF (t1, t2), b1 && b2
+    | IF_NONE (t1, t2) -> 
+        let t1, b1 = clean_failwith t1 in
+        let t2, b2 = clean_failwith t2 in
+        IF_NONE (t1, t2), b1 && b2
+    | IF_LEFT (t1, t2) ->
+        let t1, b1 = clean_failwith t1 in
+        let t2, b2 = clean_failwith t2 in
+        IF_LEFT (t1, t2), b1 && b2
+    | IF_CONS (t1, t2) ->
+        let t1, b1 = clean_failwith t1 in
+        let t2, b2 = clean_failwith t2 in
+        IF_CONS (t1, t2), b1 && b2
+    | COMMENT (s, t) -> 
+        let t, b = clean_failwith t in
+        COMMENT (s, t), b
+    | LOOP ts -> LOOP (clean_failwith' ts), false
+    | LOOP_LEFT ts -> LOOP_LEFT (clean_failwith' ts), false
+    | CREATE_CONTRACT m -> CREATE_CONTRACT m, false
+    | PUSH (ty, c) -> PUSH (ty, constant c), false
     | (DUP
       | DIG _ | DUG _ | DROP _
       | SWAP
@@ -632,7 +655,6 @@ end = struct
       | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
       | AND | OR | XOR | NOT 
       | EXEC
-      | FAILWITH
       | UNIT 
       | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
       | SIZE
@@ -665,12 +687,12 @@ end = struct
       | ADDRESS
       | APPLY
       | CHAIN_ID
-      as t) -> t
+      as t) -> t, false
       
   and constant = 
     let open Constant in
     function
-    | Code ops -> Code (clean_failwith ops)
+    | Code ops -> Code (clean_failwith' ops)
     | Option (Some t) -> Option (Some (constant t))
     | List ts -> List (List.map constant ts)
     | Set ts -> Set (List.map constant ts)
