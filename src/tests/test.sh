@@ -46,7 +46,7 @@ function convert () {
     echo "open SCaml" > $tmp
     echo "let x = $1" >> $tmp
     cat $tmp
-    CONVERSION=$($COMP --scaml-convert -impl $tmp | sed -e 's/^x: //')
+    CONVERSION="   "$($COMP --scaml-convert -impl $tmp | sed -e 's/^x: //')
     echo "converted to $CONVERSION"
 }
 
@@ -81,11 +81,13 @@ function run () {
     fi
 
     echo Executing $TEZOS_CLIENT typecheck script $tz
+    echo INPUT:
+    echo "$input"
     
     $TEZOS_CLIENT typecheck script $tz
 
     # Really weird but --source is to set SENDER and --payer to set SOURCE
-    echo Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input --source bootstrap1 --payer bootstrap2
+    echo "Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input --source bootstrap1 --payer bootstrap2"
 
     if [ -z "$must_fail" ]; then
 	$TEZOS_CLIENT run script $tz on storage "$storage" and input "$input" --source bootstrap1 --payer bootstrap2
