@@ -58,7 +58,6 @@ let init () =
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
   let parameter, storage, t = Translate.implementation sourcefile str in
 
-
   (*
      Storage 
 
@@ -83,6 +82,7 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
   Nonserialize.check t;
 *)
 
+  let module Compile = Compile.Make(struct let allow_big_map = false end) in
   let code = Compile.structure t in
   let m = { M.Module.parameter; storage; code } in
 
@@ -93,6 +93,7 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
   close_out oc
 
 let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
+  let module Compile = Compile.Make(struct let allow_big_map = true end) in
   let ts = Translate.convert str in
   let ts = List.map (fun t -> match t with
       | `Type _ -> t
@@ -115,6 +116,7 @@ let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
           end) ts
 
 let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
+  let module Compile = Compile.Make(struct let allow_big_map = true end) in
   let ts = Translate.convert str in
   let t = try List.find
                 (fun t -> match t with

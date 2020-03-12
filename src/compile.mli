@@ -12,8 +12,12 @@
 (*                                                                        *)
 (**************************************************************************)
 
-val structure : IML.t -> Michelson.Opcode.t list
+module Make(Config : sig
+    val allow_big_map : bool
+  end) : sig
+  val structure : IML.t -> Michelson.Opcode.t list
 
-val constant : IML.t -> Michelson.Constant.t option
+  val constant : IML.t -> Michelson.Constant.t option
+end
 
 val clean_field_annot : Michelson.Type.t -> Michelson.Type.t

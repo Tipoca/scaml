@@ -76,6 +76,7 @@ and desc =
   | Seq of t * t
   | Set of t list
   | Map of (t * t) list
+  | BigMap of (t * t) list
 
 module P = struct
   (* forge OCaml untyped AST from IML.t just for printing *)
@@ -232,6 +233,9 @@ module P = struct
     | Map kvs -> 
         [%expr Map [%e elist & List.map (fun (k,v) -> 
             from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
+    | BigMap kvs -> 
+        [%expr BigMap [%e elist & List.map (fun (k,v) -> 
+            from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
         
   let pp ppf t = Pprintast.expression ppf (iml t)
 end
@@ -280,6 +284,7 @@ let rec freevars t =
            (diff (freevars t2) (psingleton p2)))
   | Set ts -> unions (List.map freevars ts)
   | Map tts -> unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
+  | BigMap tts -> unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
 
 (* t2[t_i/id_i] 
    XXX very inefficient.  should be removed somehow.
@@ -314,6 +319,7 @@ let subst id_t_list t2 =
     | Seq (t1, t2) -> mk & Seq (f t1, f t2)
     | Set ts  -> mk & Set (List.map f ts)
     | Map tts -> mk & Map (List.map (fun (k,v) -> f k, f v) tts)
+    | BigMap tts -> mk & BigMap (List.map (fun (k,v) -> f k, f v) tts)
   in
   f t2
 
@@ -352,6 +358,7 @@ let alpha_conv id_t_list t2 =
     | Seq (t1, t2) -> mk & Seq (f t1, f t2)
     | Set ts  -> mk & Set (List.map f ts)
     | Map tts -> mk & Map (List.map (fun (k,v) -> f k, f v) tts)
+    | BigMap tts -> mk & BigMap (List.map (fun (k,v) -> f k, f v) tts)
   in
   f t2
 
@@ -375,4 +382,3 @@ let check_unstorable t =
       end
   | _ -> Ok ()
 
-  

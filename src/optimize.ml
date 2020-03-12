@@ -50,6 +50,8 @@ let count_variables t =
     | Set ts  -> List.fold_right f ts st
     | Map tts -> 
         List.fold_right (fun (t1,t2) st -> f t1 & f t2 st) tts st
+    | BigMap tts -> 
+        List.fold_right (fun (t1,t2) st -> f t1 & f t2 st) tts st
   in
   f t VMap.empty
 
@@ -155,6 +157,7 @@ let optimize t =
       | Seq (t1, t2) -> mk & Seq (f t1, f t2)
       | Set ts -> mk & Set (List.map f ts)
       | Map kvs -> mk & Map (List.map (fun (k,v) -> f k, f v) kvs)
+      | BigMap kvs -> mk & BigMap (List.map (fun (k,v) -> f k, f v) kvs)
     in
     begin match !attrs with
       | Some _ -> assert false

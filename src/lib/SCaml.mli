@@ -219,10 +219,13 @@ end
     No way to write a literal of big maps.
 *)
 
-type ('k, 'v) big_map
+type ('k, 'v) big_map = BigMap of ('k * 'v) list
+(** Constructor [BigMap] is allowed to use only in the conversion mode.
+    It is not usable in smart contract codes.
+*)
 
 module BigMap : sig
-  type ('k, 'v) t = ('k, 'v) big_map
+  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list
   val empty : ('k, 'v) t
   val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool

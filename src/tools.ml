@@ -82,6 +82,7 @@ let errorf n ~loc fmt =
 
 let errorf_type_expr     fmt = errorf 100 fmt
 let errorf_constant      fmt = errorf 200 fmt
+let errorf_big_map       fmt = errorf 210 fmt
 let errorf_entry         fmt = errorf 300 fmt
 let errorf_entry_typing  fmt = errorf 310 fmt
 let errorf_freevar       fmt = errorf 400 fmt
