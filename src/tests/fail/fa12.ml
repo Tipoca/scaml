@@ -1,14 +1,14 @@
 open SCaml
 
 type allowance_key =
-  { owner: address 
+  { owner: address
   ; spender: address
   }
 
 type storage = 
-  { accounts : (address, nat) big_map
-  ; allowance : (allowance_key, nat) big_map
-  ; totalSupply : nat 
+  { accounts : (address, nat) big_map (** Ownership of FA1.2 tokens *)
+  ; allowance : (allowance_key, nat) big_map (** Allowances *)
+  ; totalSupply : nat  (** Total supply *)
   }
 
 type ('a, 'r) view = ('a * 'r contract)
@@ -20,7 +20,6 @@ type transfer =
   }
 
 exception NotEnoughBalance of nat * nat
-exception NotEnoughAllowance of nat * nat
 
 let do_transfer (from : address) to_ value accounts =
   let v_from = match BigMap.get from accounts with
@@ -39,6 +38,8 @@ let do_transfer (from : address) to_ value accounts =
     | Some n -> Some (n +^ value)
   in
   BigMap.update from v_from' (BigMap.update to_ v_to' accounts)
+
+exception NotEnoughAllowance of nat * nat
 
 let [@entry] transfer { from; to_; value } s =
   let sender = Global.get_sender () in

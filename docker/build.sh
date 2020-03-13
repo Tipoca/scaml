@@ -13,3 +13,4 @@ echo docker build -t dailambda/scaml:$COMMIT .
 docker build --squash --no-cache -t dailambda/scaml:$COMMIT .
 cp ../src/tests/app_vote.ml .
 docker run --rm -v `pwd`:/work dailambda/scaml:$COMMIT /root/.opam/4.07.1/bin/scamlc app_vote.ml
+rm -f app_vote.*
