@@ -120,8 +120,8 @@ let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
   let ts = Translate.convert str in
   let t = try List.find
                 (fun t -> match t with
-                          | `Value (Some id, _) -> Ident.name id = ident
-                          | _ -> false
+                   | `Value (Some id, _) -> Ident.name id = ident
+                   | _ -> false
                 ) ts
           with Not_found -> errorf_convert_ident ~loc:Location.none
                               "no such value: %s" ident

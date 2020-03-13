@@ -5,7 +5,7 @@ set -e
 export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=Y 
 
 # Where am I?
-SCRIPT_DIR="$(cd "$(dirname "$0")" && echo "$(pwd -P)/")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && echo "$(pwd -P)")"
 
 # Where to work?
 BUILD_DIR=$SCRIPT_DIR/_build
