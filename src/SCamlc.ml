@@ -56,8 +56,8 @@ let init () =
   | Some dir -> Clflags.include_dirs := !Clflags.include_dirs @ [dir]
 
 let implementation sourcefile outputprefix _modulename (str, _coercion) =
-  let parameter, storage, t = Translate.implementation sourcefile str in
-
+  let (parameter, storage, t), secs = with_time & fun () -> Translate.implementation sourcefile str in
+  Format.eprintf "Translated in %f secs@." secs;
   (*
      Storage 
 
@@ -74,16 +74,22 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
 
   if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
 
-  let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
+  let t = 
+    if Flags.(!flags.iml_optimization) then begin
+      let res, secs = with_time & fun () -> Optimize.optimize t in
+      Format.eprintf "Optimized in %f secs@." secs;
+      res
+    end else t in
 
   if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
 
 (*
   Nonserialize.check t;
 *)
-
+  
   let module Compile = Compile.Make(struct let allow_big_map = false end) in
-  let code = Compile.structure t in
+  let code, secs = with_time & fun () -> Compile.structure t in
+  Format.eprintf "Compiled in %f secs@." secs;
   let m = { M.Module.parameter; storage; code } in
 
   let oc = open_out (outputprefix ^ ".tz") in

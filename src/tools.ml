@@ -141,3 +141,10 @@ let wrap_ocaml_exn exn n ~loc fmt =
       raise (Wrapped_OCaml_error (loc, msg, exn))
     )
     ppf ("[ESCaml%03d] " ^^ fmt) n
+
+let with_time f =
+  let t1 = Unix.gettimeofday () in
+  let res = f () in
+  let t2 = Unix.gettimeofday () in
+  res, (t2 -. t1)
+  
