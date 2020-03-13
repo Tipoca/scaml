@@ -13,8 +13,12 @@ type transfer =
   ; value : nat
   }
 
+exception NotAuthorized
+
 let check_auth from =
-  if Global.get_sender () <> from then failwith "NotAuthorized" else ()
+  if Global.get_sender () <> from then raise NotAuthorized else ()
+
+exception NotEnoughBalance of nat * nat
 
 let [@entry] transfer { from; to_; value } s =
   check_auth from;
@@ -24,7 +28,7 @@ let [@entry] transfer { from; to_; value } s =
   in
   let v_from'_int = v_from -^ value in
   let v_from' = match isnat v_from'_int with
-    | None -> failwith ("NotEnoughBalance", (value, v_from))
+    | None -> raise (NotEnoughBalance (value, v_from))
     | Some (Nat 0) -> None
     | Some v_from' -> Some v_from'
   in
