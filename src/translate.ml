@@ -1528,7 +1528,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_apply (_, []) -> assert false
 
     | Texp_apply (f, args) -> 
-        let args = List.map (function
+        let get_args () = List.map (function
             | (Nolabel, Some (e: Typedtree.expression)) -> expression lenv e
             | _ -> unsupported ~loc "labeled arguments") args
         in
@@ -1537,12 +1537,13 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | _ -> None
         in
         begin match name with
-        | None -> mk & App (expression lenv f, args)
+        | None -> mk & App (expression lenv f, get_args ()) 
+        | Some "raise" -> translate_raise ~loc lenv typ args
         | Some n when  String.is_prefix "Contract.create" n ->
-            mk & contract_create ~loc n args
+            mk & contract_create ~loc n & get_args ()
         | Some n -> 
             let _fty' = 
-              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
+              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) (get_args ()) typ 
             in
             let fty = Result.at_Error (fun e ->
                 errorf_type_expr ~loc:f.exp_loc "This primitive has type %a, whose %a"
@@ -1551,7 +1552,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
                 & type_expr f.exp_env f.exp_type 
             in
             (* fty = fty' *)
-            mk & primitive ~loc:f.exp_loc fty n args
+            mk & primitive ~loc:f.exp_loc fty n & get_args ()
         end
 
     | Texp_function { arg_label= (Labelled _ | Optional _) } ->
@@ -1777,7 +1778,6 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_eval _       -> unsupported ~loc "toplevel evaluation"
   | Tstr_primitive _  -> unsupported ~loc "primitive declaration"
   | Tstr_typext _     -> unsupported ~loc "type extension"
-  | Tstr_exception _  -> unsupported ~loc "exception declaration"
   | Tstr_module _ 
   | Tstr_recmodule _  -> unsupported ~loc "module declaration"
   | Tstr_class _      -> unsupported ~loc "class declaration"
@@ -1798,6 +1798,7 @@ and structure_item lenv { str_desc; str_loc=loc } =
 
   | Tstr_open _open_description -> lenv, []
 
+  | Tstr_exception _ -> lenv, []
   | Tstr_type _ -> lenv, []
 
   | Tstr_attribute _ -> 
@@ -1853,6 +1854,37 @@ and contract_create ~loc n args = match n with
       | _ -> assert false (* too many args must be rejeced by OCaml type system *)
       end
   | _ -> internal_error ~loc "Unknown Contract.create* function: %s" n
+
+and translate_raise lenv ~loc typ args = match args with
+  | [Nolabel, Some arg] ->
+      begin match arg.exp_desc with
+        | Texp_construct (_, cdesc, args) ->
+            (* raise C(a1, .., an)  = >  failwith ("C", a1, .., an) *)
+            begin match cdesc.cstr_tag with
+              | Cstr_extension (p, _) ->
+                  let name = function
+                    | Path.Pident id -> Ident.name id
+                    | Pdot (_, s, _) -> s
+                    | Papply _ -> assert false
+                  in
+                  let args = List.map (expression lenv) args in
+                  let arg = 
+                    Binplace.fold
+                       ~leaf:(fun c -> c)
+                       ~branch:(fun c1 c2 -> mkpair ~loc:arg.exp_loc c1 c2)
+                       & Binplace.place 
+                       & mke ~loc:cdesc.cstr_loc tyString (Const (C.String (name p))) :: args
+                  in
+                  mke ~loc typ
+                  & Prim ("raise", 
+                          snd (List.assoc "raise" Primitives.primitives)
+                            ~loc (tyLambda (arg.typ, typ)),
+                          [arg])
+              | _ -> assert false
+            end
+        | _ -> errorf_constant ~loc "raise takes only an exception constant"
+      end
+  | _ -> assert false
 
 (* parameter and storage types *)
 
@@ -2218,7 +2250,6 @@ let convert str =
     | Tstr_value (Recursive, _) -> unsupported ~loc "recursive definitions"
     | Tstr_primitive _          -> unsupported ~loc "primitive declaration"
     | Tstr_typext _             -> unsupported ~loc "type extension"
-    | Tstr_exception _          -> unsupported ~loc "exception declaration"
     | Tstr_module _ 
     | Tstr_recmodule _          -> unsupported ~loc "module declaration"
     | Tstr_class _              -> unsupported ~loc "class declaration"
@@ -2239,6 +2270,7 @@ let convert str =
             `Value (ido, expression lenv e)
           ) vbs
     | Tstr_open _open_description -> []
+    | Tstr_exception _ -> [] (* XXX *)
     | Tstr_type (_, tds) -> 
         List.map (fun td -> match td.typ_params with
             | _::_ -> errorf_type_expr ~loc:td.typ_loc "Conversion mode does not support parameterized type declarations"

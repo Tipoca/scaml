@@ -130,6 +130,9 @@ val failwith : 'a -> 'b
     [assert b] fails if and only if [b] is evaluated to [false].
 *)
 
+val raise : exn -> 'a
+(** Another version of [failwith] with a better interface for OCaml simualtion *)
+
 (** Loops *)
 module Loop : sig
   val left : ('a -> ('a, 'b) sum) -> 'a -> 'b

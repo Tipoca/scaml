@@ -13,7 +13,11 @@ type transfer =
   ; value : nat
   }
 
+let check_auth from =
+  if Global.get_sender () <> from then failwith "NotAuthorized" else ()
+
 let [@entry] transfer { from; to_; value } s =
+  check_auth from;
   let v_from = match BigMap.get from s.accounts with
     | None -> Nat 0
     | Some n -> n
