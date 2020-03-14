@@ -19,3 +19,5 @@ val primitives :
    (int 
     * (loc:Location.t -> Type.t -> Opcode.t list -> Opcode.t list)))
     list
+
+val contract' : string -> loc:Location.t -> Type.t -> Opcode.t list -> Opcode.t list

@@ -387,6 +387,7 @@ and Opcode : sig
     | SLICE
     | CAST (* to remove type name. *)
     | CONTRACT of Type.t
+    | CONTRACT' of Type.t * string (* entry point name *)
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT
@@ -466,6 +467,7 @@ end = struct
     | SLICE
     | CAST (* to remove type name. *)
     | CONTRACT of Type.t
+    | CONTRACT' of Type.t * string
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT (* deprecated *)
@@ -572,6 +574,7 @@ end = struct
       | SLICE -> !"SLICE"
       | CAST  -> !"CAST"
       | CONTRACT ty -> prim "CONTRACT" [Type.to_micheline ty]
+      | CONTRACT' (ty, n) ->  Mline.prim "CONTRACT" [Type.to_micheline ty] ["%" ^ n]
       | TRANSFER_TOKENS  -> !"TRANSFER_TOKENS"
       | SET_DELEGATE     -> !"SET_DELEGATE"
       | CREATE_ACCOUNT   -> !"CREATE_ACCOUNT"
@@ -669,6 +672,7 @@ end = struct
       | CAST
 
       | CONTRACT _
+      | CONTRACT' _
       | TRANSFER_TOKENS
       | SET_DELEGATE
       | CREATE_ACCOUNT
@@ -735,7 +739,7 @@ end = struct
             | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
             | SIZE | MEM | UPDATE | CONCAT | SELF | GET
             | RENAME _ | PACK | UNPACK _ | SLICE | CAST 
-            | CONTRACT _ | TRANSFER_TOKENS | SET_DELEGATE | CREATE_ACCOUNT
+            | CONTRACT _ | CONTRACT' _ | TRANSFER_TOKENS | SET_DELEGATE | CREATE_ACCOUNT
             | CREATE_CONTRACT _ | IMPLICIT_ACCOUNT | NOW | AMOUNT | BALANCE
             | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
             | SOURCE | SENDER | ADDRESS | CHAIN_ID -> t

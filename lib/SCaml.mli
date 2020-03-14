@@ -19,6 +19,8 @@
 type ocaml_int = int
 (** OCaml's int *)
 
+type 'a constant = 'a
+
 type nat = Nat of ocaml_int
 (** Arbitrary length nat. 
     
@@ -318,6 +320,7 @@ module Contract : sig
   *)
 
   val contract : address -> 'a t option
+  val contract' : address -> string constant -> 'a t option
   val implicit_account : key_hash -> unit t
   (** [tz1], [tz2], [tz3] accounts *)
       

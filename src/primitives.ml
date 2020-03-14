@@ -437,3 +437,8 @@ let primitives =
                                       [CAR])])
   ]
     
+let contract' entry ~loc:_ ty xs =
+  match ty.desc with
+  | TyLambda (_, { desc= TyLambda (_, { desc= TyOption ({ desc= TyContract ty })})})  ->
+      xs @ [ CONTRACT' (ty, entry) ]
+  | _ -> assert false

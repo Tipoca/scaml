@@ -16,6 +16,8 @@
    primitives.ml as Michelson code.  This file is to give their ML types.
 *)
 
+type 'a constant = 'a
+
 type ocaml_int = int
 type nat = Nat of ocaml_int
 type int = Int of ocaml_int
@@ -327,6 +329,7 @@ module Contract : sig
   type 'a t = 'a contract
   val self : 'a t
   val contract : address -> 'a t option
+  val contract' : address -> string constant -> 'a t option
   val implicit_account : key_hash -> unit t
   val address : 'a t -> address
 
@@ -356,6 +359,7 @@ end = struct
   type 'a t = 'a contract
   let self = Self
   let contract a = Some (Of_address a) (* always succeeds *)
+  let contract' _a _s = assert false
   let implicit_account kh = Implicit_account kh
   let address (type a) (c : a contract) = match c with
     | Of_address a -> a

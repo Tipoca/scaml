@@ -1696,8 +1696,35 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
   { e with typ }
 
 and primitive ~loc fty n args =
+  let apply_left x left = match left with
+    | [] -> x
+    | _ -> 
+        let typ = 
+          let rec f ty = function
+            | [] -> ty
+            | _arg::args ->
+                match ty.M.Type.desc with
+                | TyLambda (_,ty2) -> f ty2 args
+                | _ -> assert false
+          in
+          f fty args
+        in
+        App ({ loc; (* XXX inaccurate *)
+               typ;
+               desc= x;
+               attrs= [] }, left)
+  in
   match n with
   | "Contract.self" -> assert false (* must be handled already *)
+  | "Contract.contract'" ->
+      begin match args with
+        | [] | [_] -> 
+            unsupported ~loc "partial application of primitive (here SCaml.%s)" n
+        | address :: { desc= Const (M.Constant.String entry) } :: left ->
+            apply_left (Prim (n, Primitives.contract' entry ~loc fty, [address])) left
+        | _ :: { loc } :: _ ->
+            errorf_contract ~loc "contract entry name must be a constant"
+      end
   | _ -> 
       match List.assoc_opt n Primitives.primitives with
       | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
@@ -1705,23 +1732,7 @@ and primitive ~loc fty n args =
           if arity > List.length args then
             unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
           let args, left = List.split_at arity args in
-          match left with
-          | [] -> Prim (n, conv ~loc fty, args)
-          | _ -> 
-              let typ = 
-                let rec f ty = function
-                  | [] -> ty
-                  | _arg::args ->
-                      match ty.M.Type.desc with
-                      | TyLambda (_,ty2) -> f ty2 args
-                      | _ -> assert false
-                in
-                f fty args
-              in
-              App ({ loc; (* XXX inaccurate *)
-                     typ;
-                     desc= Prim (n, conv ~loc fty, args);
-                     attrs= [] }, left)
+          apply_left (Prim (n, conv ~loc fty, args)) left
 
 and switch lenv ~loc:loc0 e cases =
   let ty = e.typ in

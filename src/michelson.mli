@@ -167,6 +167,7 @@ and Opcode : sig
     | SLICE
     | CAST (* to remove type name. *)
     | CONTRACT of Type.t
+    | CONTRACT' of Type.t * string (* entry name without '%' *)
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT
