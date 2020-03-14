@@ -16,14 +16,16 @@
    primitives.ml as Michelson code.  This file is to give their ML types.
 *)
 
-type 'a constant = 'a
+open Typerep_lib.Std_internal
 
-type ocaml_int = int
-type nat = Nat of ocaml_int
-type int = Int of ocaml_int
-type tz = Tz of float
+type 'a const = 'a [@@deriving typerep]
 
-type ('a, 'b) sum = Left of 'a | Right of 'b
+type ocaml_int = int [@@deriving typerep]
+type nat = Nat of ocaml_int const [@@deriving typerep]
+type int = Int of ocaml_int const [@@deriving typerep]
+type tz = Tz of float const [@@deriving typerep]
+
+type ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
 
 exception Overflow
 
@@ -166,7 +168,7 @@ let failwith : 'a -> 'b = fun _ -> raise Fail
 let raise = raise
 
 module SCamlList = struct
-  type 'a t = 'a list
+  type 'a t = 'a list [@@deriving typerep]
   let length xs = Nat (List.length xs)
   let map = List.map
   let fold_left = List.fold_left
@@ -174,11 +176,11 @@ module SCamlList = struct
   let rev = List.rev
 end
 
-type 'a set = Set of 'a list
+type 'a set = Set of 'a const list [@@deriving typerep]
 
 module Set = struct
   (* Simulation by list.  Of course very inefficient *)
-  type 'a t = 'a set
+  type 'a t = 'a set [@@deriving typerep]
   let empty : 'a t = Set []
   let length (Set xs) = Nat (List.length xs)
   let mem x (Set xs) = List.mem x xs
@@ -204,11 +206,11 @@ module Set = struct
   let fold' f (Set xs) i = List.fold_left (fun x y -> f (y,x)) i xs
 end
 
-type ('k, 'v) map = Map of ('k * 'v) list
+type ('k, 'v) map = Map of ('k const * 'v const) list [@@deriving typerep]
 
 module Map = struct
   (* Simulation by list.  Of course very inefficient *)
-  type ('k, 'v) t = ('k, 'v) map
+  type ('k, 'v) t = ('k, 'v) map [@@deriving typerep]
   let empty = Map []
   let length (Map xs) = Nat (List.length xs)
   let map f (Map xs) = Map (List.map (fun (k,v) -> (k, f k v)) xs)
@@ -238,16 +240,16 @@ module Map = struct
   let fold' f (Map m) acc = List.fold_left (fun acc (k,v) -> f (k,v,acc)) acc m
 end
 
-type ('k, 'v) big_map = BigMap of ('k * 'v) list
+type ('k, 'v) big_map = BigMap of ('k const * 'v const) list [@@deriving typerep]
 
 module BigMap : sig
-  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list
+  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list [@@deriving typerep]
   val empty : ('k, 'v) t
   val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
 end = struct
-  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list
+  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list [@@deriving typerep]
   let empty : ('k, 'v) t = BigMap []
   let get k (BigMap kvs) = List.assoc_opt k kvs
   let mem k (BigMap kvs) = List.mem_assoc k kvs
@@ -287,24 +289,24 @@ end
 
 let (^) = SCamlString.concat
 
-type bytes = Bytes of string
+type bytes = Bytes of string const [@@deriving typerep]
 
 module Bytes = struct
-  type t = bytes
+  type t = bytes [@@deriving typerep]
   let concat (Bytes a) (Bytes b) = Bytes (a ^ b)
   let slice (Nat a) (Nat b) (Bytes s) =
     try Some (Bytes (String.sub s (Pervasives.( * ) a 2) (Pervasives.( * ) b 2))) with _ -> None
   let length (Bytes a) = Nat (Pervasives.(/) (String.length a) 2)
 end
 
-type address = Address of string
+type address = Address of string const [@@deriving typerep]
 module Address = struct
-  type t = address
+  type t = address [@@deriving typerep]
 end
 
-type key_hash = Key_hash of string
+type key_hash = Key_hash of string const [@@deriving typerep]
 module Key_hash = struct
-  type t = key_hash
+  type t = key_hash [@@deriving typerep]
 end
 
 type 'a contract =
@@ -329,11 +331,11 @@ module Contract : sig
   type 'a t = 'a contract
   val self : 'a t
   val contract : address -> 'a t option
-  val contract' : address -> string constant -> 'a t option
+  val contract' : address -> string const -> 'a t option
   val implicit_account : key_hash -> unit t
   val address : 'a t -> address
 
-  val create_from_tz_code : string -> key_hash option -> tz -> 'storage -> operation * address
+  val create_from_tz_code : string const -> key_hash option -> tz -> 'storage -> operation * address
   (** Raw interface for CREATE_CONTRACT.
   
       Michelson code must be given as a string LITERAL.
@@ -343,10 +345,10 @@ module Contract : sig
       by SCaml.
   *)
 
-  val create_raw : string -> key_hash option -> tz -> 'storage -> operation * address
+  val create_raw : string const -> key_hash option -> tz -> 'storage -> operation * address
   (** Same as [create_from_tz_code] *)
 
-  val create_from_tz_file : string -> key_hash option -> tz -> 'storage -> operation * address
+  val create_from_tz_file : string const -> key_hash option -> tz -> 'storage -> operation * address
   (** CREATE_CONTRACT from a michelson source file.
   
       Michelson file name must be given as a string literal.
@@ -380,10 +382,10 @@ module Operation = struct
   let set_delegate kho = Set_delegate kho
 end
 
-type timestamp = Timestamp of string
+type timestamp = Timestamp of string const [@@deriving typerep]
 
 module Timestamp = struct
-  type t = timestamp
+  type t = timestamp [@@deriving typerep]
 
   let add (Timestamp t) (Int i) =
     match Ptime.of_rfc3339 t with
@@ -413,10 +415,10 @@ module Timestamp = struct
     Int (int_of_float (Ptime.Span.to_float_s (Ptime.diff t1 t2)))
 end
 
-type chain_id = Chain_id of string
+type chain_id = Chain_id of string const [@@deriving typerep]
 
 module Chain_id = struct
-  type t = chain_id
+  type t = chain_id [@@deriving typerep]
 end
 
 (* maybe the place is not good *)
@@ -438,16 +440,16 @@ end = struct
   let get_chain_id _ = assert false
 end
 
-type key = Key of string
+type key = Key of string const [@@deriving typerep]
 
 module Key = struct
-  type t = key
+  type t = key [@@deriving typerep]
 end
 
-type signature = Signature of string
+type signature = Signature of string const [@@deriving typerep]
 
 module Signature = struct
-  type t = signature
+  type t = signature [@@deriving typerep]
 end
 
 module Crypto = struct

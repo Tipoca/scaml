@@ -19,29 +19,29 @@
 type ocaml_int = int
 (** OCaml's int *)
 
-type 'a constant = 'a
+type 'a const = 'a [@@deriving typerep]
 
-type nat = Nat of ocaml_int
+type nat = Nat of ocaml_int const [@@deriving typerep]
 (** Arbitrary length nat. 
     
-    [Nat] only takes a constant.  Currently there is no way to write 
+    [Nat] only takes a const.  Currently there is no way to write 
     a literal beyond the range of OCaml's [int].
 *)
 
-type int = Int of ocaml_int
+type int = Int of ocaml_int const [@@deriving typerep]
 (** Arbitrary length int 
 
-    [Int] only takes a constant.  Currently there is no way to write 
+    [Int] only takes a const.  Currently there is no way to write 
     a literal beyond the range of OCaml's [int].
 *)
 
-type tz = Tz of float
+type tz = Tz of float const [@@deriving typerep]
 (** Tezzies.  The smallest unit is micro tz, [Tz 0.000001]. 
 
-    [Tz] only takes a constant.
+    [Tz] only takes a const.
 *)
 
-type ('a, 'b) sum = Left of 'a | Right of 'b
+type ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
 (** Basic sum type corresponds with Michelson's [or] type. *)
 
 (** Arithmetics *)
@@ -149,7 +149,7 @@ end
 
 (** Lists *)
 module List : sig
-  type 'a t = 'a list
+  type 'a t = 'a list [@@deriving typerep]
   val length : 'a t -> nat
   val map : ('a -> 'b) -> 'a t -> 'b t
   val fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a list -> 'acc
@@ -167,10 +167,10 @@ end
 
     Set literal can be written using [Set [ x; .. ; x ]] expression.
 *)
-type 'a set = Set of 'a list
+type 'a set = Set of 'a const list [@@deriving typerep]
 
 module Set : sig
-  type 'a t = 'a set
+  type 'a t = 'a set [@@deriving typerep]
   val empty : 'a t
   val length : 'a t -> nat
   val mem : 'a -> 'a t -> bool
@@ -194,10 +194,10 @@ end
     Map literal can be writen using [Map [ (k, v); .. ; (k, v) ]] expression.
 *)
 
-type ('k, 'v) map = Map of ('k * 'v) list
+type ('k, 'v) map = Map of ('k const * 'v const) list [@@deriving typerep]
 
 module Map : sig
-  type ('k, 'v) t = ('k, 'v) map
+  type ('k, 'v) t = ('k, 'v) map [@@deriving typerep]
   val empty : ('k, 'v) t
   val length : ('k, 'v) t -> nat
   val map : ('k -> 'v -> 'w) -> ('k, 'v) t -> ('k, 'w) t
@@ -224,13 +224,13 @@ end
     No way to write a literal of big maps.
 *)
 
-type ('k, 'v) big_map = BigMap of ('k * 'v) list
+type ('k, 'v) big_map = BigMap of ('k const * 'v const) list [@@deriving typerep]
 (** Constructor [BigMap] is allowed to use only in the conversion mode.
     It is not usable in smart contract codes.
 *)
 
 module BigMap : sig
-  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list
+  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list [@@deriving typerep]
   val empty : ('k, 'v) t
   val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool
@@ -268,10 +268,10 @@ val (^) : string -> string -> string
     The string must be even number of hex characters.
 *)
 
-type bytes = Bytes of string
+type bytes = Bytes of string const [@@deriving typerep]
 
 module Bytes : sig
-  type t = bytes
+  type t = bytes [@@deriving typerep]
   val length : t -> nat
   val concat : t -> t -> t
   val slice : nat -> nat -> t -> t option
@@ -284,17 +284,17 @@ module Bytes : sig
 end
 
 (** Addresses *)
-type address = Address of string
+type address = Address of string const [@@deriving typerep]
 
 module Address : sig
-  type t = address
+  type t = address [@@deriving typerep]
 end
 
 (** Key hashes *)
-type key_hash = Key_hash of string
+type key_hash = Key_hash of string const [@@deriving typerep]
 
 module Key_hash : sig
-  type t = key_hash
+  type t = key_hash [@@deriving typerep]
 end
 
 (** Contract, entry points, and operation *)
@@ -320,7 +320,10 @@ module Contract : sig
   *)
 
   val contract : address -> 'a t option
-  val contract' : address -> string constant -> 'a t option
+
+  val contract' : address -> string const -> 'a t option
+  (** Address to contract with an entry point name.  The name must not start with '%'. *)
+
   val implicit_account : key_hash -> unit t
   (** [tz1], [tz2], [tz3] accounts *)
       
@@ -362,25 +365,25 @@ end
     Timestamp literals are [Timestamp s] where [s] is a valid
     RFC3339 string. ex. [Timestamp "2019-09-11T08:30:23Z"].
 *)
-type timestamp = Timestamp of string
+type timestamp = Timestamp of string const [@@deriving typerep]
 
 module Timestamp : sig
-  type t = timestamp
+  type t = timestamp [@@deriving typerep]
   val add : t -> int -> t
   val sub : t -> int -> t
   val diff : t -> t -> int
 end
 
 (** Chain ids *)
-type chain_id = Chain_id of string
+type chain_id = Chain_id of string const [@@deriving typerep]
 
 module Chain_id : sig
-  type t = chain_id
+  type t = chain_id [@@deriving typerep]
 end
 
 (** Global values 
 
-    They are constants but have functional types in order to provide
+    They are consts but have functional types in order to provide
     semantics in the native OCaml compilation in future.
 *)
 module Global : sig
@@ -394,17 +397,17 @@ module Global : sig
 end
 
 (** Keys *)
-type key = Key of string
+type key = Key of string const [@@deriving typerep]
 
 module Key : sig
-  type t = key
+  type t = key [@@deriving typerep]
 end
 
 (** Signatures *)
-type signature = Signature of string
+type signature = Signature of string const [@@deriving typerep]
 
 module Signature : sig
-  type t = signature
+  type t = signature [@@deriving typerep]
 end
 
 (** Cryptographic algorithms *)
