@@ -413,6 +413,7 @@ let primitives =
 
   ; "Error.failwith", (1, simple [ FAILWITH ]) (* deprecated *)
   ; "failwith", (1, simple [ FAILWITH ])
+
   ; "raise", (1, simple [ FAILWITH ])
 
   ; "Timestamp.add", (2, simple [ADD])

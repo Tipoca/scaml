@@ -1,6 +1,6 @@
 (library
  (name SCamlib)
- (public_name scaml)
+ (public_name scaml.scamlib)
  (wrapped false)
  (flags -w -9)
  (libraries zarith ptime)

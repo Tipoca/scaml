@@ -91,7 +91,6 @@ let optimize t =
           let t = f t in
           let ts = List.map f ts in
           begin match f u with
-
           | {desc= Fun (pat, body); typ= {desc= TyLambda (_, ty2)} } ->
               (* (fun x -> e1) e2  =>  let x = e2 in e1 *) 
               f & mk & App ({ desc= Let (pat, t, body);
@@ -169,3 +168,16 @@ let optimize t =
   in
   f t
 
+(* 
+
+   O(S, A, x) = S(x)  if S(x) defined
+             x     otherwise
+   
+   O(S, A, let x = e1 in e2)  =  O(S{x = O(S,0,e1)}, A, (e2))
+   
+   O(S, A, e1 e2)   =  let e2' = O(S, 0, e2) in  O(S, e2'::A, e1)  
+   
+   O(S, a::A, fun x -> e)  =   O(S{x=a}, A, e)
+   
+*)
+    

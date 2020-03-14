@@ -29,7 +29,8 @@
 
 open Clflags
 open Compenv
-
+open SCaml_compiler_lib
+    
 module Compile = struct
   
   (* The batch compiler *)

@@ -3,7 +3,7 @@ open SCaml
 type allowance_key =
   { owner: address
   ; spender: address
-  }
+  } [@@deriving conv{ocaml}]
 
 type storage = 
   { accounts : (address, nat) big_map (** Ownership of FA1.2 tokens *)
