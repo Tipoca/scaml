@@ -36,5 +36,6 @@ val flags : t ref
 val pp : Format.t -> t -> unit
 val eval : t -> Longident.t * [`Bool of bool | `Constant of Parsetree.constant ] -> (t, string) Result.t
 val update : (t -> t) -> unit
+val with_flags : (t -> t) -> (unit -> 'a) -> 'a
 val if_debug : (unit -> unit) -> unit
 val set_mode : t -> mode -> t

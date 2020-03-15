@@ -15,9 +15,9 @@
 val contract_self_id : Ident.t
   
 val implementation 
-  : string 
+  : string (* Source file name.  Used for error reporting *)
   -> Typedtree.structure 
-  -> Michelson.Type.t * Michelson.Type.t * IML.t
+  -> Michelson.Type.t (* Parameter *) * Michelson.Type.t (* Storage *) * IML.t
 
 val convert
   : Typedtree.structure 

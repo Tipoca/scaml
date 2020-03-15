@@ -74,5 +74,13 @@ let flags = ref
     }
 
 let update f = flags := f !flags
+
+let with_flags f g = 
+  let org = !flags in
+  flags := f !flags;
+  let res = g () in
+  flags := org;
+  res
+  
 let if_debug f = if !flags.scaml_debug then f ()
 
