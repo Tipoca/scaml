@@ -1296,6 +1296,35 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
         | _ -> internal_error ~loc "strange map arguments"
       end
 
+  (* big_map
+     We cannot write big_map constants in Michelson but we can write them
+     at storage initializations: tezos-client run script .. on storage '{ Elt 1 1 }' ..
+  *)
+  | Tconstr (p, [_; _], _), TyBigMap _ when (match Path.is_scaml p with Some "big_map" -> true | _ -> false) ->
+      (* XXX comparable type check *)
+      if cstr_name <> "BigMap" then internal_error ~loc "strange big_map constructor";
+      begin match args with 
+        | [arg] -> 
+            let es = list_elems & expression lenv arg in
+(*
+                let rec check_uniq = function
+                  | [] | [_] -> ()
+                  | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
+                      errorf ~loc "Map literal contains duplicated key %a" C.pp c1 
+                  | _::xs -> check_uniq xs
+                in
+                check_uniq xs;
+*)
+            let kvs = List.map (fun e -> match e.desc with
+                | Pair (k,v) -> (k,v)
+                | _ -> 
+                    errorf_constant ~loc:e.loc "Map binding must be a pair expression")
+                es
+            in
+            { loc; typ; desc= BigMap kvs; attrs= [] }
+        | _ -> internal_error ~loc "strange map arguments"
+      end
+
   (* C "string" style constants *)
   | Tconstr (p, [], _), _ when Path.is_scaml p <> None ->
       begin match Path.is_scaml p with

@@ -723,7 +723,7 @@ end = struct
             | IF_CONS (ts1, ts2) -> IF_CONS (loop 0 [] ts1, loop 0 [] ts2)
             | COMMENT (c, ts) -> COMMENT (c, loop 0 [] ts)
             | ITER ts -> ITER (loop 0 [] ts)
-            | MAP ts -> ITER (loop 0 [] ts)
+            | MAP ts -> MAP (loop 0 [] ts)
             | LOOP ts -> LOOP (loop 0 [] ts)
             | LOOP_LEFT ts -> LOOP_LEFT (loop 0 [] ts)
 

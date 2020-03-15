@@ -74,6 +74,7 @@ and desc =
   | Seq of t * t
   | Set of t list
   | Map of (t * t) list
+  | BigMap of (t * t) list (* only allowed for value conversion *)
 
 val pp : Format.t -> t -> unit
 

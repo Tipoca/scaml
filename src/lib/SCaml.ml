@@ -118,16 +118,16 @@ module Map = struct
   let fold' : ('k * 'v * 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc = fun _ -> assert false
 end
 
-type ('k, 'v) big_map
+type ('k, 'v) big_map = BigMap of ('k * 'v) list
 
 module BigMap : sig
-  type ('k, 'v) t = ('k, 'v) big_map
+  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list
   val empty : ('k, 'v) t
   val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
 end = struct
-  type ('k, 'v) t = ('k, 'v) big_map
+  type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list
   let empty : ('k, 'v) t = assert false
   let get : 'k -> ('k, 'v) t -> 'v option = fun _ -> assert false
   let mem : 'k -> ('k, 'v) t -> bool = fun _ -> assert false

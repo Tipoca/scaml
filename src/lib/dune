@@ -3,5 +3,5 @@
  (public_name scaml)
  (wrapped false)
  (flags -w -9)
-; (libraries unix str ppx_test.runtime)
+ (libraries zarith ptime)
 )
