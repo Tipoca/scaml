@@ -174,6 +174,7 @@ module SCamlList = struct
   let fold_left = List.fold_left
   let fold_left' f acc xs = List.fold_left (fun x y -> f (x,y)) acc xs
   let rev = List.rev
+  let rev_append = List.rev_append
 end
 
 type 'a set = Set of 'a const list [@@deriving typerep]

@@ -148,7 +148,8 @@ let primitives =
             (* ty = _ty' *)
             xs @ [DIP (1, [NIL ty]); ITER [CONS]]
         | _ -> assert false)
-
+  ; "List.rev_append", (2, simple [ITER [CONS]])
+    
   ; "Set.empty", (0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with

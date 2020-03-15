@@ -161,6 +161,7 @@ module List : sig
   *)
 
   val rev : 'a t -> 'a t
+  val rev_append : 'a t -> 'a t -> 'a t
 end
 
 (** Sets 

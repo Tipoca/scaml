@@ -1459,7 +1459,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               *)
               errorf_contract ~loc "Contract.create_raw must be immediately applied with a string literal"
           | Some n -> mk & primitive ~loc typ n []
-          | None -> unsupported ~loc "complex path %s" (Path.xname p)
+          | None -> unsupported ~loc "multi compilation unit programming: %s" (Path.xname p)
         end
     | Texp_constant (Const_string (s, _)) -> 
         mk & Const (String s)
