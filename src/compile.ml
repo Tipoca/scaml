@@ -202,7 +202,7 @@ module Make(Config : Config) = struct
           (* I think this is never called *)
           let othen = compile env t2 in
           oif @ [IF (othen @ [DROP 1; UNIT], [UNIT])]
-    | Prim (_n, conv, ts) ->
+    | Prim (n, conv, ts) ->
         (* Prim (ops, [t1; t2])
            t2 ; t1; ops
         *)
@@ -212,7 +212,7 @@ module Make(Config : Config) = struct
               let env' = (Ident.dummy, tyUnit (* dummy *)) :: env in
               env', os @ os') ts (env, [])
         in
-        conv pre
+        [COMMENT (n, conv pre)]
     | Let (pat, t1, t2) ->
         let os1 = compile env t1 in
         let os2 = compile ((pat.desc, pat.typ)::env) t2 in
