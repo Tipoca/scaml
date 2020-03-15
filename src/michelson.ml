@@ -730,9 +730,10 @@ end = struct
             | MAP ts -> MAP (loop 0 [] ts)
             | LOOP ts -> LOOP (loop 0 [] ts)
             | LOOP_LEFT ts -> LOOP_LEFT (loop 0 [] ts)
+            | PUSH (ty, c) -> PUSH (ty, constant c)
 
             | DUP | DIG _ | DUG _ | DROP _ | SWAP | PAIR | ASSERT | CAR | CDR
-            | LEFT _ | RIGHT _ | APPLY | PUSH _ | NIL _ | CONS | NONE _
+            | LEFT _ | RIGHT _ | APPLY | NIL _ | CONS | NONE _
             | SOME | COMPARE | EQ | LT | LE | GT | GE | NEQ
             | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
             | AND | OR | XOR | NOT | EXEC | FAILWITH | UNIT
@@ -745,8 +746,21 @@ end = struct
             | SOURCE | SENDER | ADDRESS | CHAIN_ID -> t
           in
           t' :: loop 0 [] ts
+    and constant = 
+      let open Constant in
+      function
+      | Code ops -> Code (loop 0 [] ops)
+      | Option (Some t) -> Option (Some (constant t))
+      | List ts -> List (List.map constant ts)
+      | Set ts -> Set (List.map constant ts)
+      | Map kvs -> Map (List.map (fun (k,v) -> (constant k, constant v)) kvs)
+      | Pair (t1, t2) -> Pair (constant t1, constant t2)
+      | Left t -> Left (constant t)
+      | Right t -> Right (constant t)
+      | (Unit | Bool _ | Int _ | String _ | Bytes _ | Timestamp _ | Option None as c) -> c
     in
     loop 0 [] ts
+
 end
 
 module Module = struct
