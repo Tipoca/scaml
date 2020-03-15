@@ -31,7 +31,7 @@ and change_keys =
   ; keys : key list 
   }
 
-let main () () =
+let [@entry] main () () =
 
   let parameter = 
     { payload= { counter= Nat 42

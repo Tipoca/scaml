@@ -1,2 +1,2 @@
 open SCaml
-let main () () = [], ()
+let [@entry] main () () = [], ()

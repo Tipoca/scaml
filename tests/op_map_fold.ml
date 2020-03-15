@@ -1,7 +1,7 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
 open Map
-let main () () =
+let [@entry] main () () =
   [], 
   assert (
     Int 21 =

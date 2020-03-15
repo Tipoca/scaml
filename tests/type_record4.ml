@@ -3,6 +3,6 @@ open SCaml
 
 type t = { a : int } (* single field had some problem of annotation *)
 
-let main () () =
+let [@entry] main () () =
   let x = { a = Int 42 } in
   [], ()

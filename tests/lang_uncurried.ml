@@ -3,7 +3,7 @@ open SCaml
 
 let f (x, y) = x + y
 
-let main () () =
+let [@entry] main () () =
   [], assert (f (Int 1, Int 2) = (Int 3))
 
                

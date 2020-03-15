@@ -3,7 +3,7 @@
    STORAGE=(None : (int -> int) option)
 *)
 open SCaml
-let main () f =
+let [@entry] main () f =
   [], 
   Some (fun x -> (x : int))
 

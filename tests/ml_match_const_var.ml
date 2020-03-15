@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main param storage =
+let [@entry] main param storage =
   [],
   assert (
     ( match Int 1 with

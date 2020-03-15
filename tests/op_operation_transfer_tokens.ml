@@ -3,7 +3,7 @@
    which is rejected saying "contract type forbidden in storage and constants"
 *)
 open SCaml
-let main x y = 
+let [@entry] main x y = 
   [ Operation.transfer_tokens () (Tz 10.) Contract.self
   ; Operation.transfer_tokens () (Tz 11.) Contract.self
   ],

@@ -1,6 +1,6 @@
 open SCaml
 
-let main () () =
+let [@entry] main () () =
   let op, ad = 
     (* Write Michelson contract code in a string.  
        I recommend to use OCaml's quoted string {| .. |}

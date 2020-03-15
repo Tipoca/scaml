@@ -2,7 +2,7 @@
    since it keeps closures with operation
 *)
 open SCaml
-let main x y = 
+let [@entry] main x y = 
   let os : operation list = [] in
   let o = 
     if true then Operation.set_delegate None

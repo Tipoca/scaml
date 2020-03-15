@@ -3,7 +3,7 @@ open SCaml
 
 type t = { int : int ; nat : nat ; tz : tz }
 
-let main x y =
+let [@entry] main x y =
   [],
   assert (
     { int= Int 1; nat= Nat 1; tz= Tz 1. } = { nat= Nat 1; int= Int 1; tz= Tz 1. }

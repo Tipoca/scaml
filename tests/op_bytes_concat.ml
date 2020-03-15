@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x y =
+let [@entry] main x y =
   [],
   assert (
     Bytes "0123456789abcdef" 

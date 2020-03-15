@@ -66,7 +66,7 @@ module Compile = struct
           ++ print_if ppf Clflags.dump_typedtree
             Printtyped.implementation_with_coercion
        in
-       SCamlc.compile sourcefile outputprefix modulename (typedtree, coercion)
+       SCamlc.compile true sourcefile outputprefix modulename (typedtree, coercion)
       with x ->
         Stypes.dump (Some (outputprefix ^ ".annot"));
         raise x
@@ -261,6 +261,14 @@ let main () =
         fatal "Please specify at most one of -pack, -a, -c, -output-obj";
     if !make_archive then assert false
     else if !make_package then assert false
+    else if not !compile_only && !objfiles <> [] then begin
+      let compiled = List.rev !SCamlc.rev_compiled in
+      (* --scaml-convert and --scaml-revert do not produce compiled modules *)
+      if compiled <> [] then begin
+        Format.eprintf "Linking %s@." (String.concat ", " (List.map (fun x -> x.SCamlc.name) compiled));
+        SCamlc.link (List.rev !SCamlc.rev_compiled);
+      end
+    end;
   with x ->
     Location.report_exception ppf x;
     exit 2

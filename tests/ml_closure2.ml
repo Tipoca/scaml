@@ -1,7 +1,7 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
 let b = true
-let main () () =
+let [@entry] main () () =
   [],
   assert (
     (

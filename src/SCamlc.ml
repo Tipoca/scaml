@@ -55,18 +55,110 @@ let init () =
   | None -> ()
   | Some dir -> Clflags.include_dirs := !Clflags.include_dirs @ [dir]
 
-let implementation sourcefile outputprefix _modulename (str, _coercion) =
-  let (parameter, storage, t), secs = with_time & fun () -> Translate.implementation sourcefile str in
+(* XXX This is awful hack *)
+type module_ = 
+  { name : string
+  ; sourcefile : string
+  ; outputprefix : string
+  ; global_entry : (Michelson.Type.t * Michelson.Type.t * IML.t) option
+  ; defs : (IML.PatVar.t * IML.t) list
+  }
+  
+let rev_compiled = ref ([] : module_ list)
+
+let compile_only sourcefile outputprefix modulename (str, _coercion) =
+  let (gento, defs), secs = with_time & fun () -> 
+      Translate.implementation true sourcefile str 
+  in
+  Format.eprintf "Translated in %f secs@." secs;
+  let t = Translate.connect defs in
+  if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
+  let t = 
+    if Flags.(!flags.iml_optimization) then begin
+      let res, secs = with_time & fun () -> Optimize.optimize t in
+      Format.eprintf "Optimized in %f secs@." secs;
+      res
+    end else t 
+  in
+  if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
+  rev_compiled := { name=modulename; sourcefile; outputprefix; global_entry= gento; defs } :: !rev_compiled
+
+let link modules =
+  match List.rev modules with
+  | [] -> assert false
+  | last::rest ->
+      let global_entry = 
+        List.iter (fun m -> 
+            if m.global_entry <> None then
+              errorf_link ~loc:(Location.in_file m.sourcefile) 
+                "Only the last linked module can have entry points") rest;
+        match last.global_entry with
+        | Some global_entry -> global_entry
+        | None ->
+            errorf_link ~loc:(Location.in_file last.sourcefile) 
+              "The last module must define at least one entry point"
+      in
+      let defs : (IML.PatVar.t * IML.t) list = 
+        List.concat_map (fun m ->
+            List.concat_map (fun (pv, t) -> 
+                [ (pv, t); 
+                  ( { pv with IML.desc= Ident.create_persistent (m.name ^ "." ^ Ident.name pv.IML.desc) }, 
+                    { t with IML.desc= IML.Var pv.desc } ) ]
+              ) m.defs) modules
+      in
+      let (parameter, storage, t), secs = with_time & fun () -> Translate.link global_entry defs in
+      Format.eprintf "Linked in %f secs@." secs;
+      (*
+         Storage 
+
+           type t = A 
+
+         produces
+
+           storage (int %A :t) ;
+
+         which is illegal
+       *)
+      let parameter = Compile.clean_field_annot parameter in
+      let storage = Compile.clean_field_annot storage in
+
+      if Flags.(!flags.dump_iml0) then IML.save (last.outputprefix ^ "__link.iml0") t;
+
+      let t = 
+        if Flags.(!flags.iml_optimization) then begin
+          let res, secs = with_time & fun () -> Optimize.optimize t in
+          Format.eprintf "Optimized in %f secs@." secs;
+          res
+        end else t in
+
+      if Flags.(!flags.dump_iml) then IML.save (last.outputprefix ^ "__link.iml") t;
+
+      let module Compile = Compile.Make(struct let allow_big_map = false end) in
+      let code, secs = with_time & fun () -> Compile.structure t in
+      Format.eprintf "Compiled in %f secs@." secs;
+      let m = { M.Module.parameter; storage; code } in
+
+      let oc = open_out (last.outputprefix ^ ".tz") in
+      let ppf = Format.of_out_channel oc in
+      Flags.if_debug (fun () -> Format.eprintf "@[<2>%a@]@." M.Module.pp m);
+      Format.fprintf ppf "@[<2>%a@]@." M.Module.pp m;
+      close_out oc
+
+let compile_and_link sourcefile outputprefix _modulename (str, _coercion) =
+  let (gento, defs), secs = with_time & fun () -> 
+      Translate.implementation false sourcefile str 
+  in
+  let (parameter, storage, t) = Translate.link (from_Some gento) defs in
   Format.eprintf "Translated in %f secs@." secs;
   (*
      Storage 
 
-      type t = A 
-                 
-                 produces
-                         
-      storage (int %A :t) ;
-     
+       type t = A 
+
+     produces
+
+       storage (int %A :t) ;
+
      which is illegal
    *)
   let parameter = Compile.clean_field_annot parameter in
@@ -83,10 +175,6 @@ let implementation sourcefile outputprefix _modulename (str, _coercion) =
 
   if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
 
-(*
-  Nonserialize.check t;
-*)
-  
   let module Compile = Compile.Make(struct let allow_big_map = false end) in
   let code, secs = with_time & fun () -> Compile.structure t in
   Format.eprintf "Compiled in %f secs@." secs;
@@ -164,9 +252,10 @@ let revert m _sourcefile _outputprefix _modulename (str, _coercion) =
       | Ok parsetree -> 
           Format.eprintf "%a@." Pprintast.expression parsetree
 
-let compile sourcefile outputprefix modulename (typedtree, coercion) =
+let compile b_compile_only sourcefile outputprefix modulename (typedtree, coercion) =
   let f = match !Flags.flags.scaml_mode with
-    | None | Some Compile -> implementation
+    | None | Some Compile ->
+      if b_compile_only then compile_only else compile_and_link
     | Some ConvertAll -> convert_all
     | Some (ConvertSingleValue ident) -> convert_value ident
     | Some (ConvertSingleType ident) -> convert_type ident

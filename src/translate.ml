@@ -1460,7 +1460,9 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               *)
               errorf_contract ~loc "Contract.create_raw must be immediately applied with a string literal"
           | Some n -> mk & primitive ~loc typ n []
-          | None -> unsupported ~loc "multi compilation unit programming: %s" (Path.xname p)
+          | None -> 
+              (* XXX Var should take Path.t... here we use a workaround *)
+              mk & Var (Ident.create_persistent (Path.name p))
         end
     | Texp_constant (Const_string (s, _)) -> 
         mk & Const (String s)
@@ -1802,8 +1804,8 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_value (Nonrecursive, vbs) ->
       let rev_vbs = 
         List.fold_left (fun rev_vbs vb ->
-            let pat_typ,v,b = value_binding lenv vb in
-            (pat_typ,v,b)::rev_vbs) [] vbs
+            let _pat_typ,v,b = value_binding lenv vb in
+            (v,b)::rev_vbs) [] vbs
       in
       let lenv = Lenv.add_locals (Typedtree.let_bound_idents vbs) lenv in
       lenv, List.rev rev_vbs
@@ -1909,10 +1911,12 @@ let get_explicit_entries vbs =
       | None -> None
       | Some (_, name) -> Some (vb, name)) vbs
 
-let get_entries vbs =
+let get_entries compile_only vbs =
   match get_explicit_entries vbs with
   | [] -> 
-      begin match List.last vbs with
+      if compile_only then []
+      else begin 
+        match List.last vbs with
         | None -> []
         | Some vb -> [vb, None]
       end
@@ -2109,141 +2113,153 @@ let add_self self_typ t =
     (mke ~loc:noloc self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
     t
 
-let implementation sourcefile str = 
+let with_flags_in_code str f = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
-  if_debug (fun () -> 
-      List.iter (fun ({txt=k},v) ->
-          Format.eprintf "attr %s=%s@."
-            (String.concat "." & Longident.flatten k)
-            (match v with
-             | `Bool b -> Printf.sprintf "%b" b
-             | `Constant c -> 
-                 match c with
-                 | Parsetree.Pconst_integer (s, None)
-                 | Pconst_float (s, None) -> s
-                 | Pconst_integer (s, Some c)
-                 | Pconst_float (s, Some c) ->  s ^ String.make 1 c
-                 | Pconst_char c -> Printf.sprintf "%c" c (*XXX *)
-                 | Pconst_string (s, None) -> Printf.sprintf "%S" s
-                 | Pconst_string (s, Some t) -> Printf.sprintf "{%s|%s|%s}" t s t
-            )
-        ) attrs);
   Flags.with_flags 
     (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
          Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
-         t attrs) 
-  & fun () ->
-    let vbs = toplevel_value_bindings str in
-    match get_entries vbs with
-    | [] -> 
-        errorf_entry ~loc:(Location.in_file sourcefile)
-          "SCaml requires at least one value definition for an entry point"
-    | entry_vbns ->
-        let _entry_ids = 
-          List.map (fun (vb, _) -> 
-              match vb.vb_pat.pat_desc with
-              | Tpat_var (id, _) -> id
-              | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> 
-                  (* We transform (_ as x) to x if _ and x have the same location.
-                     The compiler transforms (x:t) into (_ as x : t).
-                     This avoids transforming a warning 27 into a 26.
-                   *)
-                  id
-              | Tpat_any -> errorf_entry ~loc:vb.vb_pat.pat_loc "Entrypoint must have a name"
-              | _ -> errorf_entry ~loc:vb.vb_pat.pat_loc "Entrypoint must have a simple variable"
-            ) entry_vbns
-        in
-        let tyenv = str.str_final_env in
-        let entry_pvbns, ty_storage = type_check_entries str.str_final_env entry_vbns in
-        let entry_tree = Binplace.place entry_pvbns in
-        let ty_param = global_parameter_type tyenv entry_tree in
+         t attrs) f
 
-        (* self type *)
-        let () = 
+let compile_structure sourcefile str = 
+  let _loc_file = Location.in_file sourcefile in
+  let loc = { local_variables= []; non_local_variables= []; fun_loc= Location.none; fun_level= -2} in
+  snd & structure loc str
+
+let compile_entry_points compile_only sourcefile str = 
+  let vbs = toplevel_value_bindings str in
+  match get_entries compile_only vbs with
+  | [] ->
+    if compile_only then None
+    else
+      errorf_entry ~loc:(Location.in_file sourcefile)
+        "SCaml requires at least one value definition for an entry point"
+  | entry_vbns ->
+      let _entry_ids = 
+        List.map (fun (vb, _) -> 
+            match vb.vb_pat.pat_desc with
+            | Tpat_var (id, _) -> id
+            | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> 
+                (* We transform (_ as x) to x if _ and x have the same location.
+                   The compiler transforms (x:t) into (_ as x : t).
+                   This avoids transforming a warning 27 into a 26.
+                 *)
+                id
+            | Tpat_any -> errorf_entry ~loc:vb.vb_pat.pat_loc "Entrypoint must have a name"
+            | _ -> errorf_entry ~loc:vb.vb_pat.pat_loc "Entrypoint must have a simple variable"
+          ) entry_vbns
+      in
+      let tyenv = str.str_final_env in
+      let entry_pvbns, ty_storage = type_check_entries str.str_final_env entry_vbns in
+      let entry_tree = Binplace.place entry_pvbns in
+      let ty_param = global_parameter_type tyenv entry_tree in
+
+      (* self type *)
+      let () = 
+        let path =
+          Env.lookup_type (*~loc: *)
+            (Longident.(Ldot (Lident "SCaml", "contract"))) tyenv
+        in
+        let self_type = Ctype.newconstr path [ty_param] in
+        check_self self_type str
+      in
+
+      (* convert to Michelson types *)
+
+      let ty_operations = 
+        let ty_operations = 
           let path =
             Env.lookup_type (*~loc: *)
-              (Longident.(Ldot (Lident "SCaml", "contract"))) tyenv
+              (Longident.(Ldot (Lident "SCaml", "operations"))) str.str_final_env
           in
-          let self_type = Ctype.newconstr path [ty_param] in
-          check_self self_type str
+          Ctype.newconstr path []
         in
+        Result.at_Error (fun e ->
+            errorf_type_expr ~loc:(Location.in_file sourcefile) 
+              "SCaml.operations failed to be converted to Michelson type: %a"
+              pp_type_expr_error e)
+          & type_expr tyenv ty_operations
+      in
 
-        (* convert to Michelson types *)
+      let ty_storage =
+        let res = 
+          Result.at_Error (fun e ->
+              errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a, whose %a"
+                Printtyp.type_expr ty_storage
+                pp_type_expr_error e)
+            & type_expr tyenv ty_storage 
+        in
+        if not & M.Type.is_storable res then
+          errorf_entry_typing ~loc:(Location.in_file sourcefile) "Contract has non storable type %a for the storage.@." 
+            (* XXX show the original type if the expansion is different from it *)
+            Printtyp.type_expr (Ctype.full_expand tyenv ty_storage);
+        res
+      in
 
-        let ty_operations = 
-          let ty_operations = 
-            let path =
-              Env.lookup_type (*~loc: *)
-                (Longident.(Ldot (Lident "SCaml", "operations"))) str.str_final_env
+      let ty_return = tyPair (ty_operations, ty_storage) in
+
+      let global_entry = compile_global_entry ty_storage ty_return entry_tree in
+
+      let ty_param = 
+        Result.at_Error (fun e ->
+            errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a, whose %a"
+              Printtyp.type_expr ty_param
+              pp_type_expr_error e)
+          & type_expr tyenv ty_param 
+      in
+      let ty_param = match entry_tree with
+        | Leaf _ (* sole entry point *) -> ty_param
+        | Branch _ ->
+            let open M.Type in
+            let rec add_annot ty node = match ty.desc, node with
+              | _, Binplace.Leaf (_,vb,name) -> 
+                  (* XXX dup *)
+                  let id = match pattern_simple vb.vb_pat with
+                    | [p] -> p.desc
+                    | _ -> assert false
+                  in
+                  let fix_name s = match name with
+                    | Some n -> n
+                    | None -> s
+                  in
+                  { ty with attrs= [ "%" ^ fix_name (Ident.name id) ] }
+              | TyOr (ty1, ty2), Branch (n1, n2) ->
+                  let ty1 = add_annot ty1 n1 in
+                  let ty2 = add_annot ty2 n2 in
+                  { ty with desc= TyOr (ty1, ty2) }
+              | _, Branch _ -> 
+                  if_debug (fun () -> Format.eprintf "Entry point type: %a@." M.Type.pp ty);
+                  assert false
             in
-            Ctype.newconstr path []
-          in
-          Result.at_Error (fun e ->
-              errorf_type_expr ~loc:(Location.in_file sourcefile) 
-                "SCaml.operations failed to be converted to Michelson type: %a"
-                pp_type_expr_error e)
-            & type_expr tyenv ty_operations
-        in
+            add_annot ty_param entry_tree
+      in
+      Some (ty_param, ty_storage, global_entry)
 
-        let ty_storage =
-          let res = 
-            Result.at_Error (fun e ->
-                errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a, whose %a"
-                  Printtyp.type_expr ty_storage
-                  pp_type_expr_error e)
-              & type_expr tyenv ty_storage 
-          in
-          if not & M.Type.is_storable res then
-            errorf_entry_typing ~loc:(Location.in_file sourcefile) "Contract has non storable type %a for the storage.@." 
-              (* XXX show the original type if the expansion is different from it *)
-              Printtyp.type_expr (Ctype.full_expand tyenv ty_storage);
-          res
-        in
+let implementation compile_only sourcefile str = 
+  with_flags_in_code str & fun () ->
+    let entry_points = compile_entry_points compile_only sourcefile str in
+    let vbs = compile_structure sourcefile str in
+    entry_points, vbs
 
-        let ty_return = tyPair (ty_operations, ty_storage) in
+let link (ty_param, ty_storage, global_entry) vbs =
+  ty_param, 
+  ty_storage, 
+  add_self (tyContract ty_param) 
+  & List.fold_right (fun (v,b) x -> IML.subst [v.desc, b] x) vbs global_entry
 
-        let global_entry = compile_global_entry ty_storage ty_return entry_tree in
-
-        let ty_param = 
-          Result.at_Error (fun e ->
-              errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a, whose %a"
-                Printtyp.type_expr ty_param
-                pp_type_expr_error e)
-            & type_expr tyenv ty_param 
-        in
-        let ty_param = match entry_tree with
-          | Leaf _ (* sole entry point *) -> ty_param
-          | Branch _ ->
-              let open M.Type in
-              let rec add_annot ty node = match ty.desc, node with
-                | _, Binplace.Leaf (_,vb,name) -> 
-                    (* XXX dup *)
-                    let id = match pattern_simple vb.vb_pat with
-                      | [p] -> p.desc
-                      | _ -> assert false
-                    in
-                    let fix_name s = match name with
-                      | Some n -> n
-                      | None -> s
-                    in
-                    { ty with attrs= [ "%" ^ fix_name (Ident.name id) ] }
-                | TyOr (ty1, ty2), Branch (n1, n2) ->
-                    let ty1 = add_annot ty1 n1 in
-                    let ty2 = add_annot ty2 n2 in
-                    { ty with desc= TyOr (ty1, ty2) }
-                | _, Branch _ -> 
-                    if_debug (fun () -> Format.eprintf "Entry point type: %a@." M.Type.pp ty);
-                    assert false
-              in
-              add_annot ty_param entry_tree
-        in
-        ty_param, 
-        ty_storage, 
-        (* XXX add self to local_vars? *)
-        let _, vbs = structure { local_variables= []; non_local_variables= []; fun_loc= Location.none; fun_level= -2} str in
-        add_self (tyContract ty_param) 
-        & List.fold_right (fun (_,v,b) x -> IML.subst [v.desc, b] x) vbs global_entry
-
+let connect vbs =
+  let es = List.map (fun ({desc=id; typ}, _) -> mkvar ~loc:Location.none (id, typ)) vbs in
+  let t = 
+    Binplace.fold
+      ~leaf:(fun c -> c)
+      ~branch:(fun c1 c2 -> mkpair ~loc:Location.none c1 c2)
+      & Binplace.place es
+  in
+  let rec f = function
+    | [] -> t
+    | (p,t)::vbs -> mklet ~loc:Location.none p t (f vbs)
+  in
+  f vbs
+  
 (* convert mode *)
 let convert str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in

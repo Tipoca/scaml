@@ -2,4 +2,4 @@
 open SCaml
 let x = Int 1
 let f (unit:unit) = assert ( x = Int 1 )
-let main x y = [], f ()
+let [@entry] main x y = [], f ()

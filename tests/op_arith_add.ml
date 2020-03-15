@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x y = 
+let [@entry] main x y = 
   [],
   assert (Int 1 + Int 3 = Int 4
           && Nat 1 +^ Nat 3 = Nat 4

@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x y = 
+let [@entry] main x y = 
   [], 
   (* XXX evaluation rule of &&. Currently the second arg is evaluated first *) 
   assert 

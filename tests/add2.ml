@@ -3,4 +3,4 @@
    INPUT= Int 3
 *)
 open SCaml
-let main p s = ([], s + p)
+let [@entry] main p s = ([], s + p)

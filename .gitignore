@@ -1,6 +1,5 @@
 *~
 *.cm*
-dune-project
 .merlin
 *.install
 src/tests/*.iml

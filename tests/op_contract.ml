@@ -4,7 +4,7 @@
 [@@@SCaml iml_optimization=true]
 open SCaml
 open Contract
-let main x y =
+let [@entry] main x y =
   [],
   assert ( 
     match (contract (address self) : unit contract option) with 

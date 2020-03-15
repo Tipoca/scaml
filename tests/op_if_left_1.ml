@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x y = 
+let [@entry] main x y = 
   ([], 
    assert 
      (match (Left (Int 1) : (int, unit) sum) with

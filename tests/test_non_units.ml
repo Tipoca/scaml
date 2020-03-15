@@ -3,5 +3,5 @@
    INPUT= Int 2
 *)
 open SCaml
-let g x y = [], x + y
+let [@entry] g x y = [], x + y
 

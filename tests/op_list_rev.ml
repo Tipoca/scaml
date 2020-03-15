@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main () () = 
+let [@entry] main () () = 
   [],
   assert ( 
     match 

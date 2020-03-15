@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main () () = 
+let [@entry] main () () = 
   [],
   assert (
     match ediv_int_int (Int 10) (Int 3) with

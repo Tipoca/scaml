@@ -46,7 +46,7 @@ let main action storage = match action with
   | Init config -> ([], init config)
 
 (* Just for test.  For real voting dApp, this function is not required *)
-let test () () =
+let [@entry] test () () =
   let conf = 
     { title="test"
     ; beginning_time= Timestamp "2019-09-11T08:30:23Z"

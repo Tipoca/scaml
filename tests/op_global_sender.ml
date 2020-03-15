@@ -1,5 +1,5 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x y =
+let [@entry] main x y =
   [],
   assert ( Global.get_sender () = Global.get_sender ())

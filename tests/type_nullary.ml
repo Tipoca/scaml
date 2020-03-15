@@ -5,4 +5,4 @@ STORAGE=Type_nullary.A
 [@@@SCaml iml_optimization=false]
 open SCaml
 type t = A
-let main () _ = [], A
+let [@entry] main () _ = [], A

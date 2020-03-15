@@ -4,6 +4,6 @@
 *)
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x (storage : int) = 
+let [@entry] main x (storage : int) = 
   [],
   Loop.left (fun x -> if x = Int 0 then Right storage else Left (x - Int 1)) (Int 10)

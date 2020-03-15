@@ -8,7 +8,7 @@ type t =
   | Boo of (string * string)
   | Y
 
-let main x y =
+let [@entry] main x y =
   [],
   assert (
     match Foo (Int 1) with

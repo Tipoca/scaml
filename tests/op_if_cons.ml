@@ -1,6 +1,6 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x y = 
+let [@entry] main x y = 
   [], 
   assert 
     (match [Int 1; Int 2] with

@@ -1,5 +1,5 @@
 [@@@SCaml iml_optimization=false]
 open SCaml
-let main x y = ([], assert ("hello" = "hello"))
+let [@entry] main x y = ([], assert ("hello" = "hello"))
 
 

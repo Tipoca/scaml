@@ -1,7 +1,7 @@
 [@@@SCaml iml_optimization=true]
 open SCaml
 open Contract
-let [@entry] default () () =
+let [@entry] [@entry] default () () =
   [],
   assert ( 
     match (contract' (address self) "hello" : int contract option) with 
@@ -9,5 +9,5 @@ let [@entry] default () () =
     | Some c -> address c = address c
   )
 
-let [@entry] hello (i : int) () =
+let [@entry] [@entry] hello (i : int) () =
   [],()

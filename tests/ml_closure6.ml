@@ -9,4 +9,4 @@ let f c = (* this should create a closure with [a] *)
   let g e = e + d in (* another closure with [d] *)
   g
 
-let main x y = [], assert (f (Int 3) (Int 2) = Int 6)
+let [@entry] main x y = [], assert (f (Int 3) (Int 2) = Int 6)

@@ -70,7 +70,7 @@ let storage =
   }
 *)
   
-let test () _ =
+let [@entry] test () _ =
   let ops, res = main parameter None in
   ops, res
 

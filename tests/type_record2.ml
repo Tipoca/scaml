@@ -22,6 +22,6 @@ let f () =
   let finish_time = t'.finish_time in
   true
 
-let main x y =
+let [@entry] main x y =
   [],
   assert (f ())

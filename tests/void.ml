@@ -14,6 +14,6 @@ VOID code = UNPAIR; SWAP; DIP {code}; SWAP; EXEC;
 
 open SCaml
     
-let [@entry] void (f : int -> int) (storage : int) =
+let [@entry] [@entry] void (f : int -> int) (storage : int) =
   let res = f storage in
   failwith ("VoidResult", res)

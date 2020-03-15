@@ -85,6 +85,7 @@ let errorf_constant      fmt = errorf 200 fmt
 let errorf_big_map       fmt = errorf 210 fmt
 let errorf_entry         fmt = errorf 300 fmt
 let errorf_entry_typing  fmt = errorf 310 fmt
+let errorf_link          fmt = errorf 350 fmt
 let errorf_freevar       fmt = errorf 400 fmt
 let errorf_self          fmt = errorf 500 fmt
 let errorf_contract      fmt = errorf 600 fmt

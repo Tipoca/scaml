@@ -6,5 +6,5 @@
 *)
 open SCaml
 
-let main () st =
+let [@entry] main () st =
   [], (fun x -> x + Int 1) :: st

@@ -199,7 +199,7 @@ let storage =
           ]
   }
   
-let test () () =
+let [@entry] test () () =
   let ops, _ = main parameter storage in
   ops, ()
 

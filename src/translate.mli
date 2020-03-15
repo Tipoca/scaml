@@ -15,11 +15,21 @@
 val contract_self_id : Ident.t
   
 val implementation 
-  : string (* Source file name.  Used for error reporting *)
+  : bool (* compile only *)
+  -> string (* source file name *)
   -> Typedtree.structure 
-  -> Michelson.Type.t (* Parameter *) * Michelson.Type.t (* Storage *) * IML.t
+  -> (Michelson.Type.t * Michelson.Type.t * IML.t) option (* global entry *)
+     * (IML.PatVar.t * IML.t) list (* definitions *)
+
+val link 
+  : (Michelson.Type.t * Michelson.Type.t * IML.t) (* global entry *)
+  -> (IML.PatVar.t * IML.t) list (* definitions *)
+  -> Michelson.Type.t * Michelson.Type.t * IML.t
+
+val connect 
+  : (IML.PatVar.t * IML.t) list (* definitions *)
+  -> IML.t
 
 val convert
   : Typedtree.structure 
   -> [> `Type of Ident.t * Michelson.Type.t | `Value of Ident.t option * IML.t ] list
-

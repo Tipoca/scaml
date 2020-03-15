@@ -1,6 +1,6 @@
 open SCaml
 
-let main () () =
+let [@entry] main () () =
   [],
   let l1 = List.rev_append [Int 1; Int 2] [Int 3; Int 4] in
   let l2 = [Int 2; Int 1; Int 3; Int 4] in
