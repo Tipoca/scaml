@@ -436,6 +436,12 @@ let primitives =
                                      [CAR])])
   ; "/$^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
                                       [CAR])])
+           
+  ; "Option.value", (2, simple [IF_NONE ([], [DIP (1, [DROP 1])])])
+  ; "Option.get", (1, simple [IF_NONE ([PUSH (tyString, String "Option.get"); FAILWITH], [])])
+
+  ; "Sum.get_left", (1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
+  ; "Sum.get_right", (1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
   ]
     
 let contract' entry ~loc:_ ty xs =

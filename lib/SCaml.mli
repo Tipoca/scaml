@@ -41,12 +41,25 @@ type tz = Tz of float const [@@deriving typerep]
     [Tz] only takes a const.
 *)
 
+module Option : sig
+  type 'a t = 'a option = None | Some of 'a [@@deriving typerep]
+
+  val value : 'a option -> 'a -> 'a
+
+  val get : 'a option -> 'a
+end
+
 type ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
 (** Basic sum type corresponds with Michelson's [or] type. *)
 
-module Option : sig
-  type 'a t = 'a option = None | Some of 'a [@@deriving typerep]
+module Sum : sig
+  type ('a, 'b) t = ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
+
+  val get_left : ('a, 'b) sum -> 'a
+
+  val get_right : ('a, 'b) sum -> 'b
 end
+
 
 (** Arithmetics *)
 

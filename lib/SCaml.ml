@@ -25,7 +25,32 @@ type nat = Nat of ocaml_int const [@@deriving typerep]
 type int = Int of ocaml_int const [@@deriving typerep]
 type tz = Tz of float const [@@deriving typerep]
 
+module SCamlOption = struct
+  type 'a t = 'a option = None | Some of 'a [@@deriving typerep]
+
+  let value o a = match o with
+    | Some a -> a
+    | None -> a
+
+  let get = function
+    | Some a -> a
+    | None -> invalid_arg "Option.get"
+end
+
 type ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
+
+module Sum = struct
+  type ('a, 'b) t = ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
+
+  let get_left = function
+    | Left a -> a
+    | _ -> invalid_arg "Sum.get_left"
+
+  let get_right = function
+    | Right a -> a
+    | _ -> invalid_arg "Sum.get_right"
+
+end
 
 exception Overflow
 
@@ -468,3 +493,4 @@ end
 
 module List = SCamlList
 module String = SCamlString
+module Option = SCamlOption
