@@ -44,6 +44,10 @@ type tz = Tz of float const [@@deriving typerep]
 type ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
 (** Basic sum type corresponds with Michelson's [or] type. *)
 
+module Option : sig
+  type 'a t = 'a option = None | Some of 'a [@@deriving typerep]
+end
+
 (** Arithmetics *)
 
 val (+) : int -> int -> int
@@ -425,3 +429,4 @@ module Obj : sig
   val pack : 'a -> bytes
   val unpack : bytes -> 'a option
 end
+

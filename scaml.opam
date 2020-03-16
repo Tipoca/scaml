@@ -27,4 +27,6 @@ depends: [
   "camlon"
   "ppx_meta_conv"
   "ppxlib" { = "0.8.1" }
+  "typerep"
+  "ppx_typerep_conv"
 ]
