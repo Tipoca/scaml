@@ -422,7 +422,7 @@ module Make(Config : Config) = struct
                 | None -> errorf_constant ~loc:k.loc "Map expects constant bindings"
                 | Some k ->
                     match constant v with
-                    | None -> errorf_constant ~loc:v.loc "Map expects contant bindings"
+                    | None -> errorf_constant ~loc:v.loc "Map expects constant bindings"
                     | Some v -> (k,v)) kvs
           in
           (* XXX do not use OCaml's comparison *)
@@ -444,7 +444,7 @@ module Make(Config : Config) = struct
                 | None -> errorf_constant ~loc:k.loc "BigMap expects constant bindings"
                 | Some k ->
                     match constant v with
-                    | None -> errorf_constant ~loc:v.loc "BigMap expects contant bindings"
+                    | None -> errorf_constant ~loc:v.loc "BigMap expects constant bindings"
                     | Some v -> (k,v)) kvs
           in
           (* XXX do not use OCaml's comparison *)

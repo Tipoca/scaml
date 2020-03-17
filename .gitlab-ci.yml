@@ -5,4 +5,4 @@ build:
   script:
   - sudo apt install -y m4 libgmp-dev
   - opam install -y vendors/*/*.opam
-  - opam install -y src/scaml.opam
+  - opam install -y ./scaml.opam

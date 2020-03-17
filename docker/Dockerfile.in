@@ -10,7 +10,7 @@ WORKDIR /scaml
 RUN git pull
 RUN git checkout @COMMIT@
 RUN apt install -y --no-install-recommends libgmp-dev
-RUN eval $(opam env) && env && opam install -y vendors/*/*.opam src/scaml.opam
+RUN eval $(opam env) && env && opam install -y vendors/*/*.opam ./scaml.opam
 
 # Cleanup
 WORKDIR /
@@ -25,11 +25,11 @@ RUN rm -rf /root/.opam
 
 FROM ubuntu:18.04
 COPY --from=ocaml /tmp/opam.tgz /tmp
-COPY --from=ocaml /scaml/src/tests/app_vote.ml /tmp
+COPY --from=ocaml /scaml/tests/app_vote.ml /tmp
 
 RUN tar xvf /tmp/opam.tgz
 RUN rm /tmp/opam.tgz
-ENV SCAMLIB /root/.opam/4.07.1/lib/scaml
+ENV SCAMLIB /root/.opam/4.07.1/lib/scaml/scamlib
 
 # Clean and destroy APT
 

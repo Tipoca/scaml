@@ -1,7 +1,7 @@
 open SCaml
 
 (* Wow we can pattern-match with timestamps.  Not sure it is a good thing or not *)
-let main () () = 
+let [@entry] main () () = 
   [],
   assert (
     match Global.get_now () with

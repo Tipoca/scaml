@@ -1,6 +1,6 @@
 open SCaml
 
-let main () () = 
+let [@entry] main () () = 
   match true with
   | true -> [], ()
   | false -> [], ()
