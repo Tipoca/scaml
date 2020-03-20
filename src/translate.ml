@@ -39,6 +39,8 @@ module Cnstr = struct
   type t = 
     | Unit | Left | Right | Some | None | Cons | Nil | Bool of bool | Pair 
     | Constant of C.t
+    (* XXX [Constant of C.t] cannot contain values of Unit, Left, Right...
+       listed in the first line.  This is confusing. *)
   
   let to_string = function
     | Pair -> "(,)"
@@ -825,7 +827,6 @@ module Pmatch = struct
           in
           (* algo 3 (a) *)
           let algo os column =
-  
             let constructors = 
               List.sort_uniq compare
               & List.fold_left (fun st p -> 
@@ -838,30 +839,36 @@ module Pmatch = struct
                   f p @ st
                 ) [] column
             in
-            (* for Left and Right, true and false, 
-               think constructors are always full *)
+            (* Mending constructors for sum, option, list and bools.
+               Since non-exhaustive matches are already rejected, they are always listed fully.
+            *)
             let constructors = 
+              (* Things must be sorted! *)
               match constructors with
-              | [Left] | [Right] -> [Cnstr.Left; Right]
+              | [] -> assert false
+              | [Cnstr.Left] | [Right] -> [Cnstr.Left; Right]
               | [Some] | [None] -> [Some; None]
               | [Cons] | [Nil] -> [Cons; Nil]
-              | [(Bool _)] -> [(Bool true) ; (Bool false)]
+              | [(Bool _)] -> [(Bool false) ; (Bool true)]
               | _ -> constructors
             in
-            (* XXX weak. this depends on the above code *)
+            (* if it is a signature, no default case is required *)
             let is_signature = 
+              (* Things must be sorted! *)
               match constructors with
               | [Left; Right]
               | [Some; None]
               | [Cons; Nil]
               | [Pair]
               | [Unit]
-              | [(Bool true) ; (Bool false)] -> true
-                (* XXX If it is an integer for nullary constructors,
-                   no default case is required *)
-              | _ -> false
+              | [(Bool false) ; (Bool true)] -> true
+              | _ -> 
+                  (* Others including integers. 
+                     XXX If it is an integer for nullary constructors,
+                     no default case is required *)
+                  false
             in
-            assert (constructors <> []);
+            (* XXX weak. this depends on the above code *)
   
             let ivty = List.hd os in
             Switch (ivty,
@@ -925,6 +932,10 @@ module Pmatch = struct
             end
   
   let build aty acts guards t = 
+    let warn_unused_default = function
+      | None -> ()
+      | Some _ -> Format.eprintf "Warning: meaningless default case in a pattern match found.  This is likely a compiler bug.@."
+    in
     let rec f = function
       | Fail -> 
           (* Nullary constructor is converted to integer.
@@ -943,16 +954,20 @@ module Pmatch = struct
                                                   List.nth acts case, 
                                                   Some (f otherwise))
       | Switch (_, [], _) -> assert false
-      | Switch (v, [Pair, [v1,ty1; v2,ty2], t], None) ->
+      | Switch (v, [Pair, [v1,ty1; v2,ty2], t], d) ->
+          warn_unused_default d;
           let t = f t in
           (* let v1 = fst v in let v2 = snd v in <t> *)
           mklet ~loc:noloc (mkp ~loc:noloc ty1 v1) (mkfst ~loc:noloc & mkvar ~loc:noloc v)
           & mklet ~loc:noloc (mkp ~loc:noloc ty2 v2) (mksnd ~loc:noloc & mkvar ~loc:noloc v) t
-      | Switch (_, [Unit, [], t], None) -> f t
+      | Switch (_, [Unit, [], t], d) -> 
+          warn_unused_default d;
+          f t
       | Switch (v, ( [ Left,  [vl,tyl], tl
                      ; Right, [vr,tyr], tr ]
                    | [ Right, [vr,tyr], tr 
-                     ; Left,  [vl,tyl], tl ] ), None) ->
+                     ; Left,  [vl,tyl], tl ] ), d) ->
+          warn_unused_default d;
           let tl = f tl in
           let tr = f tr in
           mke ~loc:noloc aty & Switch_or (mkvar ~loc:noloc v, 
@@ -962,7 +977,8 @@ module Pmatch = struct
       | Switch (v, ( [(Bool true), [], tt ;
                       (Bool false), [], tf]
                    | [(Bool false), [], tf ;
-                      (Bool true), [], tt] ), None) ->
+                      (Bool true), [], tt] ), d) ->
+          warn_unused_default d;
           let tt = f tt in
           let tf = f tf in
           mke ~loc:noloc aty & IfThenElse (mkvar ~loc:noloc v, tt, Some tf)
@@ -970,7 +986,8 @@ module Pmatch = struct
       | Switch (v, ( [Some, [vs,tys], ts;
                       None, [], tn]
                    | [None, [], tn; 
-                      Some, [vs,tys], ts]), None) ->
+                      Some, [vs,tys], ts]), d) ->
+          warn_unused_default d;
           let ts = f ts in
           let tn = f tn in
           mke ~loc:noloc aty & Switch_none (mkvar ~loc:noloc v, tn, mkp ~loc:noloc tys vs, ts) 
@@ -978,7 +995,8 @@ module Pmatch = struct
       | Switch (v, ( [Cons, [v1,ty1; v2,ty2], tc;
                       Nil, [], tn]
                    | [Nil, [], tn; 
-                      Cons, [v1,ty1; v2,ty2], tc]), None) ->
+                      Cons, [v1,ty1; v2,ty2], tc]), d) ->
+          warn_unused_default d;
           let tc = f tc in
           let tn = f tn in
           mke ~loc:noloc aty & Switch_cons (mkvar ~loc:noloc v, 
@@ -989,14 +1007,14 @@ module Pmatch = struct
   
       | Switch (v, cases, Some d) ->
           (* all cases must be about constants with infinite members *)
-          if 
-            not & List.for_all (function
-             | (Cnstr.Constant _, [], _) -> true
-             | (Constant _, _, _) -> assert false
-             | (c, _, _) -> 
-                 if_debug (fun () -> prerr_endline (Cnstr.to_string c));
-                 false) cases
-          then assert false;
+          List.iter (function
+              | (Cnstr.Constant (C.Int _ | String _ | Bytes _ | Set _ | Map _ | Timestamp _), _, _) -> ()
+              | ((Cnstr.Unit|Left|Right|Some|None|Cons|Nil|Pair|Bool _), _, _) -> 
+                  assert false (* must be handled in the former cases *)
+              | (Cnstr.Constant (C.Unit | Bool _ | Option _ | List _ | Pair _ | Left _ | Right _), _, _) -> 
+                  assert false (* invalid *)
+              | (Cnstr.Constant (C.Code _), _, _) -> assert false
+            ) cases;
           List.fold_right (fun case telse ->
               match case with 
               | (Cnstr.Constant c, [], t) ->
