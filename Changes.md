@@ -1,3 +1,24 @@
+# master
+
+* Fixed indentation of `--scaml-convert-*` command output
+* Fixed `clean_failwith`
+* Add options `--scaml-convert-value` and `--scaml-convert-type` (#41)
+
+# 1.1.0
+
+* `scamlc -v` now prints out SCaml library directory
+* Applied `clean_failwith` against LAMBDA body
+* Added the default case for nullary constructor pattern matches (#40)
+* Added `(^)`, `/`, `/^`, `/$` and `/$^` to `SCaml`
+* Fixed printing of IML
+* Fixed type property name: "storable" => "packable"
+* Check of storage type
+* Changed the environment variable name: `SCAMLLIB` => `SCAMLIB`
+* SCaml error IDs.
+* Added `--scaml-revert`, to revert SCaml expression from a Michelson value and its SCaml type
+* `.merlin` for SCaml examples
+* Docker image support
+
 # 1.0.3
 
 * Field and constructor annotations in output Michelson code
@@ -40,7 +61,3 @@
 # 1.0.0
 
 Initial release
-
-# 1.0.1
-
-* Free occurrences of variables of types with `contract`, `operation`, and `big_map` in function abstractions are 
