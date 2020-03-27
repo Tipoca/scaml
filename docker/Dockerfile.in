@@ -43,4 +43,5 @@ RUN du -sh /usr /root /var
 
 RUN /root/.opam/4.07.1/bin/scamlc /tmp/app_vote.ml && echo OK
 WORKDIR /work
+ENV PATH /root/.opam/4.07.1/bin::/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 CMD [ "scamlc", "--scaml-version"  ]
