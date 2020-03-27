@@ -1,8 +1,10 @@
-# master
+# 1.1.1
 
-* Fixed indentation of `--scaml-convert-*` command output
-* Fixed `clean_failwith`
-* Add options `--scaml-convert-value` and `--scaml-convert-type` (#41)
+* Fixed a bug of constructor mending for bool in pattern match compilation (#49)
+* Fixed a bug in optimization.
+* `big_map` constants for `--scaml-convert*`
+* Fixed indentation of `--scaml-convert*` output
+* Add options `--scaml-convert-value` and `--scaml-convert-type` (#41) (Haochen Xie)
 
 # 1.1.0
 
