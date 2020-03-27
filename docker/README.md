@@ -8,8 +8,10 @@ should build an image `dailambda/scaml:<commit>`
 
 # Basic use
 
+`scamlc` script in this directory provides an easy way to launch the compiler in the docker image:
+
 ```
-$ docker run dailambda/scaml:<commit> scamlc <args>
+$ ./scamlc <args>
 ```
 
 For example,
@@ -17,5 +19,5 @@ For example,
 ```
 $ ls xxx.ml
 xxx.ml
-$ docker run -v `pwd`:/root dailambda/scaml:1.0.3 scamlc xxx.ml
+$ ./scamlc xxx.ml
 ```
