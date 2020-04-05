@@ -25,6 +25,7 @@ and t =
   { iml_optimization : bool
   ; iml_pattern_match : bool
   ; scaml_debug : bool
+  ; scaml_time : bool
   ; scaml_mode : mode option
   ; scaml_noscamlib : bool (** do not add -I `opam config var prefix`/scaml *)
   ; dump_iml0 : bool
@@ -38,4 +39,5 @@ val eval : t -> Longident.t * [`Bool of bool | `Constant of Parsetree.constant ]
 val update : (t -> t) -> unit
 val with_flags : (t -> t) -> (unit -> 'a) -> 'a
 val if_debug : (unit -> unit) -> unit
+val if_time : (unit -> unit) -> unit
 val set_mode : t -> mode -> t

@@ -209,6 +209,8 @@ let main () =
     (* SCaml *)
     ; "--scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
       "Print SCaml debug messages"
+    ; "--scaml-time", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_time = true })),
+      "Time SCaml compilation phases"
     ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := set_mode !flags ConvertAll)),
       "Convert types and values, instead of compling a smart contract"
     ; "--scaml-convert-value", Arg.String (fun s -> Flags.(flags := set_mode !flags

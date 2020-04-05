@@ -27,6 +27,7 @@ and t =
   { iml_optimization : bool
   ; iml_pattern_match : bool
   ; scaml_debug : bool
+  ; scaml_time : bool
   ; scaml_mode : mode option
   ; scaml_noscamlib : bool
   ; dump_iml0 : bool
@@ -49,6 +50,8 @@ let eval flags (k, v) =
   | "iml_pattern_match", _ -> must_be_a_bool ()
   | "scaml_debug", `Bool b -> Ok { flags with scaml_debug= b }
   | "scaml_debug", _ -> must_be_a_bool ()
+  | "scaml_time", `Bool b -> Ok { flags with scaml_time= b }
+  | "scaml_time", _ -> must_be_a_bool ()
 (*
   | "scaml_convert", `Unit -> set_mode flags Convert
   | "scaml_convert", _ -> must_be_a_unit ()
@@ -67,6 +70,7 @@ let flags = ref
     { iml_optimization  = true
     ; iml_pattern_match = true 
     ; scaml_debug       = begin try ignore (Sys.getenv "SCAML_DEBUG"); true with _ -> false end 
+    ; scaml_time        = false
     ; scaml_mode        = None
     ; scaml_noscamlib   = false
     ; dump_iml0         = false
@@ -83,4 +87,5 @@ let with_flags f g =
   res
   
 let if_debug f = if !flags.scaml_debug then f ()
+let if_time f = if !flags.scaml_time then f ()
 

@@ -70,13 +70,13 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
   let (gento, defs), secs = with_time & fun () -> 
       Translate.implementation true sourcefile str 
   in
-  Format.eprintf "Translated in %f secs@." secs;
+  Flags.if_time & fun () -> Format.eprintf "Translated in %f secs@." secs;
   let t = Translate.connect defs in
   if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
   let t = 
     if Flags.(!flags.iml_optimization) then begin
       let res, secs = with_time & fun () -> Optimize.optimize t in
-      Format.eprintf "Optimized in %f secs@." secs;
+      Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
       res
     end else t 
   in
@@ -107,7 +107,7 @@ let link modules =
               ) m.defs) modules
       in
       let (parameter, storage, t), secs = with_time & fun () -> Translate.link global_entry defs in
-      Format.eprintf "Linked in %f secs@." secs;
+      Flags.if_time (fun () -> Format.eprintf "Linked in %f secs@." secs);
       (*
          Storage 
 
@@ -127,7 +127,7 @@ let link modules =
       let t = 
         if Flags.(!flags.iml_optimization) then begin
           let res, secs = with_time & fun () -> Optimize.optimize t in
-          Format.eprintf "Optimized in %f secs@." secs;
+          Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
           res
         end else t in
 
@@ -135,7 +135,7 @@ let link modules =
 
       let module Compile = Compile.Make(struct let allow_big_map = false end) in
       let code, secs = with_time & fun () -> Compile.structure t in
-      Format.eprintf "Compiled in %f secs@." secs;
+      Flags.if_time (fun () -> Format.eprintf "Compiled in %f secs@." secs);
       let m = { M.Module.parameter; storage; code } in
 
       let oc = open_out (last.outputprefix ^ ".tz") in
@@ -149,7 +149,7 @@ let compile_and_link sourcefile outputprefix _modulename (str, _coercion) =
       Translate.implementation false sourcefile str 
   in
   let (parameter, storage, t) = Translate.link (from_Some gento) defs in
-  Format.eprintf "Translated in %f secs@." secs;
+  Flags.if_time (fun () -> Format.eprintf "Translated in %f secs@." secs);
   (*
      Storage 
 
@@ -169,7 +169,7 @@ let compile_and_link sourcefile outputprefix _modulename (str, _coercion) =
   let t = 
     if Flags.(!flags.iml_optimization) then begin
       let res, secs = with_time & fun () -> Optimize.optimize t in
-      Format.eprintf "Optimized in %f secs@." secs;
+      Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
       res
     end else t in
 
@@ -177,7 +177,7 @@ let compile_and_link sourcefile outputprefix _modulename (str, _coercion) =
 
   let module Compile = Compile.Make(struct let allow_big_map = false end) in
   let code, secs = with_time & fun () -> Compile.structure t in
-  Format.eprintf "Compiled in %f secs@." secs;
+  Flags.if_time (fun () -> Format.eprintf "Compiled in %f secs@." secs);
   let m = { M.Module.parameter; storage; code } in
 
   let oc = open_out (outputprefix ^ ".tz") in
