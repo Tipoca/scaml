@@ -66,7 +66,7 @@ module Compile = struct
           ++ print_if ppf Clflags.dump_typedtree
             Printtyped.implementation_with_coercion
        in
-       SCamlc.compile true sourcefile outputprefix modulename (typedtree, coercion)
+       SCamlc.compile sourcefile outputprefix modulename (typedtree, coercion)
       with x ->
         Stypes.dump (Some (outputprefix ^ ".annot"));
         raise x
@@ -269,6 +269,8 @@ let main () =
       if compiled <> [] then begin
         Format.eprintf "Linking %s@." (String.concat ", " (List.map (fun x -> x.SCamlc.name) compiled));
         SCamlc.link (List.rev !SCamlc.rev_compiled);
+      end else begin
+        Format.eprintf "Nothing to link...@."
       end
     end;
   with x ->

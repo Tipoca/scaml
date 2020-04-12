@@ -2246,19 +2246,22 @@ let link (ty_param, ty_storage, global_entry) vbs =
   add_self (tyContract ty_param) 
   & List.fold_right (fun (v,b) x -> IML.subst [v.desc, b] x) vbs global_entry
 
+(* Used only for iml dumping *)
 let connect vbs =
   let es = List.map (fun ({desc=id; typ}, _) -> mkvar ~loc:Location.none (id, typ)) vbs in
-  let t = 
-    Binplace.fold
-      ~leaf:(fun c -> c)
-      ~branch:(fun c1 c2 -> mkpair ~loc:Location.none c1 c2)
-      & Binplace.place es
-  in
-  let rec f = function
-    | [] -> t
-    | (p,t)::vbs -> mklet ~loc:Location.none p t (f vbs)
-  in
-  f vbs
+  if es = [] then mkunit ~loc:Location.none ()
+  else
+    let t = 
+      Binplace.fold
+        ~leaf:(fun c -> c)
+        ~branch:(fun c1 c2 -> mkpair ~loc:Location.none c1 c2)
+        & Binplace.place es
+    in
+    let rec f = function
+      | [] -> t
+      | (p,t)::vbs -> mklet ~loc:Location.none p t (f vbs)
+    in
+    f vbs
   
 (* convert mode *)
 let convert str = 
