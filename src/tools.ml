@@ -80,6 +80,7 @@ end
 let errorf n ~loc fmt = 
   Location.raise_errorf ~loc ("[ESCaml%03d] " ^^ fmt) n
 
+let errorf_var_not_found fmt = errorf 010 fmt
 let errorf_type_expr     fmt = errorf 100 fmt
 let errorf_constant      fmt = errorf 200 fmt
 let errorf_big_map       fmt = errorf 210 fmt

@@ -26,7 +26,7 @@ end
 module Env : sig
   type t = (Ident.t * M.Type.t) list
   val find : Ident.t -> t -> (int * M.Type.t) option
-  val pp : Format.formatter -> t -> unit
+  val _pp : Format.formatter -> t -> unit
 end = struct
   type t = (Ident.t * M.Type.t) list
 
@@ -38,7 +38,7 @@ end = struct
     in
     aux 0 env
 
-  let pp ppf t =
+  let _pp ppf t =
     Format.fprintf ppf "@[<2>[ %a ]@]"
       (Format.list ";@ "
          (fun ppf (id, ty) ->
@@ -51,9 +51,8 @@ end
 (* Copy a value of the identifier from the deep of the stack to its top. *)
 let var ~loc env id = match Env.find id env with
   | None -> 
-      internal_error ~loc "Variable not found: %s in %s" 
+      errorf_var_not_found ~loc "Variable not found: %s" 
         (Ident.unique_name id)
-        (Format.sprintf "%a" Env.pp env)
   | Some (0,_typ) ->
       [ COMMENT( "var " ^ Ident.unique_name id, [ DUP ]) ] 
   | Some (n,_typ) ->
