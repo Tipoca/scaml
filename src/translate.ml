@@ -157,16 +157,20 @@ type type_expr_error =
   | Unsupported_type of Types.type_expr
   | Unsupported_data_type of Path.t
   | Invalid_michelson of M.Type.t * string
+  | Exception_out_of_raise
 
 let pp_type_expr_error ppf = function
   | Type_variable ty -> 
-      Format.fprintf ppf "type variable %a is not supported in SCaml." Printtyp.type_expr ty
+      Format.fprintf ppf "Type variable %a is not supported in SCaml." Printtyp.type_expr ty
   | Unsupported_type ty ->
-      Format.fprintf ppf "type %a is not supported in SCaml." Printtyp.type_expr ty
+      Format.fprintf ppf "Type %a is not supported in SCaml." Printtyp.type_expr ty
   | Unsupported_data_type p ->
-      Format.fprintf ppf "data type %s is not supported in SCaml." (Path.name p)
+      Format.fprintf ppf "Data type %s is not supported in SCaml." (Path.name p)
   | Invalid_michelson (mty, s) ->
       Format.fprintf ppf "Michelson type %a is invalid: %s" M.Type.pp mty s
+  | Exception_out_of_raise ->
+      Format.fprintf ppf "Values of type exn are only allowed to raise."
+    
 
 let encode_by branch xs =
   Binplace.fold 
@@ -230,6 +234,7 @@ let rec type_expr tyenv ty =
           | Some _, _ -> Error (Unsupported_data_type p)
           | None, _ -> 
               match Env.find_type_descrs p tyenv with
+              | [], [] when p = Predef.path_exn -> Error Exception_out_of_raise
               | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
               | [], labels -> record_type tyenv ty p labels
               | constrs, [] -> variant_type tyenv ty p constrs >>| fun (_, _, ty) -> ty
@@ -355,7 +360,7 @@ let constructions_by_string =
 let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
   let typ = 
     Result.at_Error (fun e -> 
-        errorf_type_expr ~loc "This pattern has type %a.  It contains %a" 
+        errorf_type_expr ~loc "This pattern has type %a.  %a" 
           Printtyp.type_expr mltyp pp_type_expr_error e) 
     & type_expr tyenv mltyp 
   in
@@ -385,7 +390,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   let gloc = Location.ghost loc in
   let typ = 
     Result.at_Error (fun e -> errorf_type_expr ~loc 
-                        "This pattern has type %a.  It contains %a" 
+                        "This pattern has type %a.  %a" 
                         Printtyp.type_expr mltyp pp_type_expr_error e) 
     & type_expr tyenv mltyp 
   in
@@ -481,6 +486,9 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
             begin match repr_desc mltyp with
               | Tconstr (p, _, _) ->
                   begin match Env.find_type_descrs p tyenv with
+                    | [], [] when p = Predef.path_exn ->
+                        errorf_type_expr ~loc
+                          "%a" pp_type_expr_error Exception_out_of_raise
                     | [], [] -> 
                         errorf_type_expr ~loc 
                           "Abstract data type %s is not supported in SCaml" 
@@ -544,7 +552,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                   | (n, typ)::labels, _ ->
                       let typ = 
                         Result.at_Error (fun e -> 
-                            errorf_type_expr ~loc "This pattern has a field %s with type %a, whose %a" 
+                            errorf_type_expr ~loc "This pattern has a field %s with type %a.  %a" 
                               n 
                               Printtyp.type_expr typ
                               pp_type_expr_error e) 
@@ -1160,7 +1168,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   let gloc = Location.ghost loc in
   let typ = 
     Result.at_Error (fun e ->
-        errorf_type_expr ~loc "This has type %a, whose %a" Printtyp.type_expr exp_type pp_type_expr_error e)
+        errorf_type_expr ~loc "This has type %a.  %a" Printtyp.type_expr exp_type pp_type_expr_error e)
     & type_expr tyenv exp_type 
   in
   let make typ desc = { loc; typ; desc; attrs= [] } in
@@ -1370,6 +1378,9 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
 
   | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
       begin match Env.find_type_descrs p tyenv with
+        | [], [] when p = Predef.path_exn -> 
+            errorf_type_expr ~loc
+              "%a" pp_type_expr_error Exception_out_of_raise
         | [], [] -> 
             errorf_type_expr ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
         | [], _::_ -> assert false (* record cannot come here *)
@@ -1426,7 +1437,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         errorf_entry ~loc "entry declaration is only allowed for the toplevel definitions";
   end;
   let typ = Result.at_Error (fun e ->
-      errorf_type_expr ~loc "This expression has type %a, whose %a" Printtyp.type_expr mltyp pp_type_expr_error e)
+      errorf_type_expr ~loc "This expression has type %a.  %a" Printtyp.type_expr mltyp pp_type_expr_error e)
       & type_expr tyenv mltyp 
   in
   let mk desc = { loc; typ; desc; attrs= [] } in
@@ -1549,7 +1560,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) (get_args ()) typ 
             in
             let fty = Result.at_Error (fun e ->
-                errorf_type_expr ~loc:f.exp_loc "This primitive has type %a, whose %a"
+                errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type
                   pp_type_expr_error e)
                 & type_expr f.exp_env f.exp_type 
@@ -2183,7 +2194,7 @@ let compile_entry_points compile_only sourcefile str =
       let ty_storage =
         let res = 
           Result.at_Error (fun e ->
-              errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a, whose %a"
+              errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a.  %a"
                 Printtyp.type_expr ty_storage
                 pp_type_expr_error e)
             & type_expr tyenv ty_storage 
@@ -2201,7 +2212,7 @@ let compile_entry_points compile_only sourcefile str =
 
       let ty_param = 
         Result.at_Error (fun e ->
-            errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a, whose %a"
+            errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a.  %a"
               Printtyp.type_expr ty_param
               pp_type_expr_error e)
           & type_expr tyenv ty_param 
@@ -2305,7 +2316,7 @@ let convert str =
                 match type_expr str_final_env ty with
                 | Ok x -> `Type (id, x)
                 | Error e -> 
-                    errorf_type_expr ~loc:td.typ_loc "Type %a.  It contains %a" Printtyp.type_expr ty pp_type_expr_error e) tds
+                    errorf_type_expr ~loc:td.typ_loc "Type %a.  %a" Printtyp.type_expr ty pp_type_expr_error e) tds
     | Tstr_attribute _ -> []
   in
   let structure { str_items= sitems ; str_final_env } =
