@@ -233,8 +233,8 @@ let main () =
     ];
   try
     readenv ppf Before_args;
-    SCamlc.init ();
     Clflags.parse_arguments anonymous usage;
+    SCamlc.init ();
     Compmisc.read_color_env ppf;
     begin try
       Compenv.process_deferred_actions
