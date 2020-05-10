@@ -27,6 +27,8 @@ module C = M.Constant
 
 open IML
 
+let modname = ref None (* XXX HACK *)
+
 let repr_desc ty = (Ctype.repr ty).desc
 
 let create_ident n = Ident.create & "__" ^ n
@@ -1877,10 +1879,19 @@ and translate_raise lenv ~loc typ args = match args with
             (* raise C(a1, .., an)  = >  failwith ("C", a1, .., an) *)
             begin match cdesc.cstr_tag with
               | Cstr_extension (p, _) ->
-                  let name = function
-                    | Path.Pident id -> Ident.name id
-                    | Pdot (_, s, _) -> s
-                    | Papply _ -> assert false
+                  let name = 
+                    let rec make_name = function
+                      | Path.Pident id ->
+                          if Ident.persistent id || Ident.is_predef_exn id then Ident.name id
+                          else begin
+                            match !modname with
+                            | None -> assert false
+                            | Some n -> n ^ "." ^ Ident.name id
+                          end
+                      | Pdot (p, s, _) -> make_name p ^ "." ^ s
+                      | Papply _ -> assert false
+                    in
+                    make_name p
                   in
                   let args = List.map (expression lenv) args in
                   let arg = 
@@ -1888,7 +1899,7 @@ and translate_raise lenv ~loc typ args = match args with
                        ~leaf:(fun c -> c)
                        ~branch:(fun c1 c2 -> mkpair ~loc:arg.exp_loc c1 c2)
                        & Binplace.place 
-                       & mke ~loc:cdesc.cstr_loc tyString (Const (C.String (name p))) :: args
+                       & mke ~loc:cdesc.cstr_loc tyString (Const (C.String name)) :: args
                   in
                   mke ~loc typ
                   & Prim ("raise", 
@@ -2245,10 +2256,12 @@ let compile_entry_points compile_only sourcefile str =
       in
       Some (ty_param, ty_storage, global_entry)
 
-let implementation compile_only sourcefile str = 
+let implementation compile_only sourcefile outputprefix str = 
   with_flags_in_code str & fun () ->
+    modname := Some (String.capitalize_ascii (Filename.basename outputprefix));
     let entry_points = compile_entry_points compile_only sourcefile str in
     let vbs = compile_structure sourcefile str in
+    modname := None;
     entry_points, vbs
 
 let link (ty_param, ty_storage, global_entry) vbs =

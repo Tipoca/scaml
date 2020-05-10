@@ -68,7 +68,7 @@ let rev_compiled = ref ([] : module_ list)
 
 let compile_only sourcefile outputprefix modulename (str, _coercion) =
   let (gento, defs), secs = with_time & fun () -> 
-      Translate.implementation true sourcefile str 
+      Translate.implementation true sourcefile outputprefix str 
   in
   Flags.if_time (fun () -> Format.eprintf "Translated in %f secs@." secs);
   

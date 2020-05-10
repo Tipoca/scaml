@@ -17,6 +17,7 @@ val contract_self_id : Ident.t
 val implementation 
   : bool (* compile only *)
   -> string (* source file name *)
+  -> string (* output prefix *)
   -> Typedtree.structure 
   -> (Michelson.Type.t * Michelson.Type.t * IML.t) option (* global entry *)
      * (IML.PatVar.t * IML.t) list (* definitions *)

@@ -442,4 +442,3 @@ module Obj : sig
   val pack : 'a -> bytes
   val unpack : bytes -> 'a option
 end
-
