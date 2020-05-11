@@ -350,5 +350,3 @@ let do_revert str v =
           let m = Micheline_printer.printable (fun s -> s) (Micheline.strip_locations m) in
           Format.eprintf "input: %a@." Mline.pp m;
           reverter m
-
-  

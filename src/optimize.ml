@@ -59,9 +59,18 @@ let count_variables t =
 
    (fun x -> e1) e2  =>  let x = e2 in e1 
 
+   let x = e2 in e1  =>  e1
+     when x never appears in e1
+
    let x = e2 in e1  =>  e1[e2/x]  
      when x appears only once in e1
-          or e2 is just a variable
+                let is not marked as not_expand
+                freevars in e2 are all packable
+
+   let x = e2 in e1  =>  e1[e2/x]  
+     when e2 is a variable
+
+   (let x = e in f) e2 => let x = e in f e2 
 
    Free variables are counted for each let (and fun).  Very inefficient.
 *)
@@ -82,7 +91,6 @@ let optimize t =
           let t = f t in
           let ts = List.map f ts in
           begin match f u with
-
           | {desc= Fun (pat, body); typ= {desc= TyLambda (_, ty2)} } ->
               (* (fun x -> e1) e2  =>  let x = e2 in e1 *) 
               f & mk & App ({ desc= Let (pat, t, body);
@@ -104,20 +112,13 @@ let optimize t =
           add_attrs 
           & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
 
-(*
-      | Let (p, ({ desc= Fun _ } as t1), t2) -> 
-          (* let x = fun .. -> .. in e  =>  e[fun .. -> ../x] *)
-          add_attrs 
-          & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
-*)
-
       | Let (p, t1, t2) -> 
           let t2 = f t2 in
           let vmap = count_variables t2 in
           let not_expand = not & List.mem (Attr.Annot "not_expand") t.attrs in
           begin match VMap.find_opt p.desc vmap with
             | None -> 
-                (* let x = e1 in e2 => e2[e1/x] *)
+                (* let x = e1 in e2 => e2  when  x does not appear in e1 *)
                 add_attrs & f t2
 
             | Some 1 when IdTys.for_all (fun (_, ty) -> Michelson.Type.is_packable ~legacy:false ty) (freevars t1) && not not_expand ->
@@ -167,3 +168,16 @@ let optimize t =
   in
   f t
 
+(* 
+
+   O(S, A, x) = S(x)  if S(x) defined
+             x     otherwise
+   
+   O(S, A, let x = e1 in e2)  =  O(S{x = O(S,0,e1)}, A, (e2))
+   
+   O(S, A, e1 e2)   =  let e2' = O(S, 0, e2) in  O(S, e2'::A, e1)  
+   
+   O(S, a::A, fun x -> e)  =   O(S{x=a}, A, e)
+   
+*)
+    

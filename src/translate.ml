@@ -27,6 +27,8 @@ module C = M.Constant
 
 open IML
 
+let modname = ref None (* XXX HACK *)
+
 let repr_desc ty = (Ctype.repr ty).desc
 
 let create_ident n = Ident.create & "__" ^ n
@@ -88,10 +90,11 @@ module P = struct
 end
 
 type lenv = 
-  { local_variables : Ident.t list
-  ; non_local_variables : Ident.t list
-  ; fun_loc : Location.t
-  ; fun_level : int
+  { local_variables : Ident.t list (* Vars defined in the current innermost function scope *)
+  ; non_local_variables : Ident.t list (* Vars defined out of the current innermost function scope *)
+  ; fun_loc : Location.t (* Location of the current innermost function scope *)
+  ; fun_level : int (* Level of the current innermost funciton scope. 
+                       Less than 0 means it is at one of entry point function abstractions.*)
   }
 
 module Lenv = struct
@@ -156,16 +159,20 @@ type type_expr_error =
   | Unsupported_type of Types.type_expr
   | Unsupported_data_type of Path.t
   | Invalid_michelson of M.Type.t * string
+  | Exception_out_of_raise
 
 let pp_type_expr_error ppf = function
   | Type_variable ty -> 
-      Format.fprintf ppf "type variable %a is not supported in SCaml." Printtyp.type_expr ty
+      Format.fprintf ppf "Type variable %a is not supported in SCaml." Printtyp.type_expr ty
   | Unsupported_type ty ->
-      Format.fprintf ppf "type %a is not supported in SCaml." Printtyp.type_expr ty
+      Format.fprintf ppf "Type %a is not supported in SCaml." Printtyp.type_expr ty
   | Unsupported_data_type p ->
-      Format.fprintf ppf "data type %s is not supported in SCaml." (Path.name p)
+      Format.fprintf ppf "Data type %s is not supported in SCaml." (Path.name p)
   | Invalid_michelson (mty, s) ->
       Format.fprintf ppf "Michelson type %a is invalid: %s" M.Type.pp mty s
+  | Exception_out_of_raise ->
+      Format.fprintf ppf "Values of type exn are only allowed to raise."
+    
 
 let encode_by branch xs =
   Binplace.fold 
@@ -229,6 +236,7 @@ let rec type_expr tyenv ty =
           | Some _, _ -> Error (Unsupported_data_type p)
           | None, _ -> 
               match Env.find_type_descrs p tyenv with
+              | [], [] when p = Predef.path_exn -> Error Exception_out_of_raise
               | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
               | [], labels -> record_type tyenv ty p labels
               | constrs, [] -> variant_type tyenv ty p constrs >>| fun (_, _, ty) -> ty
@@ -354,7 +362,7 @@ let constructions_by_string =
 let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
   let typ = 
     Result.at_Error (fun e -> 
-        errorf_type_expr ~loc "This pattern has type %a.  It contains %a" 
+        errorf_type_expr ~loc "This pattern has type %a.  %a" 
           Printtyp.type_expr mltyp pp_type_expr_error e) 
     & type_expr tyenv mltyp 
   in
@@ -384,7 +392,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   let gloc = Location.ghost loc in
   let typ = 
     Result.at_Error (fun e -> errorf_type_expr ~loc 
-                        "This pattern has type %a.  It contains %a" 
+                        "This pattern has type %a.  %a" 
                         Printtyp.type_expr mltyp pp_type_expr_error e) 
     & type_expr tyenv mltyp 
   in
@@ -480,6 +488,9 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
             begin match repr_desc mltyp with
               | Tconstr (p, _, _) ->
                   begin match Env.find_type_descrs p tyenv with
+                    | [], [] when p = Predef.path_exn ->
+                        errorf_type_expr ~loc
+                          "%a" pp_type_expr_error Exception_out_of_raise
                     | [], [] -> 
                         errorf_type_expr ~loc 
                           "Abstract data type %s is not supported in SCaml" 
@@ -543,7 +554,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                   | (n, typ)::labels, _ ->
                       let typ = 
                         Result.at_Error (fun e -> 
-                            errorf_type_expr ~loc "This pattern has a field %s with type %a, whose %a" 
+                            errorf_type_expr ~loc "This pattern has a field %s with type %a.  %a" 
                               n 
                               Printtyp.type_expr typ
                               pp_type_expr_error e) 
@@ -1159,7 +1170,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   let gloc = Location.ghost loc in
   let typ = 
     Result.at_Error (fun e ->
-        errorf_type_expr ~loc "This has type %a, whose %a" Printtyp.type_expr exp_type pp_type_expr_error e)
+        errorf_type_expr ~loc "This has type %a.  %a" Printtyp.type_expr exp_type pp_type_expr_error e)
     & type_expr tyenv exp_type 
   in
   let make typ desc = { loc; typ; desc; attrs= [] } in
@@ -1369,6 +1380,9 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
 
   | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
       begin match Env.find_type_descrs p tyenv with
+        | [], [] when p = Predef.path_exn -> 
+            errorf_type_expr ~loc
+              "%a" pp_type_expr_error Exception_out_of_raise
         | [], [] -> 
             errorf_type_expr ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
         | [], _::_ -> assert false (* record cannot come here *)
@@ -1425,7 +1439,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         errorf_entry ~loc "entry declaration is only allowed for the toplevel definitions";
   end;
   let typ = Result.at_Error (fun e ->
-      errorf_type_expr ~loc "This expression has type %a, whose %a" Printtyp.type_expr mltyp pp_type_expr_error e)
+      errorf_type_expr ~loc "This expression has type %a.  %a" Printtyp.type_expr mltyp pp_type_expr_error e)
       & type_expr tyenv mltyp 
   in
   let mk desc = { loc; typ; desc; attrs= [] } in
@@ -1459,7 +1473,9 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               *)
               errorf_contract ~loc "Contract.create_raw must be immediately applied with a string literal"
           | Some n -> mk & primitive ~loc typ n []
-          | None -> unsupported ~loc "complex path %s" (Path.xname p)
+          | None -> 
+              (* XXX Var should take Path.t... here we use a workaround *)
+              mk & Var (Ident.create_persistent (Path.name p))
         end
     | Texp_constant (Const_string (s, _)) -> 
         mk & Const (String s)
@@ -1528,7 +1544,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_apply (_, []) -> assert false
 
     | Texp_apply (f, args) -> 
-        let args = List.map (function
+        let get_args () = List.map (function
             | (Nolabel, Some (e: Typedtree.expression)) -> expression lenv e
             | _ -> unsupported ~loc "labeled arguments") args
         in
@@ -1537,21 +1553,22 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | _ -> None
         in
         begin match name with
-        | None -> mk & App (expression lenv f, args)
+        | None -> mk & App (expression lenv f, get_args ()) 
+        | Some "raise" -> translate_raise ~loc lenv typ args
         | Some n when  String.is_prefix "Contract.create" n ->
-            mk & contract_create ~loc n args
+            mk & contract_create ~loc n & get_args ()
         | Some n -> 
             let _fty' = 
-              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) args typ 
+              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) (get_args ()) typ 
             in
             let fty = Result.at_Error (fun e ->
-                errorf_type_expr ~loc:f.exp_loc "This primitive has type %a, whose %a"
+                errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type
                   pp_type_expr_error e)
                 & type_expr f.exp_env f.exp_type 
             in
             (* fty = fty' *)
-            mk & primitive ~loc:f.exp_loc fty n args
+            mk & primitive ~loc:f.exp_loc fty n & get_args ()
         end
 
     | Texp_function { arg_label= (Labelled _ | Optional _) } ->
@@ -1695,8 +1712,35 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
   { e with typ }
 
 and primitive ~loc fty n args =
+  let apply_left x left = match left with
+    | [] -> x
+    | _ -> 
+        let typ = 
+          let rec f ty = function
+            | [] -> ty
+            | _arg::args ->
+                match ty.M.Type.desc with
+                | TyLambda (_,ty2) -> f ty2 args
+                | _ -> assert false
+          in
+          f fty args
+        in
+        App ({ loc; (* XXX inaccurate *)
+               typ;
+               desc= x;
+               attrs= [] }, left)
+  in
   match n with
   | "Contract.self" -> assert false (* must be handled already *)
+  | "Contract.contract'" ->
+      begin match args with
+        | [] | [_] -> 
+            unsupported ~loc "partial application of primitive (here SCaml.%s)" n
+        | address :: { desc= Const (M.Constant.String entry) } :: left ->
+            apply_left (Prim (n, Primitives.contract' entry ~loc fty, [address])) left
+        | _ :: { loc } :: _ ->
+            errorf_contract ~loc "contract entry name must be a constant"
+      end
   | _ -> 
       match List.assoc_opt n Primitives.primitives with
       | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
@@ -1704,23 +1748,7 @@ and primitive ~loc fty n args =
           if arity > List.length args then
             unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
           let args, left = List.split_at arity args in
-          match left with
-          | [] -> Prim (n, conv ~loc fty, args)
-          | _ -> 
-              let typ = 
-                let rec f ty = function
-                  | [] -> ty
-                  | _arg::args ->
-                      match ty.M.Type.desc with
-                      | TyLambda (_,ty2) -> f ty2 args
-                      | _ -> assert false
-                in
-                f fty args
-              in
-              App ({ loc; (* XXX inaccurate *)
-                     typ;
-                     desc= Prim (n, conv ~loc fty, args);
-                     attrs= [] }, left)
+          apply_left (Prim (n, conv ~loc fty, args)) left
 
 and switch lenv ~loc:loc0 e cases =
   let ty = e.typ in
@@ -1777,7 +1805,6 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_eval _       -> unsupported ~loc "toplevel evaluation"
   | Tstr_primitive _  -> unsupported ~loc "primitive declaration"
   | Tstr_typext _     -> unsupported ~loc "type extension"
-  | Tstr_exception _  -> unsupported ~loc "exception declaration"
   | Tstr_module _ 
   | Tstr_recmodule _  -> unsupported ~loc "module declaration"
   | Tstr_class _      -> unsupported ~loc "class declaration"
@@ -1790,38 +1817,29 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_value (Nonrecursive, vbs) ->
       let rev_vbs = 
         List.fold_left (fun rev_vbs vb ->
-            let pat_typ,v,b = value_binding lenv vb in
-            (pat_typ,v,b)::rev_vbs) [] vbs
+            let _pat_typ,v,b = value_binding lenv vb in
+            (v,b)::rev_vbs) [] vbs
       in
       let lenv = Lenv.add_locals (Typedtree.let_bound_idents vbs) lenv in
       lenv, List.rev rev_vbs
 
   | Tstr_open _open_description -> lenv, []
 
+  | Tstr_exception _ -> lenv, []
   | Tstr_type _ -> lenv, []
 
   | Tstr_attribute _ -> 
       (* simply ignores it for now *)
       lenv, []
 
-and structure lenv { str_items= sitems } final =
+and structure lenv { str_items= sitems } =
   let lenv, rev_vbss =
     List.fold_left (fun (lenv, rev_vbss) sitem ->
         let lenv, vbs = structure_item lenv sitem in
         lenv, vbs :: rev_vbss) (lenv, []) sitems 
   in
   let vbs = List.flatten & List.rev rev_vbss in
-  (* let entry1 = def1 in let entry2 = def2 in .. in final *)
-  (lenv
-(*
-  ,  List.fold_right (fun (_,v,b) x ->
-        { loc=Location.none; typ= tyUnit; desc= LetX (v, b, x); attrs= [] })
-      vbs
-      final
-*)
-  , List.fold_right (fun (_,v,b) x ->
-      IML.subst [v.desc, b] x) vbs final
-  )
+  (lenv, vbs)
 
 and contract_create ~loc n args = match n with
   | "Contract.create_raw" | "Contract.create_from_tz_code" ->
@@ -1854,6 +1872,46 @@ and contract_create ~loc n args = match n with
       end
   | _ -> internal_error ~loc "Unknown Contract.create* function: %s" n
 
+and translate_raise lenv ~loc typ args = match args with
+  | [Nolabel, Some arg] ->
+      begin match arg.exp_desc with
+        | Texp_construct (_, cdesc, args) ->
+            (* raise C(a1, .., an)  = >  failwith ("C", a1, .., an) *)
+            begin match cdesc.cstr_tag with
+              | Cstr_extension (p, _) ->
+                  let name = 
+                    let rec make_name = function
+                      | Path.Pident id ->
+                          if Ident.persistent id || Ident.is_predef_exn id then Ident.name id
+                          else begin
+                            match !modname with
+                            | None -> assert false
+                            | Some n -> n ^ "." ^ Ident.name id
+                          end
+                      | Pdot (p, s, _) -> make_name p ^ "." ^ s
+                      | Papply _ -> assert false
+                    in
+                    make_name p
+                  in
+                  let args = List.map (expression lenv) args in
+                  let arg = 
+                    Binplace.fold
+                       ~leaf:(fun c -> c)
+                       ~branch:(fun c1 c2 -> mkpair ~loc:arg.exp_loc c1 c2)
+                       & Binplace.place 
+                       & mke ~loc:cdesc.cstr_loc tyString (Const (C.String name)) :: args
+                  in
+                  mke ~loc typ
+                  & Prim ("raise", 
+                          snd (List.assoc "raise" Primitives.primitives)
+                            ~loc (tyLambda (arg.typ, typ)),
+                          [arg])
+              | _ -> assert false
+            end
+        | _ -> errorf_constant ~loc "raise takes only an exception constant"
+      end
+  | _ -> assert false
+
 (* parameter and storage types *)
 
 let toplevel_value_bindings str =
@@ -1875,10 +1933,12 @@ let get_explicit_entries vbs =
       | None -> None
       | Some (_, name) -> Some (vb, name)) vbs
 
-let get_entries vbs =
+let get_entries compile_only vbs =
   match get_explicit_entries vbs with
   | [] -> 
-      begin match List.last vbs with
+      if compile_only then []
+      else begin 
+        match List.last vbs with
         | None -> []
         | Some vb -> [vb, None]
       end
@@ -2075,31 +2135,24 @@ let add_self self_typ t =
     (mke ~loc:noloc self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
     t
 
-let implementation sourcefile str = 
+let with_flags_in_code str f = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
-  if_debug (fun () -> 
-      List.iter (fun ({txt=k},v) ->
-          Format.eprintf "attr %s=%s@."
-            (String.concat "." & Longident.flatten k)
-            (match v with
-             | `Bool b -> Printf.sprintf "%b" b
-             | `Constant c -> 
-                 match c with
-                 | Parsetree.Pconst_integer (s, None)
-                 | Pconst_float (s, None) -> s
-                 | Pconst_integer (s, Some c)
-                 | Pconst_float (s, Some c) ->  s ^ String.make 1 c
-                 | Pconst_char c -> Printf.sprintf "%c" c (*XXX *)
-                 | Pconst_string (s, None) -> Printf.sprintf "%S" s
-                 | Pconst_string (s, Some t) -> Printf.sprintf "{%s|%s|%s}" t s t
-            )
-        ) attrs);
-  Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
-      Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
-      t attrs);
+  Flags.with_flags 
+    (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
+         Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
+         t attrs) f
+
+let compile_structure sourcefile str = 
+  let _loc_file = Location.in_file sourcefile in
+  let loc = { local_variables= []; non_local_variables= []; fun_loc= Location.none; fun_level= -2} in
+  snd & structure loc str
+
+let compile_entry_points compile_only sourcefile str = 
   let vbs = toplevel_value_bindings str in
-  match get_entries vbs with
-  | [] -> 
+  match get_entries compile_only vbs with
+  | [] ->
+    if compile_only then None
+    else
       errorf_entry ~loc:(Location.in_file sourcefile)
         "SCaml requires at least one value definition for an entry point"
   | entry_vbns ->
@@ -2152,7 +2205,7 @@ let implementation sourcefile str =
       let ty_storage =
         let res = 
           Result.at_Error (fun e ->
-              errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a, whose %a"
+              errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a.  %a"
                 Printtyp.type_expr ty_storage
                 pp_type_expr_error e)
             & type_expr tyenv ty_storage 
@@ -2170,7 +2223,7 @@ let implementation sourcefile str =
 
       let ty_param = 
         Result.at_Error (fun e ->
-            errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a, whose %a"
+            errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a.  %a"
               Printtyp.type_expr ty_param
               pp_type_expr_error e)
           & type_expr tyenv ty_param 
@@ -2201,11 +2254,39 @@ let implementation sourcefile str =
             in
             add_annot ty_param entry_tree
       in
-      ty_param, 
-      ty_storage, 
-      (* XXX add self to local_vars? *)
-      add_self (tyContract ty_param) & snd & structure { local_variables= []; non_local_variables= []; fun_loc= Location.none; fun_level= -2} str global_entry
+      Some (ty_param, ty_storage, global_entry)
 
+let implementation compile_only sourcefile outputprefix str = 
+  with_flags_in_code str & fun () ->
+    modname := Some (String.capitalize_ascii (Filename.basename outputprefix));
+    let entry_points = compile_entry_points compile_only sourcefile str in
+    let vbs = compile_structure sourcefile str in
+    modname := None;
+    entry_points, vbs
+
+let link (ty_param, ty_storage, global_entry) vbs =
+  ty_param, 
+  ty_storage, 
+  add_self (tyContract ty_param) 
+  & List.fold_right (fun (v,b) x -> IML.subst [v.desc, b] x) vbs global_entry
+
+(* Used only for iml dumping *)
+let connect vbs =
+  let es = List.map (fun ({desc=id; typ}, _) -> mkvar ~loc:Location.none (id, typ)) vbs in
+  if es = [] then mkunit ~loc:Location.none ()
+  else
+    let t = 
+      Binplace.fold
+        ~leaf:(fun c -> c)
+        ~branch:(fun c1 c2 -> mkpair ~loc:Location.none c1 c2)
+        & Binplace.place es
+    in
+    let rec f = function
+      | [] -> t
+      | (p,t)::vbs -> mklet ~loc:Location.none p t (f vbs)
+    in
+    f vbs
+  
 (* convert mode *)
 let convert str = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
@@ -2218,7 +2299,6 @@ let convert str =
     | Tstr_value (Recursive, _) -> unsupported ~loc "recursive definitions"
     | Tstr_primitive _          -> unsupported ~loc "primitive declaration"
     | Tstr_typext _             -> unsupported ~loc "type extension"
-    | Tstr_exception _          -> unsupported ~loc "exception declaration"
     | Tstr_module _ 
     | Tstr_recmodule _          -> unsupported ~loc "module declaration"
     | Tstr_class _              -> unsupported ~loc "class declaration"
@@ -2239,6 +2319,7 @@ let convert str =
             `Value (ido, expression lenv e)
           ) vbs
     | Tstr_open _open_description -> []
+    | Tstr_exception _ -> [] (* XXX *)
     | Tstr_type (_, tds) -> 
         List.map (fun td -> match td.typ_params with
             | _::_ -> errorf_type_expr ~loc:td.typ_loc "Conversion mode does not support parameterized type declarations"
@@ -2248,7 +2329,7 @@ let convert str =
                 match type_expr str_final_env ty with
                 | Ok x -> `Type (id, x)
                 | Error e -> 
-                    errorf_type_expr ~loc:td.typ_loc "Type %a.  It contains %a" Printtyp.type_expr ty pp_type_expr_error e) tds
+                    errorf_type_expr ~loc:td.typ_loc "Type %a.  %a" Printtyp.type_expr ty pp_type_expr_error e) tds
     | Tstr_attribute _ -> []
   in
   let structure { str_items= sitems ; str_final_env } =

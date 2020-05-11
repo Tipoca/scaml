@@ -1,0 +1,8 @@
+(library
+ (name SCamlib)
+ (public_name scaml.scamlib)
+ (wrapped false)
+ (flags -w -9)
+ (preprocess (pps ppx_typerep_conv))
+ (libraries zarith ptime typerep)
+)

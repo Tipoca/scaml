@@ -1,0 +1,8 @@
+(library
+  (name SCamtest)
+  (public_name scaml.scamtest)
+  (flags -w A-4-9-40-41-42-44-45)
+  (preprocess
+      (pps ppxlib.metaquot))
+  (libraries ppxlib typerep scaml.compiler-lib scaml.scamlib
+	     ))

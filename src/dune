@@ -1,6 +1,6 @@
-(executable
-  (name main)
-  (public_name scamlc)
+(library
+  (name SCaml_compiler_lib)
+  (public_name scaml.compiler-lib)
   (flags -w A-4-9-40-41-42-44-45)
   (preprocess
      (pps ppx_meta_conv.ppx ppxlib.metaquot))

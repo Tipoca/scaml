@@ -1,7 +1,0 @@
-(library
- (name SCamlib)
- (public_name scaml)
- (wrapped false)
- (flags -w -9)
- (libraries zarith ptime)
-)

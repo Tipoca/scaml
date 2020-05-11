@@ -80,11 +80,13 @@ end
 let errorf n ~loc fmt = 
   Location.raise_errorf ~loc ("[ESCaml%03d] " ^^ fmt) n
 
+let errorf_var_not_found fmt = errorf 010 fmt
 let errorf_type_expr     fmt = errorf 100 fmt
 let errorf_constant      fmt = errorf 200 fmt
 let errorf_big_map       fmt = errorf 210 fmt
 let errorf_entry         fmt = errorf 300 fmt
 let errorf_entry_typing  fmt = errorf 310 fmt
+let errorf_link          fmt = errorf 350 fmt
 let errorf_freevar       fmt = errorf 400 fmt
 let errorf_self          fmt = errorf 500 fmt
 let errorf_contract      fmt = errorf 600 fmt
@@ -141,3 +143,10 @@ let wrap_ocaml_exn exn n ~loc fmt =
       raise (Wrapped_OCaml_error (loc, msg, exn))
     )
     ppf ("[ESCaml%03d] " ^^ fmt) n
+
+let with_time f =
+  let t1 = Unix.gettimeofday () in
+  let res = f () in
+  let t2 = Unix.gettimeofday () in
+  res, (t2 -. t1)
+  

@@ -1,3 +1,26 @@
+# 1.2.0
+
+## Features
+
+* BREAKING CHANGE: First implementation of multi unit compilation.  [@entry] is now mandatory for entry points
+
+## Optimization
+
+* `dip_1_drop_n_compaction` is now applied to opcodes in constants
+
+## Primitives
+
+* SCaml.ml has more implementations of primitives.
+* Added `Option.value`, `Option.get`, `Sum.get_left`, `Sum.get_right`
+* Added `List.rev_append`
+* Added `SCaml.Contract.contract'`, address to contract conversion with an entry point name
+* Added `SCaml.raise` for better exception simulation in OCaml
+
+## Others
+
+* Directory reorganization
+* OCaml Michelson converison using `ppx_typerep_conv`
+
 # 1.1.1
 
 * Fixed a bug of constructor mending for bool in pattern match compilation (#49)

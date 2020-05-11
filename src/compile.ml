@@ -26,7 +26,7 @@ end
 module Env : sig
   type t = (Ident.t * M.Type.t) list
   val find : Ident.t -> t -> (int * M.Type.t) option
-  val pp : Format.formatter -> t -> unit
+  val _pp : Format.formatter -> t -> unit
 end = struct
   type t = (Ident.t * M.Type.t) list
 
@@ -38,7 +38,7 @@ end = struct
     in
     aux 0 env
 
-  let pp ppf t =
+  let _pp ppf t =
     Format.fprintf ppf "@[<2>[ %a ]@]"
       (Format.list ";@ "
          (fun ppf (id, ty) ->
@@ -51,9 +51,8 @@ end
 (* Copy a value of the identifier from the deep of the stack to its top. *)
 let var ~loc env id = match Env.find id env with
   | None -> 
-      internal_error ~loc "Variable not found: %s in %s" 
+      errorf_var_not_found ~loc "Variable not found: %s" 
         (Ident.unique_name id)
-        (Format.sprintf "%a" Env.pp env)
   | Some (0,_typ) ->
       [ COMMENT( "var " ^ Ident.unique_name id, [ DUP ]) ] 
   | Some (n,_typ) ->
@@ -202,7 +201,7 @@ module Make(Config : Config) = struct
           (* I think this is never called *)
           let othen = compile env t2 in
           oif @ [IF (othen @ [DROP 1; UNIT], [UNIT])]
-    | Prim (_n, conv, ts) ->
+    | Prim (n, conv, ts) ->
         (* Prim (ops, [t1; t2])
            t2 ; t1; ops
         *)
@@ -212,7 +211,7 @@ module Make(Config : Config) = struct
               let env' = (Ident.dummy, tyUnit (* dummy *)) :: env in
               env', os @ os') ts (env, [])
         in
-        conv pre
+        [COMMENT (n, conv pre)]
     | Let (pat, t1, t2) ->
         let os1 = compile env t1 in
         let os2 = compile ((pat.desc, pat.typ)::env) t2 in
@@ -422,7 +421,7 @@ module Make(Config : Config) = struct
                 | None -> errorf_constant ~loc:k.loc "Map expects constant bindings"
                 | Some k ->
                     match constant v with
-                    | None -> errorf_constant ~loc:v.loc "Map expects contant bindings"
+                    | None -> errorf_constant ~loc:v.loc "Map expects constant bindings"
                     | Some v -> (k,v)) kvs
           in
           (* XXX do not use OCaml's comparison *)
@@ -444,7 +443,7 @@ module Make(Config : Config) = struct
                 | None -> errorf_constant ~loc:k.loc "BigMap expects constant bindings"
                 | Some k ->
                     match constant v with
-                    | None -> errorf_constant ~loc:v.loc "BigMap expects contant bindings"
+                    | None -> errorf_constant ~loc:v.loc "BigMap expects constant bindings"
                     | Some v -> (k,v)) kvs
           in
           (* XXX do not use OCaml's comparison *)

@@ -387,6 +387,7 @@ and Opcode : sig
     | SLICE
     | CAST (* to remove type name. *)
     | CONTRACT of Type.t
+    | CONTRACT' of Type.t * string (* entry point name *)
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT
@@ -466,6 +467,7 @@ end = struct
     | SLICE
     | CAST (* to remove type name. *)
     | CONTRACT of Type.t
+    | CONTRACT' of Type.t * string
     | TRANSFER_TOKENS
     | SET_DELEGATE
     | CREATE_ACCOUNT (* deprecated *)
@@ -572,6 +574,7 @@ end = struct
       | SLICE -> !"SLICE"
       | CAST  -> !"CAST"
       | CONTRACT ty -> prim "CONTRACT" [Type.to_micheline ty]
+      | CONTRACT' (ty, n) ->  Mline.prim "CONTRACT" [Type.to_micheline ty] ["%" ^ n]
       | TRANSFER_TOKENS  -> !"TRANSFER_TOKENS"
       | SET_DELEGATE     -> !"SET_DELEGATE"
       | CREATE_ACCOUNT   -> !"CREATE_ACCOUNT"
@@ -669,6 +672,7 @@ end = struct
       | CAST
 
       | CONTRACT _
+      | CONTRACT' _
       | TRANSFER_TOKENS
       | SET_DELEGATE
       | CREATE_ACCOUNT
@@ -726,23 +730,37 @@ end = struct
             | MAP ts -> MAP (loop 0 [] ts)
             | LOOP ts -> LOOP (loop 0 [] ts)
             | LOOP_LEFT ts -> LOOP_LEFT (loop 0 [] ts)
+            | PUSH (ty, c) -> PUSH (ty, constant c)
 
             | DUP | DIG _ | DUG _ | DROP _ | SWAP | PAIR | ASSERT | CAR | CDR
-            | LEFT _ | RIGHT _ | APPLY | PUSH _ | NIL _ | CONS | NONE _
+            | LEFT _ | RIGHT _ | APPLY | NIL _ | CONS | NONE _
             | SOME | COMPARE | EQ | LT | LE | GT | GE | NEQ
             | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
             | AND | OR | XOR | NOT | EXEC | FAILWITH | UNIT
             | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
             | SIZE | MEM | UPDATE | CONCAT | SELF | GET
             | RENAME _ | PACK | UNPACK _ | SLICE | CAST 
-            | CONTRACT _ | TRANSFER_TOKENS | SET_DELEGATE | CREATE_ACCOUNT
+            | CONTRACT _ | CONTRACT' _ | TRANSFER_TOKENS | SET_DELEGATE | CREATE_ACCOUNT
             | CREATE_CONTRACT _ | IMPLICIT_ACCOUNT | NOW | AMOUNT | BALANCE
             | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
             | SOURCE | SENDER | ADDRESS | CHAIN_ID -> t
           in
           t' :: loop 0 [] ts
+    and constant = 
+      let open Constant in
+      function
+      | Code ops -> Code (loop 0 [] ops)
+      | Option (Some t) -> Option (Some (constant t))
+      | List ts -> List (List.map constant ts)
+      | Set ts -> Set (List.map constant ts)
+      | Map kvs -> Map (List.map (fun (k,v) -> (constant k, constant v)) kvs)
+      | Pair (t1, t2) -> Pair (constant t1, constant t2)
+      | Left t -> Left (constant t)
+      | Right t -> Right (constant t)
+      | (Unit | Bool _ | Int _ | String _ | Bytes _ | Timestamp _ | Option None as c) -> c
     in
     loop 0 [] ts
+
 end
 
 module Module = struct

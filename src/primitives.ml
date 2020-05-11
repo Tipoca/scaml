@@ -29,7 +29,6 @@ let rec args ty = function
       match ty.desc with
       | TyLambda (ty1, ty2) -> ty1 :: args ty2 (n-1)
       | _ -> assert false
-  
 let comparison ~loc os ty pre = 
   match args ty 2 with
   | [ty1; _ty2] -> (* ty1 == ty2 *)
@@ -79,7 +78,7 @@ let primitives =
   ; "lnot"         , (1, simple [NOT])
 
   ; "List.length"  , (1, simple [SIZE])
-  ; "List.map"     , (2, fun ~loc:_ _typ xs ->
+  ; "List.map"     , (2,
 (* lambda : map : S              SWAP ;
    { hd; <tl> } : lambda : S     MAP {
      hd : lambda : S              DIP DUP
@@ -91,17 +90,17 @@ let primitives =
    list' : lambda : S             DIP DROP
    list' : S 
 *)
-        xs @
-        [ SWAP ; 
-          MAP ( 
-            [ DIP (1, [ DUP ]) ]
-            @ [ EXEC ]
-          ) ;
-          DIP (1, [ DROP 1 ])
-        ])
+             simple
+             [ SWAP ; 
+               MAP ( 
+                 [ DIP (1, [ DUP ]) ]
+                 @ [ EXEC ]
+               ) ;
+               DIP (1, [ DROP 1 ])
+             ])
 
 
-  ; "List.fold_left"    , (3, fun ~loc:_ _typ xs -> 
+  ; "List.fold_left"    , (3,
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
@@ -114,7 +113,7 @@ let primitives =
   acc : lam : s                         DIP { DROP }
   acc : s
 *)           
-        xs @
+        simple                           
         [ SWAP ; DIP (1, [ SWAP ]); SWAP;
           ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
                 @ [ EXEC ]
@@ -123,7 +122,7 @@ let primitives =
           DIP (1, [ DROP 1])
         ])
 
-  ; "List.fold_left'"    , (3, fun ~loc:_ _typ xs -> 
+  ; "List.fold_left'"    , (3,
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
@@ -136,7 +135,7 @@ let primitives =
   acc : lam : s                         DIP { DROP }
   acc : s
 *)           
-        xs @
+        simple
         [ SWAP ; DIP (1, [ SWAP ]); SWAP;
           ITER [ SWAP ; PAIR ; DIP (1, [ DUP ]); EXEC ];
           DIP (1, [ DROP 1])
@@ -148,7 +147,8 @@ let primitives =
             (* ty = _ty' *)
             xs @ [DIP (1, [NIL ty]); ITER [CONS]]
         | _ -> assert false)
-
+  ; "List.rev_append", (2, simple [ITER [CONS]])
+    
   ; "Set.empty", (0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
@@ -159,7 +159,7 @@ let primitives =
   ; "Set.mem"     , (2, simple [MEM])
   ; "Set.update"  , (3, simple [UPDATE])
 
-  ; "Set.fold"    , (3, fun ~loc:_ _typ xs -> 
+  ; "Set.fold"    , (3,
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -176,7 +176,7 @@ let primitives =
   acc : s
 *)           
 
-        xs @
+        simple
         [ SWAP ; DIP (1, [ SWAP ]);
           ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
                 @ [ EXEC ]
@@ -185,7 +185,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
       
-  ; "Set.fold'"    , (3, fun ~loc:_ _typ xs -> 
+  ; "Set.fold'"    , (3,
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -199,7 +199,7 @@ let primitives =
   acc : s
 *)           
 
-        xs @
+        simple
         [ SWAP ; DIP (1, [ SWAP ]);
           ITER [ PAIR; DIP (1, [ DUP ]); EXEC ];
           DIP (1, [ DROP 1 ])
@@ -247,7 +247,7 @@ let primitives =
   ; "Map.mem", (2, simple [MEM])
   ; "Map.update", (3, simple [UPDATE])
 
-  ; "Map.map", (2, fun ~loc:_ _typ xs ->
+  ; "Map.map", (2,
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
@@ -264,7 +264,7 @@ let primitives =
    map' : S 
    
 *)
-        xs @
+        simple
         [ SWAP ; 
           MAP ( 
             [ DIP (1, [ DUP ]);
@@ -276,7 +276,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.map'", (2, fun ~loc:_ _typ xs ->
+  ; "Map.map'", (2, 
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
@@ -289,14 +289,14 @@ let primitives =
    map' : S 
    
 *)
-        xs @
+        simple
         [ SWAP ; 
           MAP [ DIP (1, [ DUP ]);
                 EXEC ];
           DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.fold"    , (3, fun ~loc:_ _typ xs -> 
+  ; "Map.fold"    , (3,
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -314,7 +314,7 @@ let primitives =
   acc : s
 *)           
 
-        xs @
+        simple
         [ SWAP ; DIP (1, [ SWAP ]);
           ITER ([ DUP; CAR; DIP (1, [ CDR ]);
                   DIP (1, [ DIP (1, [ DIP (1, [ DUP ]); SWAP ]); SWAP ]) ]
@@ -327,7 +327,7 @@ let primitives =
         ])
       
 
-  ; "Map.fold'"    , (3, fun ~loc:_ _typ xs -> 
+  ; "Map.fold'"    , (3,
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -342,7 +342,7 @@ let primitives =
   acc : s
 *)           
 
-        xs @
+        simple
         [ SWAP ; DIP (1, [ SWAP ]);
           ITER [ DUP; CAR; DIP (1, [ CDR ]);
                  DIP (1, [ PAIR ]); PAIR;
@@ -413,7 +413,9 @@ let primitives =
 
   ; "Error.failwith", (1, simple [ FAILWITH ]) (* deprecated *)
   ; "failwith", (1, simple [ FAILWITH ])
-                      
+
+  ; "raise", (1, simple [ FAILWITH ])
+
   ; "Timestamp.add", (2, simple [ADD])
   ; "Timestamp.sub", (2, simple [SUB])
   ; "Timestamp.diff", (2, simple [SUB])
@@ -433,5 +435,16 @@ let primitives =
                                      [CAR])])
   ; "/$^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
                                       [CAR])])
+           
+  ; "Option.value", (2, simple [IF_NONE ([], [DIP (1, [DROP 1])])])
+  ; "Option.get", (1, simple [IF_NONE ([PUSH (tyString, String "Option.get"); FAILWITH], [])])
+
+  ; "Sum.get_left", (1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
+  ; "Sum.get_right", (1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
   ]
     
+let contract' entry ~loc:_ ty xs =
+  match ty.desc with
+  | TyLambda (_, { desc= TyLambda (_, { desc= TyOption ({ desc= TyContract ty })})})  ->
+      xs @ [ CONTRACT' (ty, entry) ]
+  | _ -> assert false
