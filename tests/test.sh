@@ -80,6 +80,15 @@ function run () {
 	input=$CONVERSION
     fi
 
+    # ENTRY=.*$
+    local entry=$(grep ENTRY= $i || true)
+    if [ -z "$entry" ]; then
+	entry=""
+    else
+	entry=`echo $entry | sed -e 's/.*ENTRY=//'`
+	entry=" --entrypoint $entry "
+    fi
+
     echo Executing $TEZOS_CLIENT typecheck script $tz
     echo INPUT:
     echo "$input"
@@ -87,14 +96,14 @@ function run () {
     $TEZOS_CLIENT typecheck script $tz
 
     # Really weird but --source is to set SENDER and --payer to set SOURCE
-    echo "Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input --source bootstrap1 --payer bootstrap2"
+    echo "Executing $TEZOS_CLIENT run script $tz on storage $storage and input $input --source bootstrap1 --payer bootstrap2 $entry"
 
     if [ -z "$must_fail" ]; then
-	$TEZOS_CLIENT run script $tz on storage "$storage" and input "$input" --source bootstrap1 --payer bootstrap2
+	$TEZOS_CLIENT run script $tz on storage "$storage" and input "$input" --source bootstrap1 --payer bootstrap2 $entry
     else
 	echo THIS TEST MUST FAIL
 	if
-    	    $TEZOS_CLIENT run script $tz on storage "$storage" and input "$input" --source bootstrap1 --payer bootstrap2
+    	    $TEZOS_CLIENT run script $tz on storage "$storage" and input "$input" --source bootstrap1 --payer bootstrap2 $entry
 	then
 	    echo "Error: TEST UNEXPECTEDLY SUCCEEEDED"; exit 2
 	else
