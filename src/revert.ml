@@ -18,8 +18,8 @@ open Tools
 open Michelson
 open Tezos_micheline.Micheline
 
+open Untyped
 open Parsetree
-module Ast_builder = Ppxlib.Ast_builder.Make(struct let loc = Location.none end)
 open Ast_builder
 
 open Result.Infix
@@ -220,8 +220,9 @@ and revert_record_type tyenv ty _p labels =
         in
         flatten lmtree
       in
-      Ok { Parsetree.pexp_desc= Pexp_record (List.map (fun (l,m) -> ({Location.txt=Longident.Lident l; loc=Location.none}, m)) lmlist, None)
+      Ok { pexp_desc= Pexp_record (List.map (fun (l,m) -> ({Location.txt=Longident.Lident l; loc=Location.none}, m)) lmlist, None)
          ; pexp_loc= Location.none
+         ; pexp_loc_stack= []
          ; pexp_attributes= []
          })
 
@@ -250,8 +251,9 @@ and revert_variant_type tyenv ty _p constrs =
         | _, Binplace.Branch _ -> Error "Left or Right expected"
         | t, Leaf (l,r) ->
             r t >>| fun m -> 
-            { Parsetree.pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, Some m)
+            { pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, Some m)
             ; pexp_loc = Location.none
+            ; pexp_loc_stack= []
             ; pexp_attributes= []
             }
       in
@@ -268,8 +270,9 @@ and revert_variant_type tyenv ty _p constrs =
         begin match List.nth consts n with
         | exception _ -> Error "strange tag"
         | l -> 
-            Ok { Parsetree.pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, None)
+            Ok { pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, None)
                ; pexp_loc = Location.none
+               ; pexp_loc_stack = []
                ; pexp_attributes= []
                }
         end    

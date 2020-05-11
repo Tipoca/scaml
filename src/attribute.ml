@@ -13,8 +13,9 @@
 (**************************************************************************)
 
 open Spotlib.Spot
-open Typedtree
+open Untyped
 open Parsetree
+open Typedtree
 open Tools
 
 (* attributes *)
@@ -53,8 +54,10 @@ let parse_options_in_payload ~loc name payload =match payload with
 let get_scaml_toplevel_attributes str =
   let structure_item (st, nomore) { str_desc; _ } =
     match str_desc with
-      | Tstr_attribute ({txt=s; loc}, payload) 
+      | Tstr_attribute { attr_name= {txt=s; loc}; attr_payload= payload }
         when match String.lowercase_ascii s with "scaml" | "scam" -> true | _ -> false ->
+          (* We use OCaml 4.09.1 but Ppxlib uses 4.08.1 *)
+          let payload = Migrate.copy_payload payload in
           begin match s with
             | "Scaml" -> errorf_attribute ~loc "SCaml, not Scaml."
             | "scaml" -> errorf_attribute ~loc "SCaml, not scaml."
@@ -69,4 +72,3 @@ let get_scaml_toplevel_attributes str =
     List.rev & fst & List.fold_left (fun st sitem -> structure_item st sitem) ([],false) sitems
   in
   structure str
-

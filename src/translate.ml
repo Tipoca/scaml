@@ -15,6 +15,7 @@
 (* InterMediate Language, or Intermediate ML *)
 open Spotlib.Spot
 open Asttypes
+open Untyped
 open Typedtree
 open Tools
 open Result.Infix
@@ -31,7 +32,7 @@ let modname = ref None (* XXX HACK *)
 
 let repr_desc ty = (Ctype.repr ty).desc
 
-let create_ident n = Ident.create & "__" ^ n
+let create_ident n = Ident.create_local & "__" ^ n
 
 let contract_self_id = create_ident "self"
   
@@ -387,6 +388,7 @@ let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   | Tpat_array _     -> unsupported ~loc "array pattern"
   | Tpat_or _        -> unsupported ~loc "or pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
+  | Tpat_exception _ -> unsupported ~loc "exception pattern"
 
 let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
   let gloc = Location.ghost loc in
@@ -401,6 +403,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   | Tpat_array _     -> unsupported ~loc "array pattern"
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
   | Tpat_variant _   -> unsupported ~loc "polymorphic variant pattern"
+  | Tpat_exception _ -> unsupported ~loc "exception pattern"
 
   | Tpat_var (id, _) -> mk (P.Var id)
 
@@ -571,12 +574,13 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
       | _ -> assert false
 
 let attr_has_entry_point = 
+  let open Parsetree in
   List.find_map_opt (function
-      | ({ txt = "entry"; loc }, payload) -> 
+      | { attr_name= { txt = "entry"; loc }; attr_payload= payload; _ } -> 
           begin match Attribute.parse_options_in_payload "entry" ~loc payload with
             | _::_::_ -> errorf_entry ~loc "@entry cannot specify more than one options"
             | [] -> Some (loc, None)
-            | [{txt=Longident.Lident "name"}, `Constant (Parsetree.Pconst_string (s, _))] ->
+            | [{txt=Longident.Lident "name"}, `Constant (Pconst_string (s, _))] ->
                 Some (loc, Some s)
             | [{txt=Longident.Lident "name"}, _] -> errorf_entry ~loc "@entry can take only a string literal"
             | [_, _] -> errorf_entry ~loc "@entry can take at most one name=<name> binding"
@@ -1433,6 +1437,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
   let gloc = Location.ghost loc in
   (* wildly ignores extra *)
   (* if exp_extra <> [] then unsupported ~loc "expression extra"; *)
+  let exp_attributes = Migrate_parsetree__.Migrate_parsetree_409_408_migrate.copy_attributes exp_attributes in
   begin match attr_has_entry_point exp_attributes with
     | None -> ()
     | Some (loc, _) ->
@@ -1620,13 +1625,10 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         if ethen.typ.desc <> TyUnit then internal_error ~loc:ethen.loc "else None has non unit type";
         mk & IfThenElse (econd, ethen, None)
 
-    | Texp_match (_, _, e::_, _) -> 
-        unsupported ~loc:e.c_lhs.pat_loc "exception pattern"
-
-    | Texp_match (_ , _, _, Partial) -> 
+    | Texp_match (_ , _, Partial) -> 
         unsupported ~loc "non exhaustive pattern match"
 
-    | Texp_match (e , cases, [], Total) -> 
+    | Texp_match (e , cases, Total) -> 
         let e = expression lenv e in
         if not Flags.(!flags.iml_pattern_match) then begin
           switch lenv ~loc e cases
@@ -1691,6 +1693,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | Binplace.Right :: dirs -> f (mksnd ~loc:gloc e) dirs
         in
         f e & Binplace.path pos nfields
+    | Texp_open (_,e) -> expression lenv e
     | Texp_sequence (e1, e2) -> mk & Seq ( expression lenv e1, expression lenv e2 )
     | Texp_setfield _ -> unsupported ~loc "record field set"
     | Texp_array _ -> unsupported ~loc "array"
@@ -1708,6 +1711,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_pack _ -> unsupported ~loc "first class module"
     | Texp_extension_constructor _ -> unsupported ~loc "open variant"
     | Texp_unreachable -> unsupported ~loc "this type of expression"
+    | Texp_letop _ -> unsupported ~loc "let op"
   in
   { e with typ }
 
@@ -1882,13 +1886,13 @@ and translate_raise lenv ~loc typ args = match args with
                   let name = 
                     let rec make_name = function
                       | Path.Pident id ->
-                          if Ident.persistent id || Ident.is_predef_exn id then Ident.name id
+                          if Ident.persistent id || Ident.is_predef id then Ident.name id
                           else begin
                             match !modname with
                             | None -> assert false
                             | Some n -> n ^ "." ^ Ident.name id
                           end
-                      | Pdot (p, s, _) -> make_name p ^ "." ^ s
+                      | Pdot (p, s) -> make_name p ^ "." ^ s
                       | Papply _ -> assert false
                     in
                     make_name p
@@ -1929,7 +1933,7 @@ let toplevel_value_bindings str =
 
 let get_explicit_entries vbs =
   List.filter_map (fun vb -> 
-      match attr_has_entry_point vb.vb_attributes with
+      match attr_has_entry_point & Migrate_parsetree__.Migrate_parsetree_409_408_migrate.copy_attributes vb.vb_attributes with
       | None -> None
       | Some (_, name) -> Some (vb, name)) vbs
 
@@ -1952,7 +1956,7 @@ let type_check_entry templ vb =
     try unify env ty ty' with
     | Unify trace ->
         wrap_ocaml_exn
-          (Typecore.Error(loc, env, Pattern_type_clash(trace)))
+          (Typecore.Error(loc, env, Pattern_type_clash(trace, None)))
           310
           ~loc:vb.vb_loc 
           "Entry point typing error"
@@ -2017,18 +2021,16 @@ let global_parameter_type tyenv node =
 let check_self ty_self str =
   let selfs = ref [] in
   let record_self e = selfs := e :: !selfs in
-  let module X = TypedtreeIter.MakeIterator(struct
-      include TypedtreeIter.DefaultIteratorArgument
-      let enter_expression e = match e.exp_desc with
-        | Texp_ident (p, {loc=_}, _vd) ->
-            begin match Path.is_scaml p with
-              | Some "Contract.self" -> record_self e
-              | _ -> ()
-            end
-        | _ -> ()
-    end)
+  let iter = { Tast_iterator.default_iterator with
+               expr = (fun _it e -> match e.exp_desc with
+                   | Texp_ident (p, {loc=_}, _vd) ->
+                       begin match Path.is_scaml p with
+                         | Some "Contract.self" -> record_self e
+                         | _ -> ()
+                       end
+                   | _ -> ()) }
   in
-  X.iter_structure str;
+  iter.structure iter str;
 
   (* This tries to instantiate Contract.self's type to ty_parameter contract,
      but this does not fully work since we have polymorphism:
@@ -2047,7 +2049,7 @@ let check_self ty_self str =
       try unify tyenv ty ty' with
       | Unify trace ->
           wrap_ocaml_exn
-            (Typecore.Error(loc, tyenv, Expr_type_clash(trace, None)))
+            (Typecore.Error(loc, tyenv, Expr_type_clash(trace, None, None)))
             510
             ~loc
             "Contract.self typing error"
@@ -2072,7 +2074,7 @@ let check_self ty_self str =
 
 let compile_global_entry ty_storage ty_return node =
 
-  let id_storage = Ident.create "storage" in
+  let id_storage = Ident.create_local "storage" in
 
   let pat_storage = mkp ~loc:noloc ty_storage id_storage in
   let e_storage = mkvar ~loc:noloc (id_storage, ty_storage) in
@@ -2101,8 +2103,8 @@ let compile_global_entry ty_storage ty_return node =
         param_type
 
     | Branch (n1, n2) ->
-        let id_l = Ident.create "l" in
-        let id_r = Ident.create "r" in
+        let id_l = Ident.create_local "l" in
+        let id_r = Ident.create_local "r" in
         let e_l, param_typ_l = f id_l n1 in
         let e_r, param_typ_r = f id_r n2 in
         let pat_l = mkp ~loc:noloc param_typ_l id_l in
@@ -2112,7 +2114,7 @@ let compile_global_entry ty_storage ty_return node =
         mke ~loc:noloc ty_return (Switch_or (param_var, pat_l, e_l, pat_r, e_r)),
         param_typ
   in
-  let param_id = Ident.create "global_param" in
+  let param_id = Ident.create_local "global_param" in
   let e, param_typ = f param_id node in
 
   (* This is the last defence.  We should check it earlier where the locations 

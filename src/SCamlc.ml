@@ -14,6 +14,7 @@
 
 open Spotlib.Spot
 open Tools
+open Untyped
 
 module M = Michelson
 

@@ -13,8 +13,8 @@
 (**************************************************************************)
 
 open Spotlib.Spot
-
 open Ocaml_conv.Default
+open Untyped
 
 type mode =
   | Compile
@@ -43,7 +43,7 @@ let set_mode t m =
 
 let eval flags (k, v) =
   let must_be_a_bool () = Error "attribute type error: must be a bool" in
-  match String.concat "." & Longident.flatten k, v with
+  match String.concat "." & Longident.flatten_exn k, v with
   | "iml_optimization", `Bool b -> Ok { flags with iml_optimization= b }
   | "iml_optimization", _ -> must_be_a_bool ()
   | "iml_pattern_match", `Bool b -> Ok { flags with iml_pattern_match= b }

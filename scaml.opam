@@ -11,19 +11,19 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
-  "dune" { build & >= "1.0" }
+  "dune" { build & >= "2.5" }
   "ocamlfind" { build }
-  "ocaml" { = "4.07.1" }
+  "ocaml" { = "4.09.1" }
   "ocaml-migrate-parsetree"
   "ppxx"
   "spotlib"
   "hex"
   "ptime"
   "zarith"
-  "tezos-data-encoding"
-  "tezos-error-monad"
-  "tezos-micheline"
-  "tezos-stdlib"
+  "data-encoding" { = "0.2" }
+  "tezos-error-monad" { = "7.0" }
+  "tezos-micheline" { = "7.0" } 
+  "tezos-stdlib" { = "7.0" }
   "camlon"
   "ppx_meta_conv"
   "ppxlib" { = "0.8.1" }

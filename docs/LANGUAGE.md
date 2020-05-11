@@ -1,8 +1,8 @@
-# Writing Smart Contracts in OCaml
+# Writing Smart Contracts
 
 ## Learn OCaml
 
-SCaml is basically OCaml.  If you do not write OCaml, you will not write SCaml.  Learn OCaml first.
+SCaml is a subset of OCaml.  If you do not write OCaml, you will not write SCaml.  Learn OCaml first.
 
 ## `open SCaml`
 
@@ -18,53 +18,49 @@ Entry points must be defined in the last linked module, with `[@entry]` attribut
 
 The type of the entrypoints must have the form:
 
-```
+```ocaml
 ty_parameter -> ty_storage -> operation list * ty_storage
 ```
 
 where `ty_parameter` and `ty_storage` are the contract's parameter type 
-and storage type respectively.  An entrypoint with a type not matching with
-this from is rejected by SCaml.
+and storage type respectively.  An entrypoint with an incompatible type is rejected by SCaml.
 
 ### Multiple entrypoints
 
-SCaml supports the multiple entrypoints introduced in Tezos Babylon.
+SCaml supports the multiple entrypoints introduced in Tezos Babylon.  Put `[@entry]` attribute to each entrypoint definition:
 
-To have more than one entry points their definitions must be attributed with `[@entry]`. For example:
-
-```
+```ocaml
 let [@entry] init () _ = Int 0
 
 let [@entry name="do"] do_ () x = x + Int 1
 ```
 
-Each entry point is named based on the variable name of the definition.  It is also specified by giving `name` field at the `[@entry]` attribute.  The above definitions introduce 2 entry points, `init` and `do`. 
+Each entry point is named based on the variable name of the definition.  It can be overridden by giving `name` field in the `[@entry]` attribute.  For example, the above definitions introduce 2 entry points, `init` and `do`. 
 
-XXX
-Currently there is no SCaml primitive to produce `CONTRACT %name t`.
-Entry point names must given in address literals like `Address "KT1.....%name"`.
+### Call entrypoints
+
+Use `SCaml.contract'` to access the entrypoint of the given name.  For example, `init` entrypoint of the current contract is obtained by:
+
+```ocaml
+Option.get (SCaml.contract' Contract.self "init")
+```
 
 ## Monomorphism
 
 Michelson is a monomorphic language.  So is SCaml.
 
-If OCaml type-checker, which is used by SCaml, infers polymorphic types for a value, 
-SCaml rejects it.  To avoid it, you have to add type constraints to values
-whose inferred types are too general.
+If OCaml type-checker, which is used by SCaml, infers polymorphic types for a value, SCaml rejects it.  To avoid it, you have to add type constraints to values whose inferred types are too general.
 
 ## No recursion
 
-Michelson does not have an opcode for recursion.
-Therefore SCaml does not support recursion either:  `let rec` bindings are rejected.
+Michelson does not have an opcode for recursion.  Therefore SCaml does not support recursion either:  `let rec` bindings are rejected.
 
 Still there are still some recursions are available:
 
 * `SCaml` provides mappings and foldings of set, map, and big maps.
 * `SCaml` also provides a simple looping: `Loop.left`.
 
-It might be possible to encode recursion in SCaml using Michelson's closure creation 
-and serializers (`Obj.pack` and `Obj.unpack`), but it should be very gas inefficient.
-At your own risk.
+It might be possible to encode recursion in SCaml using Michelson's closure creation and serializers (`Obj.pack` and `Obj.unpack`), but it should be very gas inefficient.  At your own risk.
 
 ## Arithmetic types
 
@@ -80,12 +76,9 @@ In SCaml, there are 3 arithmetic types:
 `tz`
 :    Tezzies.  It takes a float but internally it is handled as a natural number
      of micro tezzies.  `Tz 0.000001` is for 1 mutez.  Note that the size is fixed
-	 to 64bits (signed) and `Tz 9223372036854.775807` is the maximum value for `tz`.
-	 Any overflow fails the execution of contracts.
+	 to 64bits (signed) and `Tz 9223372036854.775807` is the maximum value for `tz`.  Any overflow fails the execution of contracts.
 
-There is no overloading of arithmetic constants.  Even simple integers must be 
-explicitly wrapped with its constructor `Int`.  This is lousy but required for
-the simplicitly of the language.
+There is no overloading of arithmetic constants.  Even simple integers must be explicitly wrapped with its constructor `Int`.  This is lousy but required for the simplicitly of the language.
 
 Operations over arithmetics are also monomorphic and not overloaded just as OCaml.
 
@@ -123,9 +116,7 @@ SCaml does not validate the form of strings for now.
 `Contract.self` returns the contract of the code itself.  It has a type `'a contract`
 but actually it must agree with the real type of the contract.
       
-Unlike Michelson's `SELF` operator, `Contract.self` can appear inside a function.
-Even if the function value is sent to another contract, it does not point to the other
-contract but to the original contract which uses `Contract.self`.
+Unlike Michelson's `SELF` operator, `Contract.self` can appear inside a function.  Even if the function value is sent to another contract, it does not point to the other contract but to the original contract which uses `Contract.self`.
 
 ## Contract creation and call
 
@@ -137,10 +128,7 @@ SCaml provides the lowest level of APIs to originate contracts within SCaml:
 
 * `Contract.create_from_tz_code <Michelson code string>` takes a string literal of
    Michelson source code.
-* `Contract.create_from_tz_file <Michelson code path name>` takes a string literal of
-   Michelson source file path.  The Michelson code in the source file is included 
-   at the compilation time.  Be careful of setting proper build dependnecy 
-   if the Michelson source file is generated from another language. 
+* `Contract.create_from_tz_file <Michelson code path name>` takes a string literal of Michelson source file path.  The Michelson code in the source file is included at the compilation time.  Be careful of setting proper build dependnecy if the Michelson source file is generated from another language. 
 
 ### Contract call
 
@@ -148,13 +136,27 @@ SCaml provides the lowest level of APIs to originate contracts within SCaml:
 
 ### No other inter-contract abstractions
 
-SCaml itself will not provide any highly abstracted easy-to-use framework
-for contract creation and invocation.
+SCaml itself will not provide any highly abstracted easy-to-use framework for contract creation and invocation.
 
-It seems there is no trivial standard way for it.
-For example, we can consider OO approach via classes and objects, 
-and functional approach via functors and modules.
+It seems there is no trivial standard way for it.  For example, we can consider OO approach via classes and objects, and functional approach via functors and modules.
 
-We do not want to fix one of possible approaches in SCaml and push it
-to its users.  Inter-contract frameworks should be built as an SDL 
-with special typing rules which should be compiled down to SCaml.
+We do not want to fix one of possible approaches in SCaml and push it to its users.  Inter-contract frameworks should be built as an SDL with special typing rules which should be compiled down to SCaml.
+
+## Exception
+
+`raise e` can throw an exception `e`. `e` can be predefined or  user-defined exceptions.
+
+Unlike OCaml, exceptions are fatal errors and cannot be caught.  SCaml does not support `try-with`.
+
+Exception values are encoded and used for Michelson opcode `FAILWITH` so that they can be investigated.  
+
+SCaml exception `C` without arguments is encoded to Michelson's string value `C'`.  Exception with arguments, `C args`, is encoded to `Pair C' args'` where:
+
+* `C'` is the string of the path of the exception
+* `args'` is the encoding of the arguments
+
+For example:
+
+* `raise Exit` => `"Exit"`
+* `raise (Failure "error")` => `Pair "Failure" "error"`
+* `raise (MyModule.Error (Int 1, Nat 2))` => `Pair "MyModule.Error" (Pair 1 2)`

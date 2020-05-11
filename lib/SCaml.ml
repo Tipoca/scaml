@@ -321,8 +321,8 @@ module Bytes = struct
   type t = bytes [@@deriving typerep]
   let concat (Bytes a) (Bytes b) = Bytes (a ^ b)
   let slice (Nat a) (Nat b) (Bytes s) =
-    try Some (Bytes (String.sub s (Pervasives.( * ) a 2) (Pervasives.( * ) b 2))) with _ -> None
-  let length (Bytes a) = Nat (Pervasives.(/) (String.length a) 2)
+    try Some (Bytes (String.sub s (Stdlib.( * ) a 2) (Stdlib.( * ) b 2))) with _ -> None
+  let length (Bytes a) = Nat (Stdlib.(/) (String.length a) 2)
 end
 
 type address = Address of string const [@@deriving typerep]

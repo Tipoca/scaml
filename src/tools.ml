@@ -43,7 +43,7 @@ module Ident = struct
   let is_stdlib i = name i = "Stdlib" && persistent i
   let is_scaml i = name i = "SCaml" && persistent i
 
-  let dummy = Ident.create "_dummy_"
+  let dummy = Ident.create_local "_dummy_"
 end
 
 module Path = struct
@@ -51,16 +51,16 @@ module Path = struct
 
   let rec xname = function
     | Pident id -> Ident.unique_name id
-    | Pdot (t, s, n) -> Printf.sprintf "%s.%s/%d" (xname t) s n
+    | Pdot (t, s) -> Printf.sprintf "%s.%s" (xname t) s
     | Papply (t1,t2) -> xname t1 ^ "(" ^ xname t2 ^ ")"
                         
   let is_stdlib = function
-    | Pdot (Pident id, s, n) when Ident.is_stdlib id -> Some (s, n)
+    | Pdot (Pident id, s) when Ident.is_stdlib id -> Some s
     | _ -> None
       
   let rec is_scaml = function
-    | Pdot (Pident id, s, _) when Ident.is_scaml id -> Some s
-    | Pdot (p, s, _) -> 
+    | Pdot (Pident id, s) when Ident.is_scaml id -> Some s
+    | Pdot (p, s) -> 
         begin match is_scaml p with
           | None -> None
           | Some m -> Some (m ^ "." ^ s)
@@ -68,7 +68,7 @@ module Path = struct
     | _ -> None
 
   let is_scaml_dot n = function
-    | Pdot (Pident id, s, _) when Ident.is_scaml id -> s = n
+    | Pdot (Pident id, s) when Ident.is_scaml id -> s = n
     | _ -> false
 end
 
@@ -114,17 +114,15 @@ let () =
     | Wrapped_OCaml_error (loc, msg, exn) ->
         Some (
           match Location.error_of_exn exn with
-          | Some (`Ok ocaml) ->
-              { Location.loc
-              ; msg
-              ; sub= [ocaml]
-              ; if_highlight= ""
+          | Some (`Ok ocaml) -> 
+              { ocaml with
+                main = { loc; txt= (fun ppf -> Format.fprintf ppf "%s" msg) }
+              ; sub = ocaml.Location.main :: ocaml.Location.sub
               }
           | _ ->
-              { Location.loc
-              ; msg= "unknown exception: " ^ (Printexc.to_string exn)
+              { Location.kind= Report_error
+              ; main= { loc; txt= (fun ppf -> Format.fprintf ppf "unknown exception: %s" (Printexc.to_string exn)) }
               ; sub= []
-              ; if_highlight= ""
               }
         )
     | _ -> None
@@ -149,4 +147,3 @@ let with_time f =
   let res = f () in
   let t2 = Unix.gettimeofday () in
   res, (t2 -. t1)
-  

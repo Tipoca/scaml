@@ -15,6 +15,7 @@
 (* InterMediate Language, or Intermediate ML *)
 open Spotlib.Spot
 open Tools
+open Untyped
 
 module M = Michelson
 module Type = M.Type
@@ -80,9 +81,9 @@ and desc =
 
 module P = struct
   (* forge OCaml untyped AST from IML.t just for printing *)
-  open Parsetree
-  module Ast_builder = Ppxlib.Ast_builder.Make(struct let loc = Location.none end)
   open Ast_builder
+  open Parsetree
+
   let loc = Location.none
 
   let rec type_ ty = 
@@ -91,7 +92,9 @@ module P = struct
     let add_attrs ty =
       { ty 
         with ptyp_attributes = 
-               List.map (fun a -> ({Location.txt=a; loc=Location.none}, PStr [])) attrs }
+               List.map (fun a -> { attr_name= {Location.txt=a; loc=Location.none}
+                                  ; attr_payload= PStr []
+                                  ; attr_loc= Location.none }) attrs }
     in
     add_attrs @@
     match ty.desc with
@@ -131,6 +134,7 @@ module P = struct
     | Int z ->
         { pexp_desc= Pexp_constant (Pconst_integer (Z.to_string z, None))
         ; pexp_loc= Location.none
+        ; pexp_loc_stack= []
         ; pexp_attributes= [] 
         }
     | String s -> estring s
@@ -159,6 +163,7 @@ module P = struct
         let s = Format.sprintf "@[<2>{ %a }@]" (Format.list ";@ " M.Opcode.pp) ops in
         { pexp_desc= Pexp_constant (Pconst_string (s, Some "michelson"))
         ; pexp_loc= Location.none
+        ; pexp_loc_stack= []
         ; pexp_attributes= [] 
         }
 
@@ -216,6 +221,7 @@ module P = struct
         let code = 
           { pexp_desc= Pexp_constant (Pconst_string (code, Some ""))
           ; pexp_loc= Location.none
+          ; pexp_loc_stack= []
           ; pexp_attributes= [] 
           }
         in

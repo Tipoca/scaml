@@ -1,1 +1,1 @@
-val do_revert : Typedtree.structure -> string -> (Parsetree.expression, string) result
+val do_revert : Typedtree.structure -> string -> (Ppxlib.Parsetree.expression, string) result
