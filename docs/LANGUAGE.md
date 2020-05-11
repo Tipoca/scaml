@@ -4,25 +4,15 @@
 
 SCaml is basically OCaml.  If you do not write OCaml, you will not write SCaml.  Learn OCaml first.
 
-## One file per contract
-
-SCaml does not support separate compilation.  All the code for a contract
-must be in one `.ml` file.
-
 ## `open SCaml`
 
-API functions to access Michelson primitives are declared in module `SCaml`.
-In SCaml, you should always `open SCaml` first.
-(You can skip it but there is almost no point to do it.)
+API functions to access Michelson primitives are declared in module `SCaml`.  In SCaml, you should always `open SCaml` first.  (You can skip it but there is almost no point to do it.)
 
-In the normal installation, module `SCaml` should be found at directory
-`` `opam config var prefix`/lib/scaml ``  Check `SCaml.mli` in this directory
-or the source code of SCaml to learn what functions are available and their comments.
+In the normal installation, module `SCaml` should be found at directory `` `opam config var prefix`/lib/scaml ``  Check `SCaml.mli` in this directory or the source code of SCaml to learn what functions are available and their comments.
 
 ## Entrypoint
 
-Unless specified explicitly, the last value definition in an `.ml` file is considered
-as the entry point of the smart contract defined by the source file.
+Entry points must be defined in the last linked module, with `[@entry]` attribute.
 
 ### Entrypoint typing
 
@@ -36,26 +26,21 @@ where `ty_parameter` and `ty_storage` are the contract's parameter type
 and storage type respectively.  An entrypoint with a type not matching with
 this from is rejected by SCaml.
 
-### Multiple entrypoint support (experimental)
+### Multiple entrypoints
 
-SCaml expermentally supports the multiple entrypoints introduced in Tezos Babylon.
+SCaml supports the multiple entrypoints introduced in Tezos Babylon.
 
-To have more than one entry points their definitions must be attributed with `[@entry]`. 
-For example:
+To have more than one entry points their definitions must be attributed with `[@entry]`. For example:
 
 ```
 let [@entry] init () _ = Int 0
 
-let [@entry] do_ () x = x + Int 1
+let [@entry name="do"] do_ () x = x + Int 1
 ```
 
-Each entry point is named based on the variable name of the definition.
-The above definitions introduce 2 entry points, `init` and `do`. 
+Each entry point is named based on the variable name of the definition.  It is also specified by giving `name` field at the `[@entry]` attribute.  The above definitions introduce 2 entry points, `init` and `do`. 
 
-Note that if the last character of an entrypoint identifier is `_`, it is removed from
-the name of the entry point.  This is because one of the entry point naming convention,
-`do`, is a reserved keyword in OCaml and SCaml.
-
+XXX
 Currently there is no SCaml primitive to produce `CONTRACT %name t`.
 Entry point names must given in address literals like `Address "KT1.....%name"`.
 
@@ -133,10 +118,6 @@ from `string` to these types. (It is impossible in Michelson.)
 
 SCaml does not validate the form of strings for now.
 
-## Comparable, Pushable, Serializable
-
-SCaml does not check any of these properties for now.
-
 ## Self
 
 `Contract.self` returns the contract of the code itself.  It has a type `'a contract`
@@ -165,7 +146,7 @@ SCaml provides the lowest level of APIs to originate contracts within SCaml:
 
 `Operation.transfer_tokens` is the only API (so far) to call other contracts within SCaml contracts.
 
-### No more inter-contract abstractions
+### No other inter-contract abstractions
 
 SCaml itself will not provide any highly abstracted easy-to-use framework
 for contract creation and invocation.
