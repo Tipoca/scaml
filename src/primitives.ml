@@ -104,9 +104,9 @@ let primitives =
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
-  hd : acc : lam : s                       DIP { DIP { DUP } SWAP }
-  hd : lam : acc : lam : s                 EXEC
-  lam' : acc : lam : s                     SWAP EXEC
+  hd : acc : lam : s                       DIP 2 { DUP } ; DUG 2
+  acc : lam : hd : lam : s                 EXEC ;
+  lam' : hd : lam : s                      SWAP ; EXEC ;
   acc' : lam : s                        }
 
   [] : acc : lam : s                    ITER {..}
@@ -115,10 +115,9 @@ let primitives =
 *)           
         simple                           
         [ SWAP ; DIP (1, [ SWAP ]); SWAP;
-          ITER ([ DIP (1, [ DIP (1, [ DUP ]); SWAP ]) ]
-                @ [ EXEC ]
-                @ [ SWAP ]
-                @ [ EXEC ]);
+          ITER [ DIP (2, [ DUP ]); DUG 2; 
+                 EXEC; 
+                 SWAP; EXEC ];
           DIP (1, [ DROP 1])
         ])
 
