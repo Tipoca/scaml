@@ -42,7 +42,7 @@ let init () =
               |> wait
               |> must_exit_with 0
             with
-            | dir::_ -> Some (String.chop_eols dir ^/ "lib/scaml")
+            | dir::_ -> Some (String.chop_eols dir ^/ "lib/scaml/scamlib")
             | [] ->  
                 Format.eprintf "Warning: Command 'opam config var prefix' answered nothing@."; None
             | exception (Failure s) -> 
