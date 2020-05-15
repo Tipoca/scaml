@@ -1,6 +1,5 @@
 (executable
   (name test)
   (flags -w A-4-9-40-41-42-44-45)
-  (preprocess (pps ppx_typerep_conv))
-  (libraries typerep scaml.compiler-lib scaml.scamlib scaml.scamtest
-     ))
+  (preprocess (pps ppx_typerep_conv ppx_deriving ))
+  (libraries typerep scaml.compiler-lib scaml.scamlib))

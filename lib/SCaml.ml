@@ -25,7 +25,7 @@ type nat = Nat of ocaml_int const [@@deriving typerep]
 type int = Int of ocaml_int const [@@deriving typerep]
 type tz = Tz of float const [@@deriving typerep]
 
-module SCamlOption = struct
+module Option = struct
   type 'a t = 'a option = None | Some of 'a [@@deriving typerep]
 
   let value o a = match o with
@@ -51,6 +51,8 @@ module Sum = struct
     | _ -> invalid_arg "Sum.get_right"
 
 end
+
+(* So far we use int instead of Z *)
 
 exception Overflow
 
@@ -192,7 +194,7 @@ let failwith : 'a -> 'b = fun _ -> raise Fail
 
 let raise = raise
 
-module SCamlList = struct
+module List = struct
   type 'a t = 'a list [@@deriving typerep]
   let length xs = Nat (List.length xs)
   let map = List.map
@@ -208,8 +210,8 @@ module Set = struct
   (* Simulation by list.  Of course very inefficient *)
   type 'a t = 'a set [@@deriving typerep]
   let empty : 'a t = Set []
-  let length (Set xs) = Nat (List.length xs)
-  let mem x (Set xs) = List.mem x xs
+  let length (Set xs) = Nat (Stdlib.List.length xs)
+  let mem x (Set xs) = Stdlib.List.mem x xs
   let update x b (Set xs) =
     Set (if b then
            let rec add st = function
@@ -238,11 +240,11 @@ module Map = struct
   (* Simulation by list.  Of course very inefficient *)
   type ('k, 'v) t = ('k, 'v) map [@@deriving typerep]
   let empty = Map []
-  let length (Map xs) = Nat (List.length xs)
+  let length (Map xs) = Nat (Stdlib.List.length xs)
   let map f (Map xs) = Map (List.map (fun (k,v) -> (k, f k v)) xs)
   let map' f (Map xs) = Map (List.map (fun (k,v) -> (k, f (k, v))) xs)
-  let get k (Map xs) = List.assoc_opt k xs
-  let mem k (Map xs) = List.mem_assoc k xs
+  let get k (Map xs) = Stdlib.List.assoc_opt k xs
+  let mem k (Map xs) = Stdlib.List.mem_assoc k xs
   let update k vo (Map kvs) = 
     Map (match vo with
         | None -> 
@@ -277,8 +279,8 @@ module BigMap : sig
 end = struct
   type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list [@@deriving typerep]
   let empty : ('k, 'v) t = BigMap []
-  let get k (BigMap kvs) = List.assoc_opt k kvs
-  let mem k (BigMap kvs) = List.mem_assoc k kvs
+  let get k (BigMap kvs) = Stdlib.List.assoc_opt k kvs
+  let mem k (BigMap kvs) = Stdlib.List.mem_assoc k kvs
   let update k vo (BigMap kvs) = 
     BigMap (match vo with
         | None -> 
@@ -306,14 +308,14 @@ module Loop = struct
     | Right b -> b
 end
   
-module SCamlString = struct
+module String = struct
   let concat = (^)
   let slice (Nat a) (Nat b) s =
     try Some (String.sub s a b) with _ -> None
   let length s = Nat (String.length s)
 end
 
-let (^) = SCamlString.concat
+let (^) = String.concat
 
 type bytes = Bytes of string const [@@deriving typerep]
 
@@ -321,8 +323,14 @@ module Bytes = struct
   type t = bytes [@@deriving typerep]
   let concat (Bytes a) (Bytes b) = Bytes (a ^ b)
   let slice (Nat a) (Nat b) (Bytes s) =
-    try Some (Bytes (String.sub s (Stdlib.( * ) a 2) (Stdlib.( * ) b 2))) with _ -> None
-  let length (Bytes a) = Nat (Stdlib.(/) (String.length a) 2)
+    try Some (Bytes (Stdlib.String.sub s (Stdlib.( * ) a 2) (Stdlib.( * ) b 2))) with _ -> None
+  let length (Bytes a) = Nat (Stdlib.(/) (Stdlib.String.length a) 2)
+      
+  let of_string s = 
+    let `Hex hs = Hex.of_string s in
+    Bytes hs
+
+  let to_string (Bytes hs) = Hex.to_string (`Hex hs)
 end
 
 type address = Address of string const [@@deriving typerep]
@@ -447,23 +455,36 @@ module Chain_id = struct
   type t = chain_id [@@deriving typerep]
 end
 
+module Env = struct
+  type t = 
+    { now : timestamp
+    ; amount : tz
+    ; balance : tz
+    ; source : address
+    ; sender : address
+    ; chain_id : chain_id
+    }
+    
+  let env = ref (None : t option)
+  let get () = Option.get !env
+end
+
 (* maybe the place is not good *)
 module Global : sig
-  val get_now : unit -> timestamp
-  val get_amount : unit -> tz
-  val get_balance : unit -> tz
-  val get_source : unit -> address
-  val get_sender : unit -> address
-  val get_steps_to_quota : unit -> nat
+  val get_now      : unit -> timestamp
+  val get_amount   : unit -> tz
+  val get_balance  : unit -> tz
+  val get_source   : unit -> address
+  val get_sender   : unit -> address
   val get_chain_id : unit -> chain_id
 end = struct
-  let get_now _ = assert false
-  let get_amount _ = assert false
-  let get_balance _ = assert false
-  let get_source _ = assert false
-  let get_sender _ = assert false
-  let get_steps_to_quota _ = assert false
-  let get_chain_id _ = assert false
+  open Env
+  let get_now      () = (get ()).now
+  let get_amount   () = (get ()).amount
+  let get_balance  () = (get ()).balance
+  let get_source   () = (get ()).source
+  let get_sender   () = (get ()).sender
+  let get_chain_id () = (get ()).chain_id
 end
 
 type key = Key of string const [@@deriving typerep]
@@ -478,19 +499,103 @@ module Signature = struct
   type t = signature [@@deriving typerep]
 end
 
-module Crypto = struct
-  let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
-  let blake2b : bytes -> bytes = fun _ -> assert false
-  let sha256 : bytes -> bytes = fun _ -> assert false
-  let sha512 : bytes -> bytes = fun _ -> assert false
-  let hash_key  : key -> key_hash = fun _ -> assert false
-end
-
 module Obj = struct
+  let pack_string s =
+    let open Tezos_micheline in
+    let s = Micheline.strip_locations (Micheline.String ((), s)) in
+    let expr_encoding =
+      Micheline.canonical_encoding_v1
+        ~variant:"michelson_v1"
+        Data_encoding.Encoding.string
+    in
+    match Data_encoding.(Binary.to_bytes expr_encoding s) with
+    | Error _ -> assert false
+    | Ok bs -> Bytes.of_string ("\005" ^ Stdlib.Bytes.to_string bs)
+    
   let pack : 'a -> bytes = fun _ -> assert false
   let unpack : bytes -> 'a option = fun _ -> assert false
+
+  open Typerep_lib.Std
+
+  let expr_encoding =
+    Tezos_micheline.Micheline.canonical_encoding_v1
+      ~variant:"michelson_v1"
+      Data_encoding.Encoding.string
+
+  let pack' : 'a Typerep.t -> 'a -> bytes = fun _ -> assert false
+(*
+  let pack' : 'a Typerep.t -> 'a -> bytes = fun rep a ->
+    match 
+      Data_encoding.Binary.to_bytes expr_encoding
+      @@ Tezos_micheline.Micheline.strip_locations
+      @@ SCaml_compiler_lib.Michelson.Constant.to_micheline 
+      @@ Convert.to_michelson rep a
+    with
+    | Error _ -> assert false
+    | Ok bs -> Bytes.of_string ("\005" ^ Stdlib.Bytes.to_string bs)
+*)
+
+  let unpack' : 'a Typerep.t -> bytes -> 'a option = fun _ -> assert false
+(*
+  let unpack' : 'a Typerep.t -> bytes -> 'a option = fun rep bs ->
+    let s = Bytes.to_string bs in
+    if s = "" then None
+    else if Stdlib.String.unsafe_get s 0 <> '\005' then None
+    else 
+      match 
+        Data_encoding.Binary.of_bytes expr_encoding 
+          (Bytes.of_string @@ Stdlib.String.(sub s 1 (length s - 1)))
+      with
+      | Error _ -> None
+      | Ok m ->
+*)
+
 end
 
-module List = SCamlList
-module String = SCamlString
-module Option = SCamlOption
+module Crypto = struct
+  let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
+  (* XXX Signature.check key signature message of tezos-crypto *)
+
+  let blake2b bs = 
+    let Hash bs = Blake2.Blake2b.direct (Stdlib.Bytes.of_string @@ Bytes.to_string bs) 32 in 
+    Bytes.of_string @@ Stdlib.Bytes.to_string bs
+
+  (* test *)
+  let test_blake2b () =
+    let Bytes s = blake2b (Obj.pack_string "foobar") in
+    assert (s = "c5b7e76c15ce98128a840b54c38f462125766d2ed3a6bff0e76f7f3eb415df04")
+
+  let sha256 bs = 
+    Bytes.of_string
+    @@ Bigstring.to_string 
+    @@ Hacl.Hash.SHA256.digest 
+    @@ Bigstring.of_string 
+    @@ Bytes.to_string bs
+
+  (* test *)
+  let test_sha256 () =
+    assert (sha256 (Bytes "0123456789ABCDEF") =
+            Bytes "55c53f5d490297900cefa825d0c8e8e9532ee8a118abe7d8570762cd38be9818")
+
+  let sha512 bs = 
+    Bytes.of_string
+    @@ Bigstring.to_string 
+    @@ Hacl.Hash.SHA512.digest 
+    @@ Bigstring.of_string 
+    @@ Bytes.to_string bs
+
+  (* test *)
+  let test_sha512 () =
+    assert (sha512 (Bytes "0123456789ABCDEF") =
+            Bytes "650161856da7d9f818e6047cf6b2092bc7aa3767d3495cfbefe2b710ed684a43ba933ea8286ef67d975e64e0482e5ebe0701788989396545b6badb3b0a136f19")
+
+  let hash_key  : key -> key_hash = fun _ -> assert false
+  (* XXX we need Signagure.Public_key.hash 
+         of tezos-crypto but it requires 
+         the current OPAM package of hacl which required dune < 2.0 for now *)
+    
+  let test () =
+    test_blake2b ();
+    test_sha256 ();
+    test_sha512 ()
+end

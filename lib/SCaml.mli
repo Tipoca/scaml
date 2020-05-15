@@ -411,7 +411,6 @@ module Global : sig
   val get_source   : unit -> address
   val get_sender   : unit -> address
   val get_chain_id : unit -> chain_id
-  val get_steps_to_quota : unit -> nat
 end
 
 (** Keys *)
@@ -441,4 +440,6 @@ end
 module Obj : sig
   val pack : 'a -> bytes
   val unpack : bytes -> 'a option
+  val pack' : 'a Typerep_lib.Std.Typerep.t -> 'a -> bytes
+  val unpack' : 'a Typerep_lib.Std.Typerep.t -> bytes -> 'a option
 end
