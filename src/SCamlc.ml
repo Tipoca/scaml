@@ -144,8 +144,8 @@ let link modules =
 
       let oc = open_out (last.outputprefix ^ ".tz") in
       let ppf = Format.of_out_channel oc in
-      Flags.if_debug (fun () -> Format.eprintf "@[<2>%a@]@." M.Module.pp m);
-      Format.fprintf ppf "@[<2>%a@]@." M.Module.pp m;
+      Flags.if_debug (fun () -> Format.eprintf "@[<2>%a@]@." (M.Module.pp ?block_comment: None) m);
+      Format.fprintf ppf "@[<2>%a@]@." (M.Module.pp ?block_comment: None) m;
       close_out oc
 
 let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =

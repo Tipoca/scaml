@@ -24,6 +24,7 @@ depends: [
   "tezos-error-monad" { = "7.0" }
   "tezos-micheline" { = "7.0" } 
   "tezos-stdlib" { = "7.0" }
+  "tezos-crypto" { = "7.0" }
   "camlon"
   "ppx_meta_conv"
   "ppxlib" { = "0.8.1" }

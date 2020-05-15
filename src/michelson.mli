@@ -104,7 +104,8 @@ module rec Constant : sig
     | Code of Opcode.t list
 
   val pp : Format.formatter -> t -> unit
-  val to_micheline : t -> Mline.t
+  val to_micheline : ?block_comment:bool -> t -> Mline.t
+  val of_micheline : Mline.t -> t option
 end
 
 and Opcode : sig
@@ -188,12 +189,12 @@ and Opcode : sig
     | CHAIN_ID
 
   val pp : Format.formatter -> t -> unit
-  val to_micheline : t -> Mline.t
+  val to_micheline : ?block_comment:bool -> t -> Mline.t list
   val clean_failwith : t list -> t list * bool (* ends with FAILWITH or not *)
   val dip_1_drop_n_compaction : t list -> t list
 end
 
 module Module : sig
   type t = { parameter : Type.t; storage : Type.t; code : Opcode.t list; }
-  val pp : Format.formatter -> t -> unit
+  val pp : ?block_comment:bool -> Format.formatter -> t -> unit
 end

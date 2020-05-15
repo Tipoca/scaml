@@ -277,7 +277,8 @@ module rec Constant : sig
     | Code of Opcode.t list
 
   val pp : Format.formatter -> t -> unit
-  val to_micheline : t -> Mline.t
+  val to_micheline : ?block_comment:bool -> t -> Mline.t
+  val of_micheline : Mline.t -> t option
 end = struct
   type t =
     | Unit
@@ -295,7 +296,7 @@ end = struct
     | Timestamp of Z.t
     | Code of Opcode.t list
 
-  let to_micheline = 
+  let to_micheline ?block_comment = 
     let open Mline in
     let rec f = function
       | Bool true  -> prim "True" [] []
@@ -320,9 +321,48 @@ end = struct
             | Some t -> string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
           end
       | Code os -> 
+          seq (List.concat_map (Opcode.to_micheline ?block_comment) os)
+    in
+    f
+  
+  let of_micheline _ = assert false
+(*
+    let open Mline in
+    let open Option.Infix in
+    let rec f = function
+      | Tezos_micheline.Micheline.Prim (_, "True", [], _) -> Some (Bool true)
+      | Prim (_, "False", [], _) -> Some (Bool false)
+      | Prim (_, "Unit", [], _) -> Some Unit
+      | Int (_, n) -> Some (Int n)
+      | String (_, s) -> Some (String s)
+      | Bytes (_, s) -> Some (Bytes s)
+      | Prim (_, "None", [], _) -> Some (Option None)
+      | Prim (_, "Some", [t], _) -> f t >>= fun t -> Some (Option (Some t))
+      | Prim (_, "Pair", [t1; t2], _) ->
+          f t1 >>= fun t1 -> f t2 >>= fun t2 -> Some (Pair (t1, t2))
+      | Prim (_, "Left", [t], _) -> f t >>= fun t -> Some (Left t)
+      | Prim (_, "Right", [t], _) -> f t >>= fun t -> Some (Right t)
+      | Seq (_, ts) ->
+          begin match
+              Option.mapM (function 
+                  | Prim (_, "Elt", [k; v], _) -> Some (k,v)
+                  | _ -> None) ts
+            with
+            | Some kvs -> Some (Map kvs)
+            | None ->
+               Option.mapM f ts >>= fun ts -> Some (List ts)
+          end
+          
+      | Timestamp z -> 
+          begin match Ptime.of_float_s @@ Z.to_float z with
+            | None -> assert false
+            | Some t -> string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
+          end
+      | Code os -> 
           seq (List.map Opcode.to_micheline os)
     in
     f
+*)
   
   let pp fmt t = Mline.pp fmt & to_micheline t
 end
@@ -408,7 +448,7 @@ and Opcode : sig
     | CHAIN_ID
 
   val pp : Format.formatter -> t -> unit
-  val to_micheline : t -> Mline.t
+  val to_micheline : ?block_comment:bool -> t -> Mline.t list
   val clean_failwith : t list -> t list * bool
   val dip_1_drop_n_compaction : t list -> t list
 end = struct
@@ -487,14 +527,25 @@ end = struct
     | ADDRESS
     | CHAIN_ID
   
-  let to_micheline t =
+  let to_micheline ?(block_comment=false) t =
     let open Mline in
     let prim x args = Mline.prim x args [] in
     let (!) x = prim x [] in
-    let rec f = function
+    let rec fs ts = seq (List.concat_map f' ts)
+    and f' = function
+      | COMMENT (s, ts) when block_comment -> 
+          [ add_comment (Some s) @@ fs ts ]
+      | COMMENT (s, ts) -> 
+          begin match List.concat_map f' ts with
+            | [] -> [] (* comment against empty seq is gone *)
+            | t::ts -> add_comment (Some s) t :: ts
+          end
+      | t -> [f t]
+    and f = function
+      | COMMENT _ -> assert false
       | DUP -> !"DUP"
-      | DIP (1, code) -> prim "DIP" [seq (List.map f code)]
-      | DIP (n, code) -> prim "DIP" [int & Z.of_int n; seq (List.map f code)]
+      | DIP (1, code) -> prim "DIP" [fs code]
+      | DIP (n, code) -> prim "DIP" [int & Z.of_int n; fs code]
       | DIG n -> prim "DIG" [int & Z.of_int n]
       | DUG n -> prim "DUG" [int & Z.of_int n]
       | SWAP -> !"SWAP"
@@ -508,7 +559,7 @@ end = struct
       | LAMBDA (ty1, ty2, code) -> 
           prim "LAMBDA" [Type.to_micheline ty1;
                          Type.to_micheline ty2;
-                         seq (List.map f code)]
+                         fs code]
       | APPLY -> !"APPLY"
       | CONS -> !"CONS"
       | NIL ty -> prim "NIL" [ Type.to_micheline ty ]
@@ -523,13 +574,8 @@ end = struct
       | GT  -> !"GT"
       | GE  -> !"GE"
       | NEQ -> !"NEQ"
-      | IF (t,e) -> 
-          prim "IF" [ seq & List.map f t;
-                      seq & List.map f e ]
-  
-      | IF_NONE (t,e) -> 
-          prim "IF_NONE" [ seq & List.map f t;
-                           seq & List.map f e ]
+      | IF (t,e) -> prim "IF" [ fs t; fs e ]
+      | IF_NONE (t,e) -> prim "IF_NONE" [ fs t; fs e ]
       | ADD   -> !"ADD"
       | SUB   -> !"SUB"
       | MUL   -> !"MUL"
@@ -546,14 +592,8 @@ end = struct
   
       | EXEC -> !"EXEC"
       | FAILWITH -> !"FAILWITH"
-      | COMMENT (s, [t]) -> add_comment (Some s) & f t
-      | COMMENT (s, ts) -> add_comment (Some s) & seq (List.map f ts)
-      | IF_LEFT (t1, t2) ->
-          prim "IF_LEFT" [ seq & List.map f t1;
-                           seq & List.map f t2 ]
-      | IF_CONS (t1, t2) ->
-          prim "IF_CONS" [ seq & List.map f t1;
-                           seq & List.map f t2 ]
+      | IF_LEFT (t1, t2) -> prim "IF_LEFT" [ fs t1; fs t2 ]
+      | IF_CONS (t1, t2) -> prim "IF_CONS" [ fs t1; fs t2 ]
       | UNIT -> !"UNIT"
       | EMPTY_SET ty -> prim "EMPTY_SET" [ Type.to_micheline ty ]
       | EMPTY_MAP (ty1, ty2) -> prim "EMPTY_MAP" [ Type.to_micheline ty1; Type.to_micheline ty2 ]
@@ -561,10 +601,10 @@ end = struct
       | SIZE   -> !"SIZE"
       | MEM    -> !"MEM"
       | UPDATE -> !"UPDATE"
-      | ITER code -> prim "ITER" [ seq & List.map f code ]
-      | MAP code -> prim "MAP" [ seq & List.map f code ]
-      | LOOP code -> prim "LOOP" [ seq & List.map f code ]
-      | LOOP_LEFT code -> prim "LOOP_LEFT" [ seq & List.map f code ]
+      | ITER code -> prim "ITER" [ fs code ]
+      | MAP code -> prim "MAP" [ fs code ]
+      | LOOP code -> prim "LOOP" [ fs code ]
+      | LOOP_LEFT code -> prim "LOOP_LEFT" [ fs code ]
       | CONCAT -> !"CONCAT"
       | SELF   -> !"SELF"
       | GET    -> !"GET"
@@ -596,9 +636,9 @@ end = struct
       | CHAIN_ID        -> !"CHAIN_ID"
       | CREATE_CONTRACT (Raw nodes) -> prim "CREATE_CONTRACT" [ seq nodes ]
     in
-    f t
+    f' t
 
-  let pp ppf t = Mline.pp ppf & to_micheline t
+  let pp ppf ts = Format.fprintf ppf "%a" (Format.list "@ " Mline.pp) & to_micheline ts
 
   let rec clean_failwith = function
     | [] -> [], false
@@ -766,9 +806,9 @@ end
 module Module = struct
   type t = { parameter : Type.t ; storage : Type.t ; code : Opcode.t list }
 
-  let pp ppf { parameter ; storage ; code } = 
+  let pp ?block_comment ppf { parameter ; storage ; code } = 
     let open Mline in
     Format.fprintf ppf "%a ;@." Mline.pp & prim "parameter" [ Type.to_micheline parameter ] [];
     Format.fprintf ppf "%a ;@." Mline.pp & prim "storage" [ Type.to_micheline storage ] [];
-    Format.fprintf ppf "%a ;@." Mline.pp & prim "code" [ seq (List.map Opcode.to_micheline code) ] []
+    Format.fprintf ppf "%a ;@." Mline.pp & prim "code" [ Mline.seq (List.concat_map (Opcode.to_micheline ?block_comment) code) ] []
 end
