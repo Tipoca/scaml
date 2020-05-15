@@ -115,29 +115,13 @@ let optimize t =
       | Let (p, t1, t2) -> 
           let t2 = f t2 in
           let vmap = count_variables t2 in
-          let not_expand = not & List.mem (Attr.Annot "not_expand") t.attrs in
+          let _not_expand = not & List.mem (Attr.Annot "not_expand") t.attrs in
           begin match VMap.find_opt p.desc vmap with
             | None -> 
                 (* let x = e1 in e2 => e2  when  x does not appear in e1 *)
-                add_attrs & f t2
+                add_attrs t2
 
-            | Some 1 when IdTys.for_all (fun (_, ty) -> Michelson.Type.is_packable ~legacy:false ty) (freevars t1) && not not_expand ->
-                (* let x = e1 in e2 => e2[e1/x] *)
-                (* contract_self_id must not be inlined into LAMBDAs *)
-                (* XXX This is adhoc *)
-                add_attrs 
-                & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
-
-(*  This changes free variable occurrences inside `fun`.  Must be done with care.
-   
-            | Some 1 when p.desc <> Translate.contract_self_id -> 
-                (* let x = e1 in e2 => e2[e1/x] *)
-                (* contract_self_id must not be inlined into LAMBDAs *)
-                (* XXX This is adhoc *)
-                add_attrs 
-                & f & subst [p.desc, (Attr.add (Attr.Comment ("= " ^ Ident.unique_name p.desc)) t1)] t2
-*)
-            | _ -> mk & Let (p, f t1, f t2)
+            | _ -> mk & Let (p, f t1, t2)
           end
 
       | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create _ -> 
