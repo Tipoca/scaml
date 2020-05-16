@@ -1,4 +1,4 @@
-# 1.2.0
+# 1.2.0pre4
 
 ## Features
 
@@ -6,6 +6,7 @@
 
 ## Optimization
 
+* Optimization complexity issue was resolved.
 * `dip_1_drop_n_compaction` is now applied to opcodes in constants
 
 ## Primitives
@@ -15,6 +16,10 @@
 * Added `List.rev_append`
 * Added `SCaml.Contract.contract'`, address to contract conversion with an entry point name
 * Added `SCaml.raise` for better exception simulation in OCaml
+
+## Bug fixes
+
+* Argument order of List.fold_left was fixed
 
 ## Others
 
