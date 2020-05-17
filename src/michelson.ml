@@ -278,7 +278,6 @@ module rec Constant : sig
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t
-  val of_micheline : Mline.t -> t option
 end = struct
   type t =
     | Unit
@@ -324,45 +323,6 @@ end = struct
           seq (List.concat_map (Opcode.to_micheline ?block_comment) os)
     in
     f
-  
-  let of_micheline _ = assert false
-(*
-    let open Mline in
-    let open Option.Infix in
-    let rec f = function
-      | Tezos_micheline.Micheline.Prim (_, "True", [], _) -> Some (Bool true)
-      | Prim (_, "False", [], _) -> Some (Bool false)
-      | Prim (_, "Unit", [], _) -> Some Unit
-      | Int (_, n) -> Some (Int n)
-      | String (_, s) -> Some (String s)
-      | Bytes (_, s) -> Some (Bytes s)
-      | Prim (_, "None", [], _) -> Some (Option None)
-      | Prim (_, "Some", [t], _) -> f t >>= fun t -> Some (Option (Some t))
-      | Prim (_, "Pair", [t1; t2], _) ->
-          f t1 >>= fun t1 -> f t2 >>= fun t2 -> Some (Pair (t1, t2))
-      | Prim (_, "Left", [t], _) -> f t >>= fun t -> Some (Left t)
-      | Prim (_, "Right", [t], _) -> f t >>= fun t -> Some (Right t)
-      | Seq (_, ts) ->
-          begin match
-              Option.mapM (function 
-                  | Prim (_, "Elt", [k; v], _) -> Some (k,v)
-                  | _ -> None) ts
-            with
-            | Some kvs -> Some (Map kvs)
-            | None ->
-               Option.mapM f ts >>= fun ts -> Some (List ts)
-          end
-          
-      | Timestamp z -> 
-          begin match Ptime.of_float_s @@ Z.to_float z with
-            | None -> assert false
-            | Some t -> string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
-          end
-      | Code os -> 
-          seq (List.map Opcode.to_micheline os)
-    in
-    f
-*)
   
   let pp fmt t = Mline.pp fmt & to_micheline t
 end

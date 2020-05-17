@@ -522,34 +522,47 @@ module Obj = struct
       ~variant:"michelson_v1"
       Data_encoding.Encoding.string
 
-  let pack' : 'a Typerep.t -> 'a -> bytes = fun _ -> assert false
-(*
+  type to_michelson = 
+    { to_michelson : 'a. 'a Typerep.t -> 'a -> SCaml_compiler_lib.Michelson.Constant.t }
+
+  let to_michelson_ref : to_michelson ref = ref { to_michelson = fun _ -> assert false }
+
   let pack' : 'a Typerep.t -> 'a -> bytes = fun rep a ->
     match 
       Data_encoding.Binary.to_bytes expr_encoding
       @@ Tezos_micheline.Micheline.strip_locations
       @@ SCaml_compiler_lib.Michelson.Constant.to_micheline 
-      @@ Convert.to_michelson rep a
+      @@ !to_michelson_ref.to_michelson rep a
     with
     | Error _ -> assert false
     | Ok bs -> Bytes.of_string ("\005" ^ Stdlib.Bytes.to_string bs)
-*)
-
+    
   let unpack' : 'a Typerep.t -> bytes -> 'a option = fun _ -> assert false
-(*
+
+  type of_micheline = 
+    { of_micheline : 'a. 'a Typerep.t -> (ocaml_int, string) Tezos_micheline__Micheline.node -> SCaml_compiler_lib.Michelson.Constant.t option }
+
+  let of_micheline_ref : of_micheline ref = ref { of_micheline = fun _ -> assert false }
+
+  type of_michelson = 
+    { of_michelson : 'a. 'a Typerep.t -> SCaml_compiler_lib.Michelson.Constant.t -> 'a option }
+
+  let of_michelson_ref : of_michelson ref = ref { of_michelson = fun _ -> assert false }
+
   let unpack' : 'a Typerep.t -> bytes -> 'a option = fun rep bs ->
     let s = Bytes.to_string bs in
     if s = "" then None
     else if Stdlib.String.unsafe_get s 0 <> '\005' then None
     else 
-      match 
+      let open Stdlib in
+      let (>>=) = Option.bind in
+      let mres =
         Data_encoding.Binary.of_bytes expr_encoding 
-          (Bytes.of_string @@ Stdlib.String.(sub s 1 (length s - 1)))
-      with
-      | Error _ -> None
-      | Ok m ->
-*)
-
+        @@ Bytes.of_string @@ String.(sub s 1 (length s - 1))
+      in
+      Result.to_option mres >>= fun m ->
+      !of_micheline_ref.of_micheline rep @@ Tezos_micheline.Micheline.root m >>= fun c ->
+      !of_michelson_ref.of_michelson rep c
 end
 
 module Crypto = struct

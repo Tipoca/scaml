@@ -231,15 +231,15 @@ module Revert = struct
     | _, _ ->
         begin match m with
           | Left (Int z) ->
-            if z >= Z.of_int n_nulls || z < Z.zero then None
-            else
-              let i = Z.to_int z in
-              let pos = List.nth nulls i in
-              let Tag tag = Variant.tag v pos in
-              begin match Tag.create tag with
-              | Const v -> Some v
-              | _ -> assert false
-              end
+              if z >= Z.of_int n_nulls || z < Z.zero then None
+              else
+                let i = Z.to_int z in
+                let pos = List.nth nulls i in
+                let Tag tag = Variant.tag v pos in
+                begin match Tag.create tag with
+                | Const v -> Some v
+                | _ -> assert false
+                end
           | Right m ->
               let tree = Binplace.place (List.init n_nonnulls (fun x -> x)) in
               let rec find m tree = match m, tree with
@@ -261,6 +261,169 @@ module Revert = struct
   module Named = Type_generic.Make_named_for_closure(struct
       type 'a input = Michelson.Constant.t
       type 'a output = 'a option
+      type 'a t = 'a input -> 'a output
+    end)
+end
+
+module Revert' = struct
+  module M = Tezos_micheline.Micheline
+  module C = Michelson.Constant
+               
+  let name = "Revert'"
+  let required = []
+
+  type 'a t = (int, string) M.node -> C.t option
+      
+  include Typerep_lib.Variant_and_record_intf.M(struct
+      type nonrec 'a t = 'a t
+    end)
+
+  exception Unsupported of string
+  let unsupported n = raise (Unsupported n)
+
+  open Option.Infix
+
+  let int _ = unsupported "int"
+  let int32 _ = unsupported "int32"
+  let int64 _ = unsupported "int64"
+  let nativeint _ = unsupported "nativeint"
+  let char _ = unsupported "char"
+  let float _ = unsupported "float"
+  let string = function
+    | M.String (_, s) -> Some (C.String s)
+    | _ -> None
+  let bytes _ = unsupported "bytes"
+  let bool = function
+    | M.Prim (_, "True", [], []) -> Some (C.Bool true)
+    | M.Prim (_, "False", [], []) -> Some (C.Bool false)
+    | _ -> None
+  let unit = function
+    | M.Prim (_, "Unit", [], []) -> Some C.Unit
+    | _ -> None
+  let option f x = match x with
+    | M.Prim (_, "Some", [t], []) -> f t >>= fun t -> Some (C.Option (Some t))
+    | M.Prim (_, "None", [], []) -> Some (C.Option None)
+    | _ -> None
+  let list f = function
+    | M.Seq (_, ts) -> Option.mapM f ts >>= fun ts -> Some (C.List ts)
+    | _ -> None
+  let array _ _ = unsupported "array"
+  let lazy_t _ _ = unsupported "lazy_t"
+  let ref_ _ _ = unsupported "ref"
+  let function_ _ _ _ = unsupported "function"
+
+  let rec tuple tree v = match tree, v with
+    | Binplace.Leaf f, v -> f v
+    | Binplace.Branch (tr1, tr2), M.Prim (_, "Pair", [t1; t2], []) ->
+        tuple tr1 t1 >>= fun t1 -> tuple tr2 t2 >>= fun t2 -> Some (C.Pair (t1, t2))
+    | _ -> None
+
+  let tuple2 f1 f2 = tuple (Binplace.place [f1; f2])
+  let tuple3 f1 f2 f3 = tuple (Binplace.place [f1; f2; f3])
+  let tuple4 f1 f2 f3 f4 = tuple (Binplace.place [f1; f2; f3; f4])
+  let tuple5 f1 f2 f3 f4 f5 = tuple (Binplace.place [f1; f2; f3; f4; f5])
+
+  let rec access v sides = match v, sides with
+    | _, [] -> Some v
+    | M.Prim (_, "Pair", [v; _], []), Binplace.Left::sides -> access v sides
+    | M.Prim (_, "Pair", [_; v], []), Right::sides -> access v sides
+    | _ -> None
+
+  let tuple n v = 
+    Option.mapM (fun sides -> access v sides)
+    & List.init n & fun i -> Binplace.path i n
+
+  let build cs =
+    let rec f = function
+      | Binplace.Leaf v -> v
+      | Binplace.Branch (t1, t2) -> C.Pair (f t1, f t2)
+    in
+    f & Binplace.place cs
+
+  let record : 'a Record.t -> 'a t = fun r m ->
+    let len = Record.length r in
+    tuple len m >>= fun ms ->
+    let fields = List.init len & fun i -> Record.field r i in
+    let mfs = List.combine ms fields in
+    Option.mapM (fun (m, Record.Field f) -> Field.traverse f m) mfs 
+    >>| build
+
+  let pp_ml ppf ml =
+    Tezos_micheline.Micheline_printer.print_expr ppf
+      (Tezos_micheline.Micheline_printer.printable (fun _ -> "") 
+         (Tezos_micheline.Micheline.strip_locations ml))
+
+  let variant : 'a Variant.t -> 'a t = fun v m ->
+    let _, rev_nulls, rev_nonnulls = 
+      Variant.fold v ~init:(0,[],[]) ~f:(fun (i, nulls, nonnulls) (Tag tag) ->
+          let arity = Tag.arity tag in
+          if arity = 0 then (i+1, i::nulls, nonnulls) else (i+1, nulls, i::nonnulls))
+    in
+    let nulls = List.rev rev_nulls in
+    let nonnulls = List.rev rev_nonnulls in
+    let n_nulls = List.length nulls in
+    let n_nonnulls = List.length nonnulls in
+    match n_nulls, n_nonnulls with
+    | 0, 0 -> assert false
+    | _, 0 ->
+        begin match m with
+          | M.Int (_, z) -> Some (C.Int z)
+          | _ -> None
+        end
+    | 0, _ ->
+        let tree = Binplace.place (List.init n_nonnulls (fun x -> x)) in
+        let rec find m tree = match m, tree with
+          | m, Binplace.Leaf pos -> Some (m, pos)
+          | M.Prim (_, "Left", [m], []), Branch (tree, _) -> find m tree
+          | Prim (_, "Right", [m], []), Branch (_, tree) -> find m tree
+          | _ -> None
+        in
+        find m tree >>= fun (ma, pos) ->
+        let Tag tag = Variant.tag v pos in
+        Tag.traverse tag ma >>= fun ca ->
+        let rec embed m tree = match m, tree with
+          | _, Binplace.Leaf _ -> ca
+          | M.Prim (_, "Left", [m], []), Branch (tree, _) -> C.Left (embed m tree)
+          | Prim (_, "Right", [m], []), Branch (_, tree) -> C.Right (embed m tree)
+          | _ ->
+              Format.eprintf "??? %a@." 
+                Tezos_micheline.Micheline_printer.print_expr
+                (Tezos_micheline.Micheline_printer.printable (fun _ -> "") 
+                   (M.strip_locations m));
+              assert false
+        in
+        Some (embed m tree)
+        
+    | _, _ ->
+        begin match m with
+          | M.Prim (_, "Left", [Int (_,z)], []) ->
+              if z >= Z.of_int n_nulls || z < Z.zero then None
+              else Some (C.Left (C.Int z))
+          | M.Prim (_, "Right", [m], []) ->
+              let tree = Binplace.place (List.init n_nonnulls (fun x -> x)) in
+              let rec find m tree = match m, tree with
+                | m, Binplace.Leaf i -> Some (m, i)
+                | M.Prim (_, "Left", [m], []), Branch (tree, _) -> find m tree
+                | Prim (_, "Right", [m], []), Branch (_, tree) -> find m tree
+                | _ -> None
+              in
+              find m tree >>= fun (ma, i) ->
+              let pos = List.nth nonnulls i in
+              let Tag tag = Variant.tag v pos in
+              Tag.traverse tag ma >>= fun ca ->
+              let rec embed m tree = match m, tree with
+                | _, Binplace.Leaf _ -> ca
+                | M.Prim (_, "Left", [m], []), Branch (tree, _) -> C.Left (embed m tree)
+                | Prim (_, "Right", [m], []), Branch (_, tree) -> C.Right (embed m tree)
+                | _ -> assert false
+              in
+              Some (C.Right (embed m tree))
+          | _ -> None
+        end
+
+  module Named = Type_generic.Make_named_for_closure(struct
+      type 'a input = (int, string) M.node
+      type 'a output = C.t option
       type 'a t = 'a input -> 'a output
     end)
 end
@@ -363,3 +526,71 @@ let of_michelson typerep v =
       | _ -> None);
   let `generic f = M.of_typerep typerep in
   f v
+
+let of_micheline typerep v = 
+  let open Spotlib.Spot.Option.Infix in
+  let module X = Type_generic.Make(Revert') in
+  let module M = Tezos_micheline.Micheline in
+  let module C = Michelson.Constant in
+  X.register typerep_of_int (function
+      | M.Int (_, z) -> Some (C.Int z)
+      | _ -> None);
+  X.register typerep_of_nat (function
+      | M.Int (_, z) when z < Z.zero -> None
+      | Int (_, z) -> Some (C.Int z)
+      | _ -> None);
+  X.register typerep_of_tz (function
+      | M.Int (_, z) -> 
+          let i = Z.to_int z in
+          if Z.of_int i <> z then raise Overflow
+          else Some (C.Int z) (* XXX overflow exists *)
+      | _ -> None);
+  X.register1 (module struct
+    type 'a t = 'a set
+    let typename_of_t = typename_of_set
+    let typerep_of_t = typerep_of_set
+    let compute fa = function 
+      | M.Seq (_, xs) -> Spotlib.Spot.Option.mapM fa xs >>| fun xs -> C.Set xs
+      | _ -> None
+  end);
+  X.register2 (module struct
+    type ('k,'v) t = ('k,'v) map
+    let typename_of_t = typename_of_map
+    let typerep_of_t = typerep_of_map
+    let compute fk fv = function 
+      | M.Seq (_, kvs) -> 
+          Spotlib.Spot.Option.mapM (function
+              | M.Prim (_, "Elt", [k; v], []) ->
+                  fk k >>= fun k ->
+                  fv v >>| fun v -> (k,v)
+              | _ -> None) kvs 
+          >>| fun kvs -> C.Map kvs
+      | _ -> None
+  end);
+  X.register typerep_of_bytes (function
+      | M.Bytes (_, bs (* in hex *)) -> 
+          let s = Stdlib.Bytes.to_string bs in
+          let `Hex h = Hex.of_string s in
+          Some (C.Bytes h)
+      | _ -> None);
+  X.register typerep_of_address (function
+      | M.String (_, s) -> Some (C.String s)
+      | _ -> None);
+  X.register typerep_of_key_hash (function
+      | M.String (_, s) -> Some (C.String s)
+      | _ -> None);
+  X.register typerep_of_timestamp (function
+      | M.String (_, s) -> Some (C.String s) (* XXX int representation *)
+      | _ -> None);
+  X.register typerep_of_key (function
+      | M.String (_, s) -> Some (C.String s)
+      | _ -> None);
+  X.register typerep_of_signature (function
+      | M.String (_, s) -> Some (C.String s)
+      | _ -> None);
+  let `generic f = X.of_typerep typerep in
+  f v
+
+let () = SCaml.Obj.to_michelson_ref := { SCaml.Obj.to_michelson }
+let () = SCaml.Obj.of_micheline_ref := { SCaml.Obj.of_micheline }
+let () = SCaml.Obj.of_michelson_ref := { SCaml.Obj.of_michelson }

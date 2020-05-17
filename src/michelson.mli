@@ -105,7 +105,6 @@ module rec Constant : sig
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t
-  val of_micheline : Mline.t -> t option
 end
 
 and Opcode : sig

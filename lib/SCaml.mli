@@ -299,6 +299,9 @@ module Bytes : sig
       If the specified region by [n1] and [n2] exceeds the bytes [s],
       it returns [None].
   *)
+      
+  (* XXX cannot be used in SCaml *)
+  val of_string : string -> t
 end
 
 (** Addresses *)
@@ -438,8 +441,26 @@ end
 
 (** Serialization *)
 module Obj : sig
+
   val pack : 'a -> bytes
   val unpack : bytes -> 'a option
-  val pack' : 'a Typerep_lib.Std.Typerep.t -> 'a -> bytes
-  val unpack' : 'a Typerep_lib.Std.Typerep.t -> bytes -> 'a option
+
+  open Typerep_lib.Std
+
+  val pack' : 'a Typerep.t -> 'a -> bytes
+  val unpack' : 'a Typerep.t -> bytes -> 'a option
+
+  type to_michelson = 
+    { to_michelson : 'a. 'a Typerep.t -> 'a -> SCaml_compiler_lib.Michelson.Constant.t }
+
+  val to_michelson_ref : to_michelson ref
+
+  type of_micheline = 
+    { of_micheline : 'a. 'a Typerep.t -> (ocaml_int, string) Tezos_micheline.Micheline.node -> SCaml_compiler_lib.Michelson.Constant.t option }
+  val of_micheline_ref : of_micheline ref
+
+  type of_michelson = 
+    { of_michelson : 'a. 'a Typerep.t -> SCaml_compiler_lib.Michelson.Constant.t -> 'a option }
+
+  val of_michelson_ref : of_michelson ref
 end
