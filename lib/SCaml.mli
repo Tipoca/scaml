@@ -20,33 +20,40 @@ type ocaml_int = int
 (** OCaml's int *)
 
 type 'a const = 'a [@@deriving typerep]
+(** To emphasize SCaml only accepts constants *)
 
 type nat = Nat of ocaml_int const [@@deriving typerep]
 (** Arbitrary length nat. 
     
-    [Nat] only takes a const.  Currently there is no way to write 
-    a literal beyond the range of OCaml's [int].
+    [Nat] only takes a constant.  
+    Currently there is no way to write a literal beyond the range of OCaml's [int].
 *)
 
 type int = Int of ocaml_int const [@@deriving typerep]
 (** Arbitrary length int 
 
-    [Int] only takes a const.  Currently there is no way to write 
-    a literal beyond the range of OCaml's [int].
+    [Int] only takes a constant.
+    Currently there is no way to write a literal beyond the range of OCaml's [int].
 *)
 
 type tz = Tz of float const [@@deriving typerep]
 (** Tezzies.  The smallest unit is micro tz, [Tz 0.000001]. 
 
-    [Tz] only takes a const.
+    [Tz] only takes a constant.
 *)
 
 module Option : sig
   type 'a t = 'a option = None | Some of 'a [@@deriving typerep]
 
   val value : 'a option -> 'a -> 'a
+  (** [value (Some x) def = x]
+      [value None def = def]
+  *)
 
   val get : 'a option -> 'a
+  (** [get (Some x) = x]
+      [get None -> error ]
+  *)
 end
 
 type ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
@@ -56,8 +63,14 @@ module Sum : sig
   type ('a, 'b) t = ('a, 'b) sum = Left of 'a | Right of 'b [@@deriving typerep]
 
   val get_left : ('a, 'b) sum -> 'a
+  (** [get_left (Left x) = x]
+      [get_left (Right x) -> error]
+  *)
 
   val get_right : ('a, 'b) sum -> 'b
+  (** [get_right (Right x) = x]
+      [get_right (Left x) -> error]
+  *)
 end
 
 
@@ -111,7 +124,7 @@ val isnat : int -> nat option
 
 (** Comparisons 
 
-    They are fully polymorphic, but they only work for limited set 
+    They are fully polymorphic but only work for limited set  
     of Michelson types.
 *)
 
@@ -136,11 +149,6 @@ val fst : ('a * 'b) -> 'a
 val snd : ('a * 'b) -> 'b
 
 (** Errors *)
-module Error : sig
-  val failwith : 'a -> 'b
-  [@@deprecated "Use SCaml.failwith"]
-  (** Deprecated.  Use [SCaml.failwith] *)
-end
 
 val failwith : 'a -> 'b
 (** Fail the execution of the smart contract.
@@ -185,7 +193,7 @@ end
 
     Set literal can be written using [Set [ x; .. ; x ]] expression.
 *)
-type 'a set = Set of 'a const list [@@deriving typerep]
+type 'a set = Set of 'a const list const [@@deriving typerep]
 
 module Set : sig
   type 'a t = 'a set [@@deriving typerep]
@@ -201,9 +209,14 @@ module Set : sig
       and removing an element  non existent in the set
       do not change the set.
   *)
-      
+
   val fold : ('elt -> 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc
+
   val fold' : ('elt * 'acc -> 'acc) -> 'elt t -> 'acc -> 'acc
+  (** A variant of [fold] which takes an uncurried function.
+      This is useful when the curried function is rejected because of
+      the unpackable type of ['acc].
+  *)
 end
 
 
@@ -212,7 +225,7 @@ end
     Map literal can be writen using [Map [ (k, v); .. ; (k, v) ]] expression.
 *)
 
-type ('k, 'v) map = Map of ('k const * 'v const) list [@@deriving typerep]
+type ('k, 'v) map = Map of ('k const * 'v const) list const [@@deriving typerep]
 
 module Map : sig
   type ('k, 'v) t = ('k, 'v) map [@@deriving typerep]
@@ -234,7 +247,12 @@ module Map : sig
   *)
 
   val fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc
+
   val fold' : (('k * 'v * 'acc) -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc
+  (** A variant of [fold] which takes an uncurried function.
+      This is useful when the curried function is rejected because of
+      the unpackable type of ['v] and ['acc].
+  *)
 end
 
 (** Big maps
@@ -242,8 +260,10 @@ end
     No way to write a literal of big maps.
 *)
 
-type ('k, 'v) big_map = BigMap of ('k const * 'v const) list [@@deriving typerep]
-(** Constructor [BigMap] is allowed to use only in the conversion mode.
+type ('k, 'v) big_map = BigMap of ('k const * 'v const) list const [@@deriving typerep]
+(** Constructor [BigMap] is allowed to use only in the conversion mode
+    to initialize smart contract storages.
+
     It is not usable in smart contract codes.
 *)
 
@@ -299,9 +319,6 @@ module Bytes : sig
       If the specified region by [n1] and [n2] exceeds the bytes [s],
       it returns [None].
   *)
-      
-  (* XXX cannot be used in SCaml *)
-  val of_string : string -> t
 end
 
 (** Addresses *)
@@ -449,6 +466,8 @@ module Obj : sig
 
   val pack' : 'a Typerep.t -> 'a -> bytes
   val unpack' : 'a Typerep.t -> bytes -> 'a option
+
+  (** Internal use *)
 
   type to_michelson = 
     { to_michelson : 'a. 'a Typerep.t -> 'a -> SCaml_compiler_lib.Michelson.Constant.t }
