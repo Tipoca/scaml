@@ -14,7 +14,7 @@ if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
 # Make sure the library module is COMPiled
 (if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi; \
  cp $SCRIPT_DIR/../lib/SCaml.mli $BUILD_DIR; \
- ocamlfind ocamlc -package zarith,typerep -c $BUILD_DIR/SCaml.mli)
+ ocamlfind ocamlc -package zarith,typerep,tezos-micheline -I ../_build/install/default/lib/scaml/compiler-lib -c $BUILD_DIR/SCaml.mli)
 
 # Compilation command
 COMP="dune exec ../driver/main.exe -- --scaml-noscamlib --scaml-dump-iml0 --scaml-dump-iml -I $BUILD_DIR"
