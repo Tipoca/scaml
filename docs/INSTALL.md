@@ -10,8 +10,10 @@ $ cd scaml
 Install `opam`, then:
 
 ```
-$ opam switch create . ocaml-base-compiler.4.07.1
-$ opam install -y vendors/*/*.opam src/scaml.opam
+$ opam switch create . ocaml-base-compiler.4.09.1
+$ git submodule init
+$ git submodule update
+$ opam install -y vendors/*/*.opam ./scaml.opam
 ```
 
 If successful, there should be the compiler executable:
