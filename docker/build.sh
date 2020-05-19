@@ -19,5 +19,5 @@ echo docker build -t dailambda/scaml:$NAME .
 docker build --squash --no-cache -t dailambda/scaml:$NAME .
 rm -f app_vote.*
 cp ../tests/app_vote.ml .
-docker run --rm -v `pwd`:/work dailambda/scaml:$NAME /root/.opam/4.07.1/bin/scamlc app_vote.ml
+docker run --rm -v `pwd`:/work dailambda/scaml:$NAME /root/.opam/4.09.1/bin/scamlc app_vote.ml
 rm -f app_vote.*

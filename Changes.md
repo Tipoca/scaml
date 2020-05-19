@@ -2,6 +2,7 @@
 
 ## Features
 
+* Based on OCaml 4.09.1
 * BREAKING CHANGE: First implementation of multi unit compilation.  [@entry] is now mandatory for entry points.
   This is NOT separate compilation, therefore just "multi unit compilation".  Now `scamlc` can take more than one `*.ml` file and compile them to one `*.tz` file.
 
