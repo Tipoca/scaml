@@ -4,17 +4,18 @@ type config =
   { title          : string
   ; beginning_time : timestamp
   ; finish_time    : timestamp
-  }
+  } [@@deriving typerep]
         
 type action = 
   | Vote of string
   | Init of config
+  [@@deriving typerep]
 
 type storage = 
   { config     : config
   ; candidates : (string, int) map
   ; voters     : address set
-  }
+  } [@@deriving typerep]
 
 let init config =
   { config
