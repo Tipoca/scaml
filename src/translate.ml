@@ -1444,7 +1444,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         errorf_entry ~loc "entry declaration is only allowed for the toplevel definitions";
   end;
   let typ = Result.at_Error (fun e ->
-      errorf_type_expr ~loc "This expression has type %a.  %a" Printtyp.type_expr mltyp pp_type_expr_error e)
+      errorf_type_expr ~loc "This expression has type@ %a.@ %a" Printtyp.type_expr mltyp pp_type_expr_error e)
       & type_expr tyenv mltyp 
   in
   let mk desc = { loc; typ; desc; attrs= [] } in
@@ -1553,31 +1553,54 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_apply (_, []) -> assert false
 
     | Texp_apply (f, args) -> 
-        let get_args () = List.map (function
+        let get_args = List.map (function
             | (Nolabel, Some (e: Typedtree.expression)) -> expression lenv e
-            | _ -> unsupported ~loc "labeled arguments") args
+            | _ -> unsupported ~loc "labeled arguments")
         in
         let name = match f with
           | { exp_desc= Texp_ident (p, _, _) } -> Path.is_scaml p
           | _ -> None
         in
         begin match name with
-        | None -> mk & App (expression lenv f, get_args ()) 
+        | None -> mk & App (expression lenv f, get_args args) 
+  
+        | Some "Obj.pack'" ->
+            let fty = Result.at_Error (fun e ->
+                errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
+                  Printtyp.type_expr f.exp_type
+                  pp_type_expr_error e)
+                & type_expr f.exp_env 
+                & match (Ctype.repr f.exp_type).Types.desc with
+                  | Tarrow (_, _, ty, _) -> ty
+                  | _ -> assert false
+            in
+            (* fty = fty' *)
+            mk & primitive ~loc:f.exp_loc fty "Obj.pack" & get_args (List.tl args)
+            
+        | Some "Obj.unpack'" ->
+            let fty = Result.at_Error (fun e ->
+                errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
+                  Printtyp.type_expr f.exp_type
+                  pp_type_expr_error e)
+                & type_expr f.exp_env 
+                & match (Ctype.repr f.exp_type).Types.desc with
+                  | Tarrow (_, _, ty, _) -> ty
+                  | _ -> assert false
+            in
+            (* fty = fty' *)
+            mk & primitive ~loc:f.exp_loc fty "Obj.unpack" & get_args (List.tl args)
+            
         | Some "raise" -> translate_raise ~loc lenv typ args
         | Some n when  String.is_prefix "Contract.create" n ->
-            mk & contract_create ~loc n & get_args ()
+            mk & contract_create ~loc n & get_args args
         | Some n -> 
-            let _fty' = 
-              List.fold_right (fun arg ty -> tyLambda(arg.typ, ty)) (get_args ()) typ 
-            in
             let fty = Result.at_Error (fun e ->
                 errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type
                   pp_type_expr_error e)
                 & type_expr f.exp_env f.exp_type 
             in
-            (* fty = fty' *)
-            mk & primitive ~loc:f.exp_loc fty n & get_args ()
+            mk & primitive ~loc:f.exp_loc fty n & get_args args
         end
 
     | Texp_function { arg_label= (Labelled _ | Optional _) } ->

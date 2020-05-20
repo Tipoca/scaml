@@ -12,12 +12,13 @@ BUILD_DIR=$SCRIPT_DIR/_build
 if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
 
 # Make sure the library module is COMPiled
-(if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi; \
- cp $SCRIPT_DIR/../lib/SCaml.mli $BUILD_DIR; \
- ocamlfind ocamlc -package zarith,typerep,tezos-micheline -I ../_build/install/default/lib/scaml/compiler-lib -c $BUILD_DIR/SCaml.mli)
+if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
+
+dune build ../lib/SCamlib.cmxa
+SCAMLIB_DIR=../_build/install/default/lib/scaml/scamlib
 
 # Compilation command
-COMP="dune exec ../driver/main.exe -- --scaml-noscamlib --scaml-dump-iml0 --scaml-dump-iml -I $BUILD_DIR"
+COMP="dune exec ../driver/main.exe -- --scaml-noscamlib --scaml-dump-iml0 --scaml-dump-iml -I $SCAMLIB_DIR"
 
 # Optional: tezos-client
 TEZOS_CLIENT=`which tezos-client || true`
