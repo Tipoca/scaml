@@ -84,6 +84,8 @@ module Type : sig
   val is_storable : t -> bool
     
   val attribute : string list -> t -> t
+    
+  val args : t -> t list * t
 end
 
 module rec Constant : sig

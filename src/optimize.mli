@@ -12,4 +12,9 @@
 (*                                                                        *)
 (**************************************************************************)
 
-val optimize : IML.t -> IML.t
+val knormalize : IML.t -> IML.t
+val beta       : bool ref -> IML.t -> IML.t
+val assoc      : bool ref -> IML.t -> IML.t
+val inline     : bool ref -> IML.t -> IML.t
+val elim       : bool ref -> IML.t -> IML.t
+val unknormalize : IML.t -> IML.t

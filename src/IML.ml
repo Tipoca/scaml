@@ -88,13 +88,16 @@ module P = struct
 
   let rec type_ ty = 
     let open M.Type in
-    let attrs = ty.attrs in
+    let _attrs = ty.attrs in
     let add_attrs ty =
+(*
       { ty 
         with ptyp_attributes = 
                List.map (fun a -> { attr_name= {Location.txt=a; loc=Location.none}
                                   ; attr_payload= PStr []
                                   ; attr_loc= Location.none }) attrs }
+*)
+      ty
     in
     add_attrs @@
     match ty.desc with
@@ -197,9 +200,6 @@ module P = struct
         let ty = type_ pv.typ in
         let pv = pvar & Ident.unique_name pv.desc in
         [%expr let [%p pv] : [%t ty] = [%e iml t1] in [%e iml t2]]
-        (*
-        [%expr let [%p pv]  = [%e iml t1] in [%e iml t2]]
-        *)
     | Switch_or (t, pv1, t1, pv2, t2) ->
         let pv1 = pvar & Ident.unique_name pv1.desc in
         let pv2 = pvar & Ident.unique_name pv2.desc in
@@ -343,9 +343,9 @@ let alpha_conv id_t_list t2 =
           | None -> t
           | Some id' -> { t with desc= Var id' }
         end
-    | Const _ | Nil | IML_None | Unit | AssertFalse 
-    | Contract_create _ -> t
-
+    | Const _ | Nil | IML_None | Unit | AssertFalse -> t
+    | Contract_create (cs, l, t1, t2, t3) ->
+        mk & Contract_create (cs, l, f t1, f t2, f t3)
     | IML_Some t -> mk & IML_Some (f t)
     | Left t -> mk & Left (f t)
     | Right t -> mk & Right (f t)
@@ -388,3 +388,41 @@ let check_unstorable t =
       end
   | _ -> Ok ()
 
+open Michelson.Type
+
+let mke ~loc typ desc = { typ; desc; loc; attrs= [] }
+let mkvar ~loc (id, typ) = mke ~loc typ & Var id
+let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
+let mkunit ~loc () = mke ~loc tyUnit Unit
+let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
+let mkpair ~loc e1 e2 = mke ~loc (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
+
+let mkfst ~loc e =
+  let ty = match e.typ.desc with
+    | TyPair (ty, _) -> ty
+    | _ -> assert false
+  in
+  let prim = snd (List.assoc "fst" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
+  mke ~loc ty (Prim ("fst", prim, [e]))
+
+let mksnd ~loc e =
+  let ty = match e.typ.desc with
+    | TyPair (_, ty) -> ty
+    | _ -> assert false
+  in
+  let prim = snd (List.assoc "snd" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
+  mke ~loc ty (Prim ("snd", prim, [e]))
+
+let mkleft ~loc ty e = mke ~loc (tyOr (e.typ, ty)) (Left e)
+let mkright ~loc ty e = mke ~loc (tyOr (ty, e.typ)) (Right e)
+
+let mkint ~loc n = mke ~loc tyInt (Const (M.Constant.Int (Z.of_int n)))
+let mkcons ~loc h t = mke ~loc t.typ (Cons (h, t))
+let mksome ~loc t = mke ~loc (tyOption t.typ) (IML_Some t)
+let mkassert ~loc t = mke ~loc tyUnit & Assert t
+let mkassertfalse ~loc ty = mke ~loc ty & AssertFalse
+
+let mkeq ~loc e1 e2 =
+  let prim = snd (List.assoc "=" Primitives.primitives) ~loc
+             & tyLambda (e1.typ, tyLambda (e2.typ, tyBool)) in
+  mke ~loc tyBool (Prim ("=", prim, [e1; e2]))

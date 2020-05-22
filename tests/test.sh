@@ -34,9 +34,23 @@ function compile () {
     local iml=`echo $ml | sed -e 's/\.ml$/.iml/'`
     TZ=`echo $ml | sed -e 's/\.ml$/.tz/'`
     rm -f "$iml" "$TZ"
+
+    # Must be rejected?
+    local must_reject=$(grep REJECT $ml || true)
+
     # Compile!
-    echo $COMP $ml
-    (cd $SCRIPT_DIR; $COMP $ml)
+    if [ -z "$must_reject" ]; then
+	echo $COMP $ml
+	(cd $SCRIPT_DIR; $COMP $ml)
+    else
+	echo $COMP $ml : THIS COMPILATION MUST FAIL
+	if  (cd $SCRIPT_DIR; $COMP $ml)
+	then
+	    echo "Error: COMPILATION UNEXPECTEDLY SUCCEEEDED"; exit 2
+	else
+	    echo "Ok: Compilation failed as expected"
+	fi
+    fi
 }
 
 # Input: <code>
@@ -47,7 +61,7 @@ function convert () {
     echo "open SCaml" > $tmp
     echo "let x = $1" >> $tmp
     cat $tmp
-    CONVERSION=$($COMP --scaml-convert-value x -impl $tmp | sed -e 's/^x: //')
+    CONVERSION=$($COMP -I _build --scaml-convert-value x -impl $tmp | sed -e 's/^x: //')
     echo "converted to $CONVERSION"
 }
 

@@ -205,13 +205,7 @@ module Make(Config : Config) = struct
         (* Prim (ops, [t1; t2])
            t2 ; t1; ops
         *)
-        let _, pre = 
-          List.fold_right (fun t (env, os) ->
-              let os' = compile env t in
-              let env' = (Ident.dummy, tyUnit (* dummy *)) :: env in
-              env', os @ os') ts (env, [])
-        in
-        [COMMENT (n, conv pre)]
+        [COMMENT (n, conv (args env ts))]
     | Let (pat, t1, t2) ->
         let os1 = compile env t1 in
         let os2 = compile ((pat.desc, pat.typ)::env) t2 in
@@ -305,12 +299,12 @@ module Make(Config : Config) = struct
           | _ -> assert false
         end
     | App (t, []) -> compile env t
-    | App (f, args) ->
+    | App (f, ts) ->
         let ofun = compile env f in
         let env = (Ident.dummy, tyUnit)::env in
         List.fold_left (fun ofun arg ->
             let oarg = compile env arg in
-            ofun @ oarg @ [ EXEC ]) ofun args
+            ofun @ oarg @ [ EXEC ]) ofun ts
     | Contract_create (s, sloc, e1, e2, e3) -> (* XXX *)
         match s with
         | Tz_file path -> 
@@ -342,9 +336,7 @@ module Make(Config : Config) = struct
                   errorf_contract ~loc:sloc "Michelson parse error: %a"
                     Error_monad.pp_print_error es
             in
-            List.fold_left (fun os arg ->
-                let oarg = compile env arg in
-                oarg @ os) [] [e1; e2; e3]
+            args env [e1; e2; e3]
             @ [CREATE_CONTRACT (Raw nodes) ; PAIR]
         | Tz_code s ->
             let nodes =
@@ -368,9 +360,7 @@ module Make(Config : Config) = struct
                   errorf_contract ~loc:sloc "Michelson parse error: %a"
                     Error_monad.pp_print_error es
             in
-            List.fold_left (fun os arg ->
-                let oarg = compile env arg in
-                oarg @ os) [] [e1; e2; e3]
+            args env [e1; e2; e3]
             @ [CREATE_CONTRACT (Raw nodes) ; PAIR]
   
   and constant t =
@@ -459,43 +449,20 @@ module Make(Config : Config) = struct
       | _ -> None
       in
       f t
-  
-  let split_entry_point t =
-    let rec f st t = match t.IML.desc with
-      | IML.Let (p, t1, t2) -> f ((p,t1)::st) t2
-      | _ -> (List.rev st, t)
-    in
-    f [] t
-  
-  let structure t =
-    let defs, t = split_entry_point t in
-    let ops, env = 
-      List.fold_left (fun (ops, env) (p,t) ->
-          let os1 = compile env t in
-          ops @ [ COMMENT ("let " ^ Ident.unique_name p.IML.desc, os1) ], 
-          ((p.desc, p.typ)::env)) ([], []) defs
-    in
-    (* (parameter, storage) :: []
-       -> parameter :: storage :: values
-    *)
-  
-    (* replace fun by let *)
-    let rec get_abst t = match t.IML.desc with
-      | IML.Fun (p, t) -> p, t
-      | Let (p, t1, t2) -> 
-          let p', t2 = get_abst t2 in
-          p', { t with desc= Let (p, t1, t2) }
-      | _ -> assert false
-    in
-    let p1, t = get_abst t in
-    let p2, t = get_abst t in
-    let env = ((p2.desc,p2.typ)::(p1.desc,p1.typ)::env) in
-    let os = compile env t in
-    [ COMMENT ("top defs", if ops = [] then [] else [DIP (1, ops)]) 
-    ; COMMENT ("entry point init", [DUP ; CDR; DIP (1, [CAR])])
-    ; COMMENT ("entry point code", os )
-    ; COMMENT ("final clean up", [ DIP (1, [ DROP (List.length env) ]) ])]
-    |> clean_failwith
-    |> fst
-    |> dip_1_drop_n_compaction
+
+  and args env ts =
+    snd
+    & List.fold_right (fun t (env, os) ->
+        let os' = compile env t in
+        let env' = (Ident.dummy, tyUnit (* dummy *)) :: env in
+        env', os @ os') ts (env, [])
+    
+  let structure t = match t.IML.desc with
+    | IML.Fun (pv, t) ->
+        let os = compile [(pv.desc, pv.typ)] t in
+        os @ [ COMMENT ("final clean up", [ DIP (1, [ DROP 1 ]) ])]
+        |> clean_failwith
+        |> fst
+        |> dip_1_drop_n_compaction
+    | _ -> assert false
 end

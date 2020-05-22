@@ -90,3 +90,20 @@ val subst : (Ident.t * t) list -> t -> t
 val alpha_conv : (Ident.t * Ident.t) list -> t -> t
 
 val check_unstorable : t -> (unit, Ident.t * Michelson.Type.t) Result.t
+
+val mke           : loc:Location.t -> Michelson.Type.t -> desc -> t
+val mkvar         : loc:Location.t -> Ident.t * Michelson.Type.t -> t
+val mklet         : loc:Location.t -> PatVar.t -> t -> t -> t
+val mkunit        : loc:Location.t -> unit -> t
+val mkfun         : loc:Location.t -> PatVar.t -> t -> t
+val mkpair        : loc:Location.t -> t -> t -> t
+val mkfst         : loc:Location.t -> t -> t
+val mksnd         : loc:Location.t -> t -> t
+val mkleft        : loc:Location.t -> Michelson.Type.t -> t -> t
+val mkright       : loc:Location.t -> Michelson.Type.t -> t -> t
+val mkint         : loc:Location.t -> int -> t
+val mkcons        : loc:Location.t -> t -> t -> t
+val mksome        : loc:Location.t -> t -> t
+val mkassert      : loc:Location.t -> t -> t
+val mkassertfalse : loc:Location.t -> Michelson.Type.t -> t
+val mkeq          : loc:Location.t -> t -> t -> t

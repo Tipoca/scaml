@@ -63,29 +63,51 @@ type module_ =
   ; outputprefix : string
   ; global_entry : (Michelson.Type.t * Michelson.Type.t * IML.t) option
   ; defs : (IML.PatVar.t * IML.t) list
+  ; flags : Flags.t
   }
   
 let rev_compiled = ref ([] : module_ list)
 
 let compile_only sourcefile outputprefix modulename (str, _coercion) =
-  let (gento, defs), secs = with_time & fun () -> 
-      Translate.implementation true sourcefile outputprefix str 
-  in
-  Flags.if_time (fun () -> Format.eprintf "Translated in %f secs@." secs);
-  
-  (* To make iml0 and iml, we must connect these definitions *)
-  let t = Translate.connect defs in
-  if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
-  let t = 
-    if Flags.(!flags.iml_optimization) then begin
-      let res, secs = with_time & fun () -> Optimize.optimize t in
-      Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
-      res
-    end else t 
-  in
-  if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
+  Translate.with_flags_in_code str & fun () ->
+    let (gento, defs), secs = with_time & fun () -> 
+        Translate.implementation true sourcefile outputprefix str 
+    in
+    Flags.if_time (fun () -> Format.eprintf "Translated in %f secs@." secs);
 
-  rev_compiled := { name=modulename; sourcefile; outputprefix; global_entry= gento; defs } :: !rev_compiled
+    (* To make iml0 and iml, we must connect these definitions *)
+    let t = Translate.connect defs in
+    if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
+    let t = 
+      if Flags.(!flags.iml_optimization) then begin
+        let res, secs = with_time & fun () ->
+            let t = Optimize.knormalize t in
+            IML.save (outputprefix ^ ".iml1") t;
+            let rec f i t =
+              let _t0 = t in
+              if i = 0 then t
+              else begin
+                let modified = ref false in
+                let t = Optimize.beta modified t in
+                let t = Optimize.assoc modified t in
+                let t = Optimize.inline modified t in
+                let t = Optimize.elim modified t in
+                if !modified then f (i-1) t else t
+              end
+            in
+            f 100 t
+        in
+        Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
+        res
+      end else t 
+    in
+    if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
+
+    Format.eprintf "optimmm=%b@." !Flags.flags.iml_optimization;
+
+    rev_compiled := { name=modulename; sourcefile; outputprefix; global_entry= gento; defs
+                    ; (* making a copy *)
+                      flags= { !Flags.flags with iml_optimization= !Flags.flags.iml_optimization } } :: !rev_compiled
 
 let link modules =
   match List.rev modules with
@@ -129,11 +151,45 @@ let link modules =
       if Flags.(!flags.dump_iml0) then IML.save (last.outputprefix ^ "__link.iml0") t;
 
       let t = 
-        if Flags.(!flags.iml_optimization) then begin
-          let res, secs = with_time & fun () -> Optimize.optimize t in
+        let optimize = 
+          (* XXX if one of module is compiled w/o optimization, neither does the linking *)
+          List.for_all (fun m -> Format.eprintf "optim %b@." m.flags.iml_optimization; m.flags.iml_optimization) modules
+        in
+        if not optimize then t
+        else begin
+          let res, secs = with_time & fun () ->
+              let t, sec = with_time & fun () -> Optimize.knormalize t in
+              Format.eprintf "knorm %f@." sec;
+              IML.save (last.outputprefix ^ "__link.iml_0knorm") t;
+              let rec f i t =
+                let _t0 = t in
+                if i = 0 then t, i
+                else begin
+                  let modified = ref false in
+                  let t, sec = with_time & fun () -> Optimize.beta modified t in
+                  Format.eprintf "beta %f@." sec;
+                  IML.save (last.outputprefix ^ "__link.iml_1beta") t;
+                  let t, sec = with_time & fun () -> Optimize.assoc modified t in
+                  Format.eprintf "assoc %f@." sec;
+                  IML.save (last.outputprefix ^ "__link.iml_2assoc") t;
+                  let t, sec = with_time & fun () -> Optimize.inline modified t in
+                  Format.eprintf "inline %f@." sec;
+                  IML.save (last.outputprefix ^ "__link.iml_3inline") t;
+                  let t, sec = with_time & fun () -> Optimize.elim modified t in
+                  Format.eprintf "elim %f@." sec;
+                  IML.save (last.outputprefix ^ "__link.iml_4elim") t;
+                  if !modified then f (i-1) t else t, i
+                end
+              in
+              let t, i = f 100 t in
+              Format.eprintf "Iterated %d times@." (100 - i);
+              let t = Optimize.unknormalize t in
+              t
+          in
           Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
           res
-        end else t in
+        end
+      in
 
       if Flags.(!flags.dump_iml) then IML.save (last.outputprefix ^ "__link.iml") t;
 
@@ -153,8 +209,10 @@ let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
   let ts = Translate.convert str in
   let ts = List.map (fun t -> match t with
       | `Type _ -> t
+(* XXX
       | `Value (ido, t) when Flags.(!flags.iml_optimization) ->
           `Value (ido, Optimize.optimize t)
+*)
       | `Value _ -> t) ts 
   in
   List.iter (function
@@ -184,7 +242,9 @@ let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
   in 
   match t with
   | `Value (_, t) ->
+(* XXX
      let t = if Flags.(!flags.iml_optimization) then Optimize.optimize t else t in
+*)
      begin match Compile.constant t with
      | None -> errorf_constant ~loc:t.loc "Constant expression expected"
      | Some c -> Format.printf "@[%a@]@." M.Constant.pp c

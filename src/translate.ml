@@ -1562,7 +1562,21 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | _ -> None
         in
         begin match name with
-        | None -> mk & App (expression lenv f, get_args args) 
+        | None -> 
+          let name = match f with
+            | { exp_desc= Texp_ident (p, _, _) } -> Path.is_stdlib p
+            | _ -> None
+          in
+          begin match name with
+            | Some "@@" ->
+                (* e1 @@ e2 => e1 e2 *)
+                begin match get_args args with
+                  | [e] -> e 
+                  | e1 :: es -> mk & App (e1, es)
+                  | [] -> assert false
+                end
+            | _ -> mk & App (expression lenv f, get_args args)
+          end
   
         | Some "Obj.pack'" ->
             let fty = Result.at_Error (fun e ->
@@ -1742,6 +1756,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
   in
   { e with typ }
 
+(* XXX loc is likely incorrect *)
 and primitive ~loc fty n args =
   let apply_left x left = match left with
     | [] -> x
@@ -1766,7 +1781,7 @@ and primitive ~loc fty n args =
   | "Contract.contract'" ->
       begin match args with
         | [] | [_] -> 
-            unsupported ~loc "partial application of primitive (here SCaml.%s)" n
+            errorf_contract ~loc "Contract.contract' must be fully applied"
         | address :: { desc= Const (M.Constant.String entry) } :: left ->
             apply_left (Prim (n, Primitives.contract' entry ~loc fty, [address])) left
         | _ :: { loc } :: _ ->
@@ -1777,9 +1792,23 @@ and primitive ~loc fty n args =
       | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
       | Some (arity, conv) ->
           if arity > List.length args then
-            unsupported ~loc "partial application of primitive (here SCaml.%s)" n;
-          let args, left = List.split_at arity args in
-          apply_left (Prim (n, conv ~loc fty, args)) left
+            let tys, ret = M.Type.args fty in
+            let tys = 
+              List.take (arity - List.length args) 
+              & List.drop (List.length args) tys
+            in
+            let xtys = List.map (fun ty -> create_ident "x", ty) tys in
+            let e =
+              List.fold_right (fun (x,ty) e -> mkfun ~loc (mkp ~loc ty x) e)
+                xtys
+              & mke ~loc ret 
+              & Prim (n, conv ~loc fty, 
+                      args @ List.map (fun (x,ty) -> mkvar ~loc (x,ty)) xtys)
+            in
+            e.desc
+          else
+            let args, left = List.split_at arity args in
+            apply_left (Prim (n, conv ~loc fty, args)) left
 
 and switch lenv ~loc:loc0 e cases =
   let ty = e.typ in
@@ -1876,7 +1905,7 @@ and contract_create ~loc n args = match n with
   | "Contract.create_raw" | "Contract.create_from_tz_code" ->
       begin match args with
       | [] | [_] | [_;_] | [_;_;_] ->
-          errorf_contract ~loc "%s cannot be partially applied" n
+          errorf_contract ~loc "%s must be fully applied" n
       | [e0; e1; e2; e3] ->
           let s = match e0.desc with
             | Const (C.String s) -> s
@@ -1890,7 +1919,7 @@ and contract_create ~loc n args = match n with
   | "Contract.create_from_tz_file" ->
       begin match args with
       | [] | [_] | [_;_] | [_;_;_] ->
-          errorf_contract ~loc "%s cannot be partially applied" n
+          errorf_contract ~loc "%s must be fully applied" n
       | [e0; e1; e2; e3] ->
           let s = match e0.desc with
             | Const (C.String s) -> s
@@ -2099,10 +2128,18 @@ let check_self ty_self str =
     ) !selfs
 
 
+let add_self self_typ t =
+  (* let __contract_id = SELF in t *)
+  (* This variable must not be inlined *)
+  Attr.add (Attr.Annot "not_expand")
+  & mklet ~loc:noloc
+    { desc= contract_self_id; typ= self_typ; loc= Location.none; attrs= () }
+    (mke ~loc:noloc self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
+    t
+
 let compile_global_entry ty_storage ty_return node =
 
   let id_storage = Ident.create_local "storage" in
-
   let pat_storage = mkp ~loc:noloc ty_storage id_storage in
   let e_storage = mkvar ~loc:noloc (id_storage, ty_storage) in
 
@@ -2151,18 +2188,24 @@ let compile_global_entry ty_storage ty_return node =
       M.Type.pp param_typ
   end;
 
-  let param_pat = mkp ~loc:noloc param_typ param_id in
-  let f1 = mkfun ~loc:noloc pat_storage e in
-  mkfun ~loc:noloc param_pat f1
+  (* inserting the definition of self *)
+  let e = add_self (tyContract param_typ) e in
 
-let add_self self_typ t =
-  (* let __contract_id = SELF in t *)
-  (* This variable must not be inlined *)
-  Attr.add (Attr.Annot "not_expand")
-  & mklet ~loc:noloc
-    { desc= contract_self_id; typ= self_typ; loc= Location.none; attrs= () }
-    (mke ~loc:noloc self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
-    t
+  let param_pat = mkp ~loc:noloc param_typ param_id in
+  
+  (* fun param_storage -> 
+       let param = fst param_storage in
+       let storage = snd param_storage in
+       e
+  *)
+  let ty_param_storage = tyPair (param_typ, ty_storage) in
+  let id_param_storage = Ident.create_local "param_storage" in
+  let pat_param_storage = mkp ~loc:noloc ty_param_storage id_param_storage in
+  let e_param_storage = mkvar ~loc:noloc (id_param_storage, ty_param_storage) in
+  mkfun ~loc:noloc pat_param_storage 
+  & mklet ~loc:noloc param_pat (mkfst ~loc:noloc e_param_storage)
+  & mklet ~loc:noloc pat_storage (mksnd ~loc:noloc e_param_storage)
+  & e
 
 let with_flags_in_code str f = 
   let attrs = Attribute.get_scaml_toplevel_attributes str in
@@ -2286,7 +2329,6 @@ let compile_entry_points compile_only sourcefile str =
       Some (ty_param, ty_storage, global_entry)
 
 let implementation compile_only sourcefile outputprefix str = 
-  with_flags_in_code str & fun () ->
     modname := Some (String.capitalize_ascii (Filename.basename outputprefix));
     let entry_points = compile_entry_points compile_only sourcefile str in
     let vbs = compile_structure sourcefile str in
@@ -2296,8 +2338,7 @@ let implementation compile_only sourcefile outputprefix str =
 let link (ty_param, ty_storage, global_entry) vbs =
   ty_param, 
   ty_storage, 
-  add_self (tyContract ty_param) 
-  & List.fold_right (fun (v,b) x -> IML.subst [v.desc, b] x) vbs global_entry
+  List.fold_right (fun (v,b) x -> IML.subst [v.desc, b] x) vbs global_entry
 
 (* Used only for iml dumping *)
 let connect vbs =

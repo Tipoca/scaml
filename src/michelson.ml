@@ -114,6 +114,12 @@ module Type = struct
   let tyContract t          = mk & TyContract t
   let tyLambda (t1, t2)     = mk & TyLambda (t1, t2)
 
+  let rec args t = match t.desc with
+    | TyLambda (t1, t2) -> 
+        let ts, t = args t2 in
+        t1::ts, t
+    | _ -> [], t
+
   let rec to_micheline t = 
     let prim n args = Mline.prim n args t.attrs in
     let (!) x = prim x [] in

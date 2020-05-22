@@ -34,3 +34,5 @@ val connect
 val convert
   : Typedtree.structure 
   -> [> `Type of Ident.t * Michelson.Type.t | `Value of Ident.t option * IML.t ] list
+
+val with_flags_in_code : Typedtree.structure -> (unit -> 'a) -> 'a
