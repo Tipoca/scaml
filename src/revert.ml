@@ -227,68 +227,52 @@ and revert_record_type tyenv ty _p labels =
          })
 
 and revert_variant_type tyenv ty _p constrs =
-  let consts, non_consts =
-    List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
-  in
+  let consts, non_consts = Variant.variant_type tyenv ty constrs in
 
-  let revert_nonconsts non_consts =
-    Result.mapM (fun constr ->
-        let ty_args, ty_res = Ctype.instance_constructor constr in
-        Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
-        (match ty_args with
+  let revert_consts = match consts with
+      | None -> []
+      | Some names -> 
+          [ function
+            | Int (_, n) ->
+                let n = Z.to_int n in
+                begin match List.nth names n with
+                  | exception _ -> Error "strange tag"
+                  | l -> 
+                      Ok { pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, None)
+                         ; pexp_loc = Location.none
+                         ; pexp_loc_stack = []
+                         ; pexp_attributes= []
+                         }
+                end    
+            | _ -> Error "Int expected"
+          ]
+  in
+  let revert_non_consts =
+    Result.mapM (fun (l, tys) ->
+        (match tys with 
          | [] -> assert false
          | [ty] -> revert tyenv ty
-         | tys -> revert tyenv (Ctype.newty (Ttuple tys))) >>| fun revarg ->
-        constr.cstr_name, revarg) non_consts >>| fun non_consts ->
-
-    let nctree = Binplace.place non_consts in
-    fun m ->
-      let rec scan m nctree = match m, nctree with
-        | Prim (_, "Left", [t], _), Binplace.Branch (nc1, _nc2) ->
-            scan t nc1
-        | Prim (_, "Right", [t], _), Binplace.Branch (_nc1, nc2) ->
-            scan t nc2
-        | _, Binplace.Branch _ -> Error "Left or Right expected"
-        | t, Leaf (l,r) ->
-            r t >>| fun m -> 
-            { pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, Some m)
-            ; pexp_loc = Location.none
-            ; pexp_loc_stack= []
-            ; pexp_attributes= []
-            }
-      in
-      scan m nctree
+         | tys -> revert tyenv (Ctype.newty (Ttuple tys))) >>| fun f ->
+        fun m -> 
+          f m >>| fun x ->
+          { pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, Some x)
+          ; pexp_loc = Location.none
+          ; pexp_loc_stack= []
+          ; pexp_attributes= []
+          }) non_consts
   in
-  let revert_consts consts = 
-    let consts = match consts with
-      | [] -> assert false
-      | _::_ -> List.map (fun c -> c.Types.cstr_name) consts
+  revert_non_consts >>= fun revert_non_consts ->
+  let nctree = Binplace.place (revert_consts @ revert_non_consts) in
+  Ok (fun m ->
+    let rec scan m nctree = match m, nctree with
+      | Prim (_, "Left", [t], _), Binplace.Branch (nc1, _nc2) ->
+          scan t nc1
+      | Prim (_, "Right", [t], _), Binplace.Branch (_nc1, nc2) ->
+          scan t nc2
+      | _, Binplace.Branch _ -> Error "Left or Right expected"
+      | t, Leaf r -> r t
     in
-    function
-    | Int (_, n) ->
-        let n = Z.to_int n in
-        begin match List.nth consts n with
-        | exception _ -> Error "strange tag"
-        | l -> 
-            Ok { pexp_desc= Pexp_construct ({Location.txt= Longident.Lident l; loc= Location.none}, None)
-               ; pexp_loc = Location.none
-               ; pexp_loc_stack = []
-               ; pexp_attributes= []
-               }
-        end    
-    | _ -> Error "Int expected"
-  in
-  match consts, non_consts with
-  | [], [] -> assert false
-  | [], _::_ -> revert_nonconsts non_consts
-  | _::_, [] -> Ok (revert_consts consts)
-  | _::_, _::_ ->
-      let rev_consts = revert_consts consts in
-      revert_nonconsts non_consts >>| fun rev_nonconsts ->
-      function
-      | Prim (_, "Left", [m], _) -> rev_consts m
-      | Prim (_, "Right", [m], _) -> rev_nonconsts m
-      | _ -> Error "Left or Right expected"
+    scan m nctree)
 
 (* revert mode *)
 let get_type str = 

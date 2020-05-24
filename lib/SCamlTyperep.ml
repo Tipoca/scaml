@@ -67,6 +67,11 @@ module Convert = struct
           let arity = Tag.arity tag in
           if arity = 0 then (nulls + 1, nonnulls) else (nulls, nonnulls+1))
     in
+    let rec embed args = function
+      | [] -> args
+      | Binplace.Left::xs -> Left (embed args xs)
+      | Binplace.Right::xs -> Right (embed args xs)
+    in
     match nulls, nonnulls with
     | 0, 0 -> assert false
     | _, 0 ->
@@ -77,26 +82,18 @@ module Convert = struct
         let args = Tag.traverse tag args in
         let i = Tag.ocaml_repr tag in
         let sides = Binplace.path i nonnulls in
-        let rec f = function
-          | [] -> args
-          | Binplace.Left::xs -> Left (f xs)
-          | Binplace.Right::xs -> Right (f xs)
-        in
-        f sides
+        embed args sides
     | _, _ ->
         let Value (tag, args) = Variant.value v value in
         let arity = Tag.arity tag in
-        if arity = 0 then Left (Int (Z.of_int (Tag.ocaml_repr tag)))
+        if arity = 0 then 
+          embed (Int (Z.of_int (Tag.ocaml_repr tag))) 
+            (Binplace.path 0 (nonnulls + 1))
         else
           let args = Tag.traverse tag args in
           let i = Tag.ocaml_repr tag in
-          let sides = Binplace.path i nonnulls in
-          let rec f = function
-            | [] -> args
-            | Binplace.Left::xs -> Left (f xs)
-            | Binplace.Right::xs -> Right (f xs)
-          in
-          Right (f sides)
+          let sides = Binplace.path (i+1) (nonnulls+1) in
+          embed args sides
 
   module Named = Type_generic.Make_named_for_closure(struct
       type 'a input = 'a
@@ -229,8 +226,17 @@ module Revert = struct
           | Args f -> Tag.traverse tag m >>| f
         end
     | _, _ ->
-        begin match m with
-          | Left (Int z) ->
+        let tree = Binplace.place (-1 :: List.init n_nonnulls (fun x -> x)) in
+        let rec find m tree = match m, tree with
+          | m, Binplace.Leaf i -> Some (m, i)
+          | Left m, Branch (tree, _) -> find m tree
+          | Right m, Branch (_, tree) -> find m tree
+          | _ -> None
+        in
+        find m tree >>= fun (m, i) ->
+        if i = -1 then begin
+          match m with
+          | Int z ->
               if z >= Z.of_int n_nulls || z < Z.zero then None
               else
                 let i = Z.to_int z in
@@ -240,23 +246,14 @@ module Revert = struct
                 | Const v -> Some v
                 | _ -> assert false
                 end
-          | Right m ->
-              let tree = Binplace.place (List.init n_nonnulls (fun x -> x)) in
-              let rec find m tree = match m, tree with
-                | m, Binplace.Leaf i -> Some (m, i)
-                | Left m, Branch (tree, _) -> find m tree
-                | Right m, Branch (_, tree) -> find m tree
-                | _ -> None
-              in
-              find m tree >>= fun (m, i) ->
-              let pos = List.nth nonnulls i in
-              let Tag tag = Variant.tag v pos in
-              begin match Tag.create tag with
-                | Const _ -> assert false
-                | Args f -> Tag.traverse tag m >>| f
-              end
           | _ -> None
-        end
+        end else
+          let pos = List.nth nonnulls i in
+          let Tag tag = Variant.tag v pos in
+          begin match Tag.create tag with
+            | Const _ -> assert false
+            | Args f -> Tag.traverse tag m >>| f
+          end
 
   module Named = Type_generic.Make_named_for_closure(struct
       type 'a input = Michelson.Constant.t
@@ -363,6 +360,12 @@ module Revert' = struct
     let nonnulls = List.rev rev_nonnulls in
     let n_nulls = List.length nulls in
     let n_nonnulls = List.length nonnulls in
+    let rec embed m tree ca = match m, tree with
+      | _, Binplace.Leaf _ -> ca
+      | M.Prim (_, "Left", [m], []), Branch (tree, _) -> C.Left (embed m tree ca)
+      | Prim (_, "Right", [m], []), Branch (_, tree) -> C.Right (embed m tree ca)
+      | _ -> assert false
+    in
     match n_nulls, n_nonnulls with
     | 0, 0 -> assert false
     | _, 0 ->
@@ -381,44 +384,28 @@ module Revert' = struct
         find m tree >>= fun (ma, pos) ->
         let Tag tag = Variant.tag v pos in
         Tag.traverse tag ma >>= fun ca ->
-        let rec embed m tree = match m, tree with
-          | _, Binplace.Leaf _ -> ca
-          | M.Prim (_, "Left", [m], []), Branch (tree, _) -> C.Left (embed m tree)
-          | Prim (_, "Right", [m], []), Branch (_, tree) -> C.Right (embed m tree)
-          | _ ->
-              Format.eprintf "??? %a@." 
-                Tezos_micheline.Micheline_printer.print_expr
-                (Tezos_micheline.Micheline_printer.printable (fun _ -> "") 
-                   (M.strip_locations m));
-              assert false
-        in
-        Some (embed m tree)
+        Some (embed m tree ca)
         
     | _, _ ->
-        begin match m with
-          | M.Prim (_, "Left", [Int (_,z)], []) ->
-              if z >= Z.of_int n_nulls || z < Z.zero then None
-              else Some (C.Left (C.Int z))
-          | M.Prim (_, "Right", [m], []) ->
-              let tree = Binplace.place (List.init n_nonnulls (fun x -> x)) in
-              let rec find m tree = match m, tree with
-                | m, Binplace.Leaf i -> Some (m, i)
-                | M.Prim (_, "Left", [m], []), Branch (tree, _) -> find m tree
-                | Prim (_, "Right", [m], []), Branch (_, tree) -> find m tree
-                | _ -> None
-              in
-              find m tree >>= fun (ma, i) ->
-              let pos = List.nth nonnulls i in
-              let Tag tag = Variant.tag v pos in
-              Tag.traverse tag ma >>= fun ca ->
-              let rec embed m tree = match m, tree with
-                | _, Binplace.Leaf _ -> ca
-                | M.Prim (_, "Left", [m], []), Branch (tree, _) -> C.Left (embed m tree)
-                | Prim (_, "Right", [m], []), Branch (_, tree) -> C.Right (embed m tree)
-                | _ -> assert false
-              in
-              Some (C.Right (embed m tree))
+        let tree = Binplace.place (-1 :: List.init n_nonnulls (fun x -> x)) in
+        let rec find m tree = match m, tree with
+          | m, Binplace.Leaf i -> Some (m, i)
+          | M.Prim (_, "Left", [m], []), Branch (tree, _) -> find m tree
+          | Prim (_, "Right", [m], []), Branch (_, tree) -> find m tree
           | _ -> None
+        in
+        find m tree >>= fun (ma, i) ->
+        if i = -1 then begin
+          match ma with
+          | M.Int (_,z) ->
+              if z >= Z.of_int n_nulls || z < Z.zero then None
+              else Some (embed m tree (C.Int z))
+          | _ -> None
+        end else begin
+          let pos = List.nth nonnulls i in
+          let Tag tag = Variant.tag v pos in
+          Tag.traverse tag ma >>= fun ca ->
+          Some (embed m tree ca)
         end
 
   module Named = Type_generic.Make_named_for_closure(struct

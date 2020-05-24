@@ -276,53 +276,29 @@ and record_type tyenv ty p labels =
   >>| M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
 
 and variant_type tyenv ty p constrs = 
-  let consts, non_consts =
-    List.partition (fun constr -> constr.Types.cstr_arity = 0) constrs
+  let consts, non_consts = Variant.variant_type tyenv ty constrs in
+  let non_consts =
+    Result.mapM (fun (n,tys) -> 
+        Result.mapM (type_expr tyenv) tys >>| fun tys -> (n,tys)) non_consts
+    >>| fun ctys_list ->
+    List.map (fun (n,tys) -> 
+        (n, encode_by (fun ty1 ty2 -> tyPair (ty1, ty2)) tys))
+      ctys_list 
   in
-  (* XXX use cstr_consts and cstr_nonconsts *)
-  (match non_consts with
-   | [] -> Ok None
-   | _ ->
-       let ctys_list = 
-         List.map (fun constr ->
-             let ty_args, ty_res = Ctype.instance_constructor constr in
-             Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
-             (constr.cstr_name, ty_args)
-           ) non_consts
-       in
-       Result.mapM (fun (n,tys) -> 
-           Result.mapM (type_expr tyenv) tys >>| fun tys -> (n,tys)) ctys_list 
-       >>| fun ctys_list ->
-       let cty_list = List.map (fun (n,tys) -> 
-           (n, encode_by (fun ty1 ty2 -> tyPair (ty1, ty2)) tys))
-           ctys_list 
-       in
-       Some (
-         List.map fst ctys_list,
-         snd & encode_by (fun (c1,ty1) (c2,ty2) ->
-             let attr c ty = 
-               if c = "" then ty
-               else  M.Type.attribute ["%" ^ c] ty
-             in
-             ("", tyOr (attr c1 ty1, attr c2 ty2))) cty_list)) 
-  >>| fun non_consts_ty ->
-  let consts_ty = match consts with
-    | [] -> None
-    | _::_ -> 
-        let names = List.map (fun c -> c.Types.cstr_name) consts in
-        Some (names, M.Type.attribute ["%" ^ String.concat "_" names] tyInt)
-  in
-  ( consts_ty,
-    non_consts_ty,
+  non_consts >>| fun non_consts ->
+  ( consts, 
+    non_consts, 
     M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
-    & begin match consts_ty, non_consts_ty with
-      | None, None -> assert false
-      | None, Some (_, nonconsts_ty) -> nonconsts_ty
-      | Some (_, consts_ty), None -> consts_ty
-      | Some (_, consts_ty), Some (_, non_consts_ty) -> 
-          tyOr ( consts_ty, non_consts_ty )
-      end  
-  )
+    & snd & encode_by (fun (c1,ty1) (c2,ty2) ->
+        let attr c ty = 
+          if c = "" then ty
+          else M.Type.attribute ["%" ^ c] ty
+        in
+        ("", tyOr (attr c1 ty1, attr c2 ty2)))
+      ((match consts with 
+          | None -> [] 
+          | Some names -> [String.concat "_" names, tyInt])
+       @ non_consts))
 
 (* Literals *)
 
@@ -501,7 +477,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                     | [], _::_ -> assert false (* record cannot come here *)
                     | _::_, _::_ -> assert false
                     | constrs, [] -> 
-                        let consts_ty, non_consts_ty, _mty =
+                        let consts_ty, non_consts_ty, entire_ty =
                           from_Ok & variant_type tyenv mltyp p constrs 
                         in
                         let rec find_constr i = function
@@ -509,28 +485,32 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                           | n::_ when n = cdesc.cstr_name -> i
                           | _::names -> find_constr (i+1) names
                         in
+                        let rec embed ty sides arg = match ty.M.Type.desc, sides with
+                          | _, [] -> arg
+                          | TyOr (ty1, ty2), Binplace.Left::sides -> 
+                              mkpleft ~loc:gloc ty2 (embed ty1 sides arg)
+                          | TyOr (ty1, ty2), Right::sides -> 
+                              mkpright ~loc:gloc ty1 (embed ty2 sides arg)
+                          | _ -> assert false
+                        in
                         match cdesc.cstr_arity, consts_ty, non_consts_ty with
-                        | _, None, None -> assert false
+                        | _, None, [] -> assert false
                         | 0, None, _ -> assert false
-                        | 0, Some (names,_), None  -> 
+                        | 0, Some names, [] -> 
                             mkpint ~loc:gloc & find_constr 0 names
-                        | 0, Some (names, _), Some (_, ty) -> 
-                            mkpleft ~loc:gloc ty 
-                            & mkpint ~loc:gloc & find_constr 0 names
-                        | _, _, None -> assert false
-                        | _, _, Some (names, ty) ->
+                        | 0, Some names, xs -> 
+                            let sides = Binplace.path 0 (List.length xs + 1) in
+                            embed entire_ty sides & mkpint ~loc:gloc & find_constr 0 names
+                        | _, _, [] -> assert false
+                        | _, _, cs ->
+                            let names = List.map fst cs in
                             let i = find_constr 0 names in
-                            let sides = Binplace.path i (List.length names) in
-                            let arg = encode_by (mkppair ~loc:gloc) & List.map pattern ps in
-                            let rec f ty sides = match ty.M.Type.desc, sides with
-                              | _, [] -> arg
-                              | TyOr (ty1, ty2), Binplace.Left::sides -> mkpleft ~loc:gloc ty2 (f ty1 sides)
-                              | TyOr (ty1, ty2), Right::sides -> mkpright ~loc:gloc ty1 (f ty2 sides)
-                              | _ -> assert false
+                            let sides = 
+                              let shift = if consts_ty = None then 0 else 1 in
+                              Binplace.path (i + shift) (List.length names + shift)
                             in
-                            match consts_ty with
-                            | None -> f ty sides
-                            | _ -> mkpright ~loc:gloc tyInt & f ty sides
+                            embed entire_ty sides 
+                            & encode_by (mkppair ~loc:gloc) & List.map pattern ps 
                   end
             | _ ->  unsupported ~loc "pattern %s" cdesc.cstr_name
             end
@@ -1383,6 +1363,14 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       end
 
   | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
+      let rec embed ty sides arg = match ty.M.Type.desc, sides with
+        | _, [] -> arg
+        | TyOr (ty1, ty2), Binplace.Left::sides -> 
+            mkleft ~loc:gloc ty2 (embed ty1 sides arg)
+        | TyOr (ty1, ty2), Right::sides -> 
+            mkright ~loc:gloc ty1 (embed ty2 sides arg)
+        | _ -> assert false
+      in
       begin match Env.find_type_descrs p tyenv with
         | [], [] when p = Predef.path_exn -> 
             errorf_type_expr ~loc
@@ -1394,7 +1382,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
 
         | constrs, [] -> 
             (* XXX mty is already calculated at the beginning *)
-            let consts_ty, non_consts_ty, _mty =
+            let consts_ty, non_consts_ty, entire_ty =
               from_Ok & variant_type tyenv exp_type p constrs 
             in
             let rec find_constr i = function
@@ -1403,32 +1391,24 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
               | _::names -> find_constr (i+1) names
             in
             match cdesc.cstr_arity, consts_ty, non_consts_ty with
-            | _, None, None -> assert false
+            | _, None, [] -> assert false
             | 0, None, _ -> assert false
-            | 0, Some (names, _), None  -> 
+            | 0, Some names, [] -> 
                 (* XXX annotate constr name *)
                 mkint ~loc:gloc & find_constr 0 names
-            | 0, Some (names, _), Some (_, ty) ->
-                (* XXX annotate constr name *)
-                mkleft ~loc:gloc ty & mkint ~loc:gloc & find_constr 0 names
-            | _, _, None -> assert false
-            | _, _, Some (names, ty) ->
+            | 0, Some names, xs ->
+                let sides = Binplace.path 0 (List.length xs + 1) in
+                embed entire_ty sides & mkint ~loc:gloc & find_constr 0 names
+            | _, _, [] -> assert false
+            | _, _, cs ->
+                let names = List.map fst cs in
                 let i = find_constr 0 names in
-                let sides = Binplace.path i (List.length names) in
-                let arg = encode_by (mkpair ~loc:gloc) & List.map (expression lenv) args in
-                let rec f ty sides = match ty.M.Type.desc, sides with
-                  | _, [] -> arg
-                  | TyOr (ty1, ty2), Binplace.Left::sides -> 
-                      mkleft ~loc:gloc ty2 (f ty1 sides)
-                  | TyOr (ty1, ty2), Right::sides -> 
-                      mkright ~loc:gloc ty1 (f ty2 sides)
-                  | _ -> assert false
+                let sides = 
+                  let shift = if consts_ty = None then 0 else 1 in
+                  Binplace.path (i + shift) (List.length names + shift)
                 in
-                match consts_ty with
-                | None -> f ty sides
-                | Some (_, consts_ty) -> 
-                    (* XXX annotate constr name *)
-                    mkright ~loc:gloc consts_ty & f ty sides
+                embed entire_ty sides
+                & encode_by (mkpair ~loc:gloc) & List.map (expression lenv) args
       end
 
   | _ -> prerr_endline ("Constructor compilation failure: " ^ cstr_name); assert false (* XXX *)
