@@ -495,6 +495,21 @@ let count_variables only_free t =
 
 let unknorm exp =
   let vmap = count_variables false exp in
+  let expanded_to_non_storable =
+    let cache = ref VMap.empty in
+    fun id t ->
+      match VMap.find_opt id !cache with
+      | None ->
+          let res =
+            VMap.exists (fun _ (_, typ) -> not & Michelson.Type.is_storable typ)
+            & count_variables true t
+          in
+          Format.eprintf "%s is not expandable inside fun@."
+            (Ident.unique_name id);
+          cache := VMap.add id res !cache;
+          res
+      | Some res -> res
+  in
   let rec f depth env t0 =
     let g = f depth env in
     let mk desc = { t0 with desc } in
@@ -518,15 +533,9 @@ let unknorm exp =
         begin match List.assoc_opt id env with
           | Some t -> 
               if depth > 1 && 
-                 (* XXX can be cached *)
-                 VMap.exists (fun _ (_, typ) -> not & Michelson.Type.is_storable typ)
-                 & count_variables true t
-              then begin
-                Format.eprintf "%s is not expandable inside fun@."
-                  (Ident.unique_name id);
-                t0
-              end else
-                f depth env t
+                 expanded_to_non_storable id t
+              then t0
+              else f depth env t
           | None -> t0
         end
     | Fun (c, t) -> mk & Fun (c, f (depth + 1) env t)
