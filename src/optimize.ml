@@ -71,8 +71,8 @@ let rec knorm (t : IML.t) : (IML.PatVar.t * IML.t) list * IML.t =
       let defss, vs = List.split (List.map k ts) in
       mk (List.concat defss) & Prim (n, f, vs)
   | Let (pv, t1, t2) ->
-      let defs1, v1 = k t1 in
-      mk defs1 & Let (pv, v1, knormalize t2)
+      let defs1, t1 = knorm t1 in
+      mk defs1 & Let (pv, t1, knormalize t2)
   | Switch_or (t1, pv2, t2, pv3, t3) ->
       let defs1, v1 = k t1 in
       mk defs1 & Switch_or (v1, pv2, knormalize t2, pv3, knormalize t3)
