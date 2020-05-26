@@ -4,6 +4,3 @@
 [submodule "vendors/ppx_meta_conv"]
 	path = vendors/ppx_meta_conv
 	url = https://gitlab.com/camlspotter/ppx_meta_conv
-[submodule "vendors/ppx_test"]
-	path = vendors/ppx_test
-	url = https://gitlab.com/camlspotter/ppx_test

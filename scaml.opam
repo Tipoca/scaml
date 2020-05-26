@@ -29,4 +29,6 @@ depends: [
   "ppx_meta_conv"
   "typerep"
   "ppx_typerep_conv"
+  "blake2" { = "0.3" }
+  "hacl" { = "0.3" }
 ]
