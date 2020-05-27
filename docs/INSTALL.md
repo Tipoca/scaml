@@ -29,7 +29,7 @@ $ which scamlc
 
 ```
 $ dune build
-$ cd src/tests
+$ cd tests
 $ ./test.sh xxx.ml
 ```
 
@@ -37,7 +37,7 @@ or
 
 ```
 $ dune build
-$ cd src/tests
+$ cd tests
 $ ./test_all.sh
 ```
 
