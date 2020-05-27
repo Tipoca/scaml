@@ -1,14 +1,16 @@
-# 1.2.0pre4
+# 1.2.0pre7
 
 ## Features
 
 * Based on OCaml 4.09.1
 * BREAKING CHANGE: First implementation of multi unit compilation.  [@entry] is now mandatory for entry points.
   This is NOT separate compilation, therefore just "multi unit compilation".  Now `scamlc` can take more than one `*.ml` file and compile them to one `*.tz` file.
+* Use of typerep for interoperability between Michelson and OCaml values.
+* Right balanced value layout with optimization for nullary constructors.  Note: this may be incompatible with other high level languages for Michelson.
 
 ## Optimization
 
-* Optimization complexity issue was resolved.
+* New optimization using K normal form.  Optimization complexity issue was resolved.
 * `dip_1_drop_n_compaction` is now applied to opcodes in constants
 
 ## Primitives
@@ -18,6 +20,7 @@
 * Added `List.rev_append`
 * Added `SCaml.Contract.contract'`, address to contract conversion with an entry point name
 * Added `SCaml.raise` for better exception simulation in OCaml
+* Added `SCaml.Obj.pack'` and `SCaml.Obj.pack'` with Typerep arguments.
 
 ## Bug fixes
 
