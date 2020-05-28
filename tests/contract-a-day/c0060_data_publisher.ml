@@ -12,7 +12,7 @@ let [@entry] get () storage =
 
 let [@entry] set (sign, s, n) storage =
   if storage.counter <> n then failwith "invalid counter";
-  if not (Crypto.check_signature storage.key sign (Obj.pack (sign, n))) then
+  if not (Crypto.check_signature storage.key sign (Obj.pack (s, n))) then
     failwith "invalid signature";
   [],
   { storage 
