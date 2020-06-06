@@ -68,7 +68,7 @@ and desc =
   | Fun of PatVar.t * t
   | IfThenElse of t * t * t option
   | App of t * t list
-  | Prim of string * (M.Opcode.t list -> M.Opcode.t list) * t list
+  | Prim of string * M.Type.t * t list
   | Let of PatVar.t * t * t
   | Switch_or of t * PatVar.t * t * PatVar.t * t
   | Switch_cons of t * PatVar.t * PatVar.t * t * t
@@ -397,21 +397,24 @@ let mkunit ~loc () = mke ~loc tyUnit Unit
 let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
 let mkpair ~loc e1 e2 = mke ~loc (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
 
+let mkprim ~loc ty name ty' args =
+  match List.assoc_opt name Primitives.primitives with
+  | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" name
+  | Some _ -> mke ~loc ty (Prim (name, ty', args))
+
 let mkfst ~loc e =
   let ty = match e.typ.desc with
     | TyPair (ty, _) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "fst" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
-  mke ~loc ty (Prim ("fst", prim, [e]))
+  mkprim ~loc ty "fst" (tyLambda (e.typ, ty)) [e]
 
 let mksnd ~loc e =
   let ty = match e.typ.desc with
     | TyPair (_, ty) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "snd" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
-  mke ~loc ty (Prim ("snd", prim, [e]))
+  mkprim ~loc ty "snd" (tyLambda (e.typ, ty)) [e]
 
 let mkleft ~loc ty e = mke ~loc (tyOr (e.typ, ty)) (Left e)
 let mkright ~loc ty e = mke ~loc (tyOr (ty, e.typ)) (Right e)
@@ -423,6 +426,4 @@ let mkassert ~loc t = mke ~loc tyUnit & Assert t
 let mkassertfalse ~loc ty = mke ~loc ty & AssertFalse
 
 let mkeq ~loc e1 e2 =
-  let prim = snd (List.assoc "=" Primitives.primitives) ~loc
-             & tyLambda (e1.typ, tyLambda (e2.typ, tyBool)) in
-  mke ~loc tyBool (Prim ("=", prim, [e1; e2]))
+  mkprim ~loc tyBool "=" (tyLambda (e1.typ, tyLambda (e2.typ, tyBool))) [e1; e2]

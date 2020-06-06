@@ -201,11 +201,18 @@ module Make(Config : Config) = struct
           (* I think this is never called *)
           let othen = compile env t2 in
           oif @ [IF (othen @ [DROP 1; UNIT], [UNIT])]
-    | Prim (n, conv, ts) ->
-        (* Prim (ops, [t1; t2])
-           t2 ; t1; ops
-        *)
-        [COMMENT (n, conv (args env ts))]
+    | Prim ("Contract.contract'", ty, [address; {desc= IML.Const (M.Constant.String entry)}]) ->
+        let os = compile env address in
+        Primitives.contract' entry ~loc ty os
+    | Prim (n, ty, ts) ->
+        begin match List.assoc_opt n Primitives.primitives with
+          | None -> assert false
+          | Some (_arity, f) -> 
+              (* Prim (ops, [t1; t2])
+                 t2 ; t1; ops
+              *)
+              [COMMENT (n, f ~loc:t.IML.loc ty (args env ts))]
+        end
     | Let (pat, t1, t2) ->
         let os1 = compile env t1 in
         let os2 = compile ((pat.desc, pat.typ)::env) t2 in

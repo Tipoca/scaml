@@ -103,11 +103,19 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
     in
     if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
 
-    Format.eprintf "optimmm=%b@." !Flags.flags.iml_optimization;
+    Format.eprintf "optim=%b@." !Flags.flags.iml_optimization;
 
-    rev_compiled := { name=modulename; sourcefile; outputprefix; global_entry= gento; defs
-                    ; (* making a copy *)
-                      flags= { !Flags.flags with iml_optimization= !Flags.flags.iml_optimization } } :: !rev_compiled
+    let compiled = 
+      { name=modulename
+      ; sourcefile
+      ; outputprefix
+      ; global_entry= gento
+      ; defs
+      ; (* making a copy *)
+        flags= { !Flags.flags with iml_optimization= !Flags.flags.iml_optimization } }
+    in
+    rev_compiled := compiled :: !rev_compiled;
+    compiled
 
 let link modules =
   match List.rev modules with
@@ -125,6 +133,8 @@ let link modules =
               "The last module must define at least one entry point"
       in
       let defs : (IML.PatVar.t * IML.t) list = 
+        (* let Module.x = x in ... So that external references can be linked properly *)
+        (* XXX Check double binding by shadowings *)
         List.concat_map (fun m ->
             List.concat_map (fun (pv, t) -> 
                 [ (pv, t); 
@@ -206,7 +216,9 @@ let link modules =
 
 let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
   let module Compile = Compile.Make(struct let allow_big_map = true end) in
+  prerr_endline "convert_all";
   let ts = Translate.convert str in
+  prerr_endline "convert_all done";
   let ts = List.map (fun t -> match t with
       | `Type _ -> t
 (* XXX
@@ -276,7 +288,8 @@ let revert m _sourcefile _outputprefix _modulename (str, _coercion) =
 
 let compile sourcefile outputprefix modulename (typedtree, coercion) =
   let f = match !Flags.flags.scaml_mode with
-    | None | Some Compile -> compile_only
+    | None | Some Compile ->
+        fun s o m t -> ignore @@ compile_only s o m t
     | Some ConvertAll -> convert_all
     | Some (ConvertSingleValue ident) -> convert_value ident
     | Some (ConvertSingleType ident) -> convert_type ident

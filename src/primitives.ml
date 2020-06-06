@@ -388,6 +388,18 @@ let primitives =
         | TyLambda (_, { desc= TyOption ({ desc= TyContract ty }) }) ->
             xs @ [ CONTRACT ty ]
         | _ -> assert false)
+      
+  ; "Contract.contract'", (2, fun ~loc:_ ty xs ->
+        match ty.desc with
+        | TyLambda (_, { desc= TyLambda (_, { desc= TyOption ({ desc= TyContract ty })})})  ->
+            begin match xs with
+              | [ M.Opcode.PUSH (_, M.Constant.String entry); address] ->
+                  [address; CONTRACT' (ty, entry) ]
+              | _ -> 
+                  Format.eprintf "bug %a@." (Format.list "; " Michelson.Opcode.pp) xs;
+                  assert false
+            end
+        | _ -> assert false)
 
   ; "Contract.implicit_account", (1, simple [ IMPLICIT_ACCOUNT ])
   ; "Contract.address", (1, simple [ ADDRESS ])
