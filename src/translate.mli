@@ -20,7 +20,7 @@ val implementation
   -> string (* output prefix *)
   -> Typedtree.structure 
   -> (Michelson.Type.t * Michelson.Type.t * IML.t) option (* global entry *)
-     * (IML.PatVar.t * IML.t) list (* definitions *)
+     * (IML.PatVar.t * IML.t * bool (* defined at the top *)) list (* definitions *)
 
 val link 
   : (Michelson.Type.t * Michelson.Type.t * IML.t) (* global entry *)

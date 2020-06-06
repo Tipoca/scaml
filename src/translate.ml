@@ -1854,7 +1854,7 @@ and structure_item lenv { str_desc; str_loc=loc } =
             (v,b)::rev_vbs) [] vbs
       in
       let lenv = Lenv.add_locals (Typedtree.let_bound_idents vbs) lenv in
-      lenv, List.rev rev_vbs
+      lenv, List.map (fun (pv,def) -> (pv,def,true (* defined here *))) (List.rev rev_vbs)
 
   | Tstr_open _open_description -> lenv, []
 
@@ -1870,13 +1870,27 @@ and structure_item lenv { str_desc; str_loc=loc } =
       in
       let lenv, vbs = module_expr mb.mb_expr in
       (* Make local defs accessible from the outside *)
-      let vbs' = List.map (fun (pv,t) ->
-          (* XXX Check shaodowing *)
-          { pv with IML.desc= Ident.create_persistent (mname ^ "." ^ Ident.name pv.IML.desc) }, 
-          { t with IML.desc= IML.Var pv.desc }) vbs 
+      (* XXX Dirty boolean hack to prevent x in
+         module X = struct 
+           module Y = struct 
+             let x = 1
+           end
+         end
+         
+         from being copied as X.x_0.  It should be copied only to Y.x_0 and X.Y.x_0.
+         
+      *)
+      let vbs' = List.filter_map (fun (pv,t,defined_here) ->
+          if defined_here then
+            (* XXX Check shaodowing *)
+            Some ({ pv with IML.desc= Ident.create_persistent (mname ^ "." ^ Ident.name pv.IML.desc) }, 
+                  { t with IML.desc= IML.Var pv.desc },
+                  true)
+          else None) vbs 
       in
-      Lenv.add_locals (List.map (fun (pv,_) -> pv.IML.desc) vbs') lenv,
-      vbs @ vbs'
+      Lenv.add_locals (List.map (fun (pv,_,_) -> pv.IML.desc) vbs') lenv,
+      List.map (fun (pv,def,_) -> (pv,def,false)) vbs 
+      @ vbs'
 
   | Tstr_attribute _ -> 
       (* simply ignores it for now *)

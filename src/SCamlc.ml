@@ -73,6 +73,8 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
     let (gento, defs), secs = with_time & fun () -> 
         Translate.implementation true sourcefile outputprefix str 
     in
+    let defs = List.map (fun (pv,def,_defined_here) -> (pv,def)) defs in
+
     Flags.if_time (fun () -> Format.eprintf "Translated in %f secs@." secs);
 
     (* To make iml0 and iml, we must connect these definitions *)
