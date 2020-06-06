@@ -117,9 +117,7 @@ let beta modified exp =
     | Let (pv, ({ desc= Var _} as t1), t2) ->
         modified := true;
         f ((pv.desc,t1)::env) t2
-    | Let (pv, t1, t2) ->
-        let t1 = g t1 in
-        mk & Let (pv, t1, f ((pv.desc,t1)::env) t2)
+    | Let (pv, t1, t2) -> mk & Let (pv, g t1, g t2)
     | Var id ->
         let rec seek id t =
           match List.assoc_opt id env with
@@ -130,7 +128,9 @@ let beta modified exp =
           | _ -> t
         in
         seek id t0
-    | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create _ -> t0
+    | Const _ | Nil | IML_None | Unit | AssertFalse -> t0 
+    | Contract_create (s, l, t1, t2, t3) ->
+        mk & Contract_create (s, l, g t1, g t2, g t3)
     | App (t, ts) -> mk & App (g t, List.map g ts)
     | IML_Some t -> mk & IML_Some (g t)
     | Left t -> mk & Left (g t)
@@ -184,7 +184,9 @@ let assoc modified exp =
         let t2 = f t2 in
         let lets, body = get_lets t1 in
         add_lets lets { t0 with desc= Let (pv, body, t2) }
-    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create _ -> t0
+    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse -> t0
+    (* XXX many are already in K normal form therefore f t is likely t *)
+    | Contract_create _ -> t0
     | App (t, ts) -> 
         let lets, body = get_lets & f t in
         add_lets lets & mk & App (body, List.map f ts)
