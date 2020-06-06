@@ -18,7 +18,7 @@ dune build ../lib/SCamlib.cmxa
 SCAMLIB_DIR=../_build/install/default/lib/scaml/scamlib
 
 # Compilation command
-COMP="dune exec ../driver/main.exe -- --scaml-noscamlib --scaml-dump-iml0 --scaml-dump-iml -I $SCAMLIB_DIR"
+COMP="dune exec ../driver/main.exe -- --scaml-noscamlib --scaml-dump-iml0 --scaml-dump-iml --scaml-time -I $SCAMLIB_DIR"
 
 # Optional: tezos-client
 TEZOS_CLIENT=`which tezos-client || true`
