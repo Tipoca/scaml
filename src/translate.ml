@@ -117,24 +117,20 @@ let mkfst ~loc e =
     | TyPair (ty, _) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "fst" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
-  mke ~loc ty (Prim ("fst", prim, [e]))
+  mke ~loc ty (Prim ("fst", tyLambda (e.typ, ty), [e]))
 
 let mksnd ~loc e =
   let ty = match e.typ.desc with
     | TyPair (_, ty) -> ty
     | _ -> assert false
   in
-  let prim = snd (List.assoc "snd" Primitives.primitives) ~loc (tyLambda (e.typ, ty)) in
-  mke ~loc ty (Prim ("snd", prim, [e]))
+  mke ~loc ty (Prim ("snd", tyLambda (e.typ, ty), [e]))
 
 let mkleft ~loc ty e = mke ~loc (tyOr (e.typ, ty)) (Left e)
 let mkright ~loc ty e = mke ~loc (tyOr (ty, e.typ)) (Right e)
 
 let mkeq ~loc e1 e2 =
-  let prim = snd (List.assoc "=" Primitives.primitives) ~loc
-             & tyLambda (e1.typ, tyLambda (e2.typ, tyBool)) in
-  mke ~loc tyBool (Prim ("=", prim, [e1; e2]))
+  mke ~loc tyBool (Prim ("=", tyLambda (e1.typ, tyLambda (e2.typ, tyBool)), [e1; e2]))
 
 let mkpair ~loc e1 e2 = mke ~loc (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
 
@@ -1762,15 +1758,15 @@ and primitive ~loc fty n args =
       begin match args with
         | [] | [_] -> 
             errorf_contract ~loc "Contract.contract' must be fully applied"
-        | address :: { desc= Const (M.Constant.String entry) } :: left ->
-            apply_left (Prim (n, Primitives.contract' entry ~loc fty, [address])) left
+        | address :: ({ desc= Const (M.Constant.String _) } as entry) :: left ->
+            apply_left (Prim (n, fty, [address; entry])) left
         | _ :: { loc } :: _ ->
             errorf_contract ~loc "contract entry name must be a constant"
       end
   | _ -> 
       match List.assoc_opt n Primitives.primitives with
       | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
-      | Some (arity, conv) ->
+      | Some (arity, _conv) ->
           if arity > List.length args then
             let tys, ret = M.Type.args fty in
             let tys = 
@@ -1781,14 +1777,12 @@ and primitive ~loc fty n args =
             let e =
               List.fold_right (fun (x,ty) e -> mkfun ~loc (mkp ~loc ty x) e)
                 xtys
-              & mke ~loc ret 
-              & Prim (n, conv ~loc fty, 
-                      args @ List.map (fun (x,ty) -> mkvar ~loc (x,ty)) xtys)
+              & mkprim ~loc ret n fty (args @ List.map (fun (x,ty) -> mkvar ~loc (x,ty)) xtys)
             in
             e.desc
           else
             let args, left = List.split_at arity args in
-            apply_left (Prim (n, conv ~loc fty, args)) left
+            apply_left (Prim (n, fty, args)) left
 
 and switch lenv ~loc:loc0 e cases =
   let ty = e.typ in
@@ -1845,8 +1839,7 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_eval _       -> unsupported ~loc "toplevel evaluation"
   | Tstr_primitive _  -> unsupported ~loc "primitive declaration"
   | Tstr_typext _     -> unsupported ~loc "type extension"
-  | Tstr_module _ 
-  | Tstr_recmodule _  -> unsupported ~loc "module declaration"
+  | Tstr_recmodule _  -> unsupported ~loc "recursive module declaration"
   | Tstr_class _      -> unsupported ~loc "class declaration"
   | Tstr_class_type _ -> unsupported ~loc "class type declaration"
   | Tstr_include _    -> unsupported ~loc "include"
@@ -1867,6 +1860,23 @@ and structure_item lenv { str_desc; str_loc=loc } =
 
   | Tstr_exception _ -> lenv, []
   | Tstr_type _ -> lenv, []
+
+  | Tstr_module mb -> 
+      let mname = Ident.name mb.mb_id in
+      let rec module_expr me = match me.mod_desc with
+        | Tmod_structure str -> structure lenv str
+        | Tmod_constraint (me, _, _, _) -> module_expr me
+        | _ -> unsupported ~loc "module declaration other than simple structure"
+      in
+      let lenv, vbs = module_expr mb.mb_expr in
+      (* Make local defs accessible from the outside *)
+      let vbs' = List.map (fun (pv,t) ->
+          (* XXX Check shaodowing *)
+          { pv with IML.desc= Ident.create_persistent (mname ^ "." ^ Ident.name pv.IML.desc) }, 
+          { t with IML.desc= IML.Var pv.desc }) vbs 
+      in
+      Lenv.add_locals (List.map (fun (pv,_) -> pv.IML.desc) vbs') lenv,
+      vbs @ vbs'
 
   | Tstr_attribute _ -> 
       (* simply ignores it for now *)
@@ -1942,10 +1952,7 @@ and translate_raise lenv ~loc typ args = match args with
                        & mke ~loc:cdesc.cstr_loc tyString (Const (C.String name)) :: args
                   in
                   mke ~loc typ
-                  & Prim ("raise", 
-                          snd (List.assoc "raise" Primitives.primitives)
-                            ~loc (tyLambda (arg.typ, typ)),
-                          [arg])
+                  & Prim ("raise", tyLambda (arg.typ, typ), [arg])
               | _ -> assert false
             end
         | _ -> errorf_constant ~loc "raise takes only an exception constant"
@@ -1955,13 +1962,20 @@ and translate_raise lenv ~loc typ args = match args with
 (* parameter and storage types *)
 
 let toplevel_value_bindings str =
-  let structure_item st { str_desc; _ } =
-  match str_desc with
-    | Tstr_value (Nonrecursive, vbs) ->
-        List.rev_append vbs st
-    | _ -> st
-  in
-  let structure { str_items= sitems } =
+  let rec structure_item st { str_desc; _ } =
+    match str_desc with
+      | Tstr_value (Nonrecursive, vbs) ->
+          List.rev_append vbs st
+      | Tstr_module mb -> 
+          let rec module_expr me = match me.mod_desc with
+            | Tmod_structure str -> structure str
+            | Tmod_constraint (me, _, _, _) -> module_expr me
+            | _ -> unsupported ~loc:mb.mb_loc "module declaration other than simple structure"
+          in
+          let vbs = module_expr mb.mb_expr in
+          st @ vbs
+        | _ -> st
+  and structure { str_items= sitems } =
     List.rev & List.fold_left (fun st sitem ->
         structure_item st sitem) [] sitems
   in
@@ -1978,6 +1992,7 @@ let get_entries compile_only vbs =
   | [] -> 
       if compile_only then []
       else begin 
+        (* XXX This is obsolete *)
         match List.last vbs with
         | None -> []
         | Some vb -> [vb, None]
@@ -2114,7 +2129,7 @@ let add_self self_typ t =
   Attr.add (Attr.Annot "not_expand")
   & mklet ~loc:noloc
     { desc= contract_self_id; typ= self_typ; loc= Location.none; attrs= () }
-    (mke ~loc:noloc self_typ & Prim ("Contract.self", (fun os -> M.Opcode.SELF :: os), []))
+    (mkprim ~loc:noloc self_typ "Contract.self" self_typ [])
     t
 
 let compile_global_entry ty_storage ty_return node =
@@ -2318,7 +2333,9 @@ let implementation compile_only sourcefile outputprefix str =
 let link (ty_param, ty_storage, global_entry) vbs =
   ty_param, 
   ty_storage, 
-  List.fold_right (fun (v,b) x -> IML.subst [v.desc, b] x) vbs global_entry
+  List.fold_right (fun (v,b) x -> 
+      (* Format.eprintf "subst %s: @[%a@]@." (Ident.unique_name v.desc) IML.pp b; *)
+      IML.subst [v.desc, b] x) vbs global_entry
 
 (* Used only for iml dumping *)
 let connect vbs =

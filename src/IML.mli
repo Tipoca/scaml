@@ -65,7 +65,7 @@ and desc =
   | Fun of PatVar.t * t
   | IfThenElse of t * t * t option
   | App of t * t list
-  | Prim of string * (Michelson.Opcode.t list -> Michelson.Opcode.t list) * t list
+  | Prim of string * Michelson.Type.t * t list
   | Let of PatVar.t * t * t
   | Switch_or of t * PatVar.t * t * PatVar.t * t
   | Switch_cons of t * PatVar.t * PatVar.t * t * t
@@ -97,6 +97,7 @@ val mklet         : loc:Location.t -> PatVar.t -> t -> t -> t
 val mkunit        : loc:Location.t -> unit -> t
 val mkfun         : loc:Location.t -> PatVar.t -> t -> t
 val mkpair        : loc:Location.t -> t -> t -> t
+val mkprim        : loc:Location.t -> Michelson.Type.t -> string -> Michelson.Type.t -> t list -> t
 val mkfst         : loc:Location.t -> t -> t
 val mksnd         : loc:Location.t -> t -> t
 val mkleft        : loc:Location.t -> Michelson.Type.t -> t -> t
