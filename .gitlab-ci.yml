@@ -8,5 +8,4 @@ build:
   - git submodule update
   - opam remote add official https://opam.ocaml.org/
   - opam update
-  - opam install -y vendors/*/*.opam
   - opam install -y ./scaml.opam
