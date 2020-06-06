@@ -257,8 +257,11 @@ let save path t =
 let rec freevars t = 
   let open IdTys in
   let psingleton p = singleton (p.desc, p.typ) in
+  let (+) = union in
   match t.desc with
-  | Const _ | Nil | IML_None | Unit | Contract_create _ -> empty
+  | Const _ | Nil | IML_None | Unit -> empty
+  | Contract_create (_, _,  t1, t2, t3) -> 
+      freevars t1 + freevars t2 + freevars t3
   | Cons (t1,t2) | Pair (t1,t2) | Seq (t1,t2) -> union (freevars t1) (freevars t2)
   | Left t | Right t | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
@@ -304,8 +307,9 @@ let subst id_t_list t2 =
           | None -> t
           | Some t' -> Attr.adds t.attrs t'
         end
-    | Const _ | Nil | IML_None | Unit | AssertFalse 
-    | Contract_create _ -> t
+    | Const _ | Nil | IML_None | Unit | AssertFalse -> t
+
+    | Contract_create (s, l, t1, t2, t3) -> mk & Contract_create (s, l, f t1, f t2, f t3)
 
     | IML_Some t -> mk & IML_Some (f t)
     | Left t -> mk & Left (f t)

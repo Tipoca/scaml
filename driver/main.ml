@@ -400,8 +400,8 @@ let main () =
       let compiled = List.rev !SCamlc.rev_compiled in
       (* --scaml-convert and --scaml-revert do not produce compiled modules *)
       if compiled <> [] then begin
-        Format.eprintf "Linking %s@." (String.concat ", " (List.map (fun x -> x.SCamlc.name) compiled));
-        SCamlc.link (List.rev !SCamlc.rev_compiled);
+        Format.eprintf "Linking %s@." (String.concat ", " (List.map (fun x -> x.SCamlc.Module.name) compiled));
+        SCamlc.link None (List.rev !SCamlc.rev_compiled);
       end else begin
         Format.eprintf "Nothing to link...@."
       end;

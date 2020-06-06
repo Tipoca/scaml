@@ -329,7 +329,8 @@ let inline modified exp =
               g (mk & Let (pv, t', mk & App (body, ts')))
         end
     | App (t, ts) -> mk & App (g t, List.map g ts)
-    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse | Contract_create _ -> t0
+    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse -> t0
+    | Contract_create (s, l, t1, t2, t3) -> mk & Contract_create (s, l, g t1, g t2, g t3)
     | IML_Some t -> mk & IML_Some (g t)
     | Left t -> mk & Left (g t)
     | Right t -> mk & Right (g t)
