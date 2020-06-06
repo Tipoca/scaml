@@ -6,10 +6,8 @@ Install `opam`, then:
 $ git clone https://gitlab.com/dailambda/scaml
 $ cd scaml
 $ git checkout 1.2.0pre
-$ git submodule init
-$ git submodule update
 $ opam switch create . ocaml-base-compiler.4.09.1 --no-install
-$ opam install -y vendors/*/*.opam ./scaml.opam
+$ opam install -y ./scaml.opam
 ```
 
 If successful, there should be the compiler executable:
