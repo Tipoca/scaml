@@ -179,22 +179,22 @@ let link modules =
                 let modified = ref false in
                 let g fmt = Printf.sprintf fmt i in
                 let t, sec = with_time & fun () -> Optimize.beta modified t in
-                Format.eprintf "beta %f@." sec;
+                Flags.if_time (fun () -> Format.eprintf "beta %f@." sec);
                 IML.save (last.outputprefix ^ g "__link.iml_%03d1beta") t;
                 let t, sec = with_time & fun () -> Optimize.assoc modified t in
-                Format.eprintf "assoc %f@." sec;
+                Flags.if_time (fun () -> Format.eprintf "assoc %f@." sec);
                 IML.save (last.outputprefix ^ g "__link.iml_%03d2assoc") t;
                 let t, sec = with_time & fun () -> Optimize.inline modified t in
-                Format.eprintf "inline %f@." sec;
+                Flags.if_time (fun () -> Format.eprintf "inline %f@." sec);
                 IML.save (last.outputprefix ^ g "__link.iml_%03d3inline") t;
                 let t, sec = with_time & fun () -> Optimize.elim modified t in
-                Format.eprintf "elim %f@." sec;
+                Flags.if_time (fun () -> Format.eprintf "elim %f@." sec);
                 IML.save (last.outputprefix ^ g "__link.iml_%03d4elim") t;
                 if i = 100 then t, i 
                 else if !modified then f (i+1) t else t, i
               in
               let t, i = f 1 t in
-              Format.eprintf "Iterated %d times@." i;
+              Flags.if_time (fun () -> Format.eprintf "Iterated %d times@." i);
               let t = Optimize.unknormalize t in
               t
           in
