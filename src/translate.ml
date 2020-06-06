@@ -35,16 +35,16 @@ let repr_desc ty = (Ctype.repr ty).desc
 let create_ident n = Ident.create_local & "__" ^ n
 
 let contract_self_id = create_ident "self"
-  
+
 let noloc = Location.none
 
 module Cnstr = struct
-  type t = 
-    | Unit | Left | Right | Some | None | Cons | Nil | Bool of bool | Pair 
+  type t =
+    | Unit | Left | Right | Some | None | Cons | Nil | Bool of bool | Pair
     | Constant of C.t
     (* XXX [Constant of C.t] cannot contain values of Unit, Left, Right...
        listed in the first line.  This is confusing. *)
-  
+
   let to_string = function
     | Pair -> "(,)"
     | Left -> "Left"
@@ -65,11 +65,11 @@ module P = struct
     | Constr of Cnstr.t * t list
     | Wild
     | Alias of t * Ident.t * Location.t (* location of ident *)
-    | Or of t * t 
+    | Or of t * t
 
   and t = (desc, unit) with_loc_and_type
 
-  let rec pp ppf pat = 
+  let rec pp ppf pat =
     let open Format in
     match pat.desc with
     | Var i -> fprintf ppf "%s" (Ident.unique_name i)
@@ -78,7 +78,7 @@ module P = struct
     | Wild -> string ppf "_"
     | Alias (p, id, _) -> fprintf ppf "(@[%a as %s@])" pp p (Ident.unique_name id)
     | Or (p1,p2) -> fprintf ppf "(@[%a@ | %a@])" pp p1 pp p2
-        
+
   let rec vars p =
     let open IdTys in
     match p.desc with
@@ -90,19 +90,19 @@ module P = struct
     | Or (p1, p2) -> union (vars p1) (vars p2)
 end
 
-type lenv = 
+type lenv =
   { local_variables : Ident.t list (* Vars defined in the current innermost function scope *)
   ; non_local_variables : Ident.t list (* Vars defined out of the current innermost function scope *)
   ; fun_loc : Location.t (* Location of the current innermost function scope *)
-  ; fun_level : int (* Level of the current innermost funciton scope. 
+  ; fun_level : int (* Level of the current innermost funciton scope.
                        Less than 0 means it is at one of entry point function abstractions.*)
   }
 
 module Lenv = struct
-  let add_locals vs lenv = { lenv with local_variables = vs @ lenv.local_variables } 
-  let into_fun ~loc lenv = 
+  let add_locals vs lenv = { lenv with local_variables = vs @ lenv.local_variables }
+  let into_fun ~loc lenv =
     { local_variables= []; non_local_variables= lenv.local_variables @ lenv.non_local_variables; fun_loc=loc; fun_level= lenv.fun_level + 1 }
-  let _pp ppf lenv = 
+  let _pp ppf lenv =
     Format.fprintf ppf "local= %s@."
       (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
     Format.fprintf ppf "non_local= %s@."
@@ -159,7 +159,7 @@ type type_expr_error =
   | Exception_out_of_raise
 
 let pp_type_expr_error ppf = function
-  | Type_variable ty -> 
+  | Type_variable ty ->
       Format.fprintf ppf "Type variable %a is not supported in SCaml." Printtyp.type_expr ty
   | Unsupported_type ty ->
       Format.fprintf ppf "Type %a is not supported in SCaml." Printtyp.type_expr ty
@@ -169,17 +169,17 @@ let pp_type_expr_error ppf = function
       Format.fprintf ppf "Michelson type %a is invalid: %s" M.Type.pp mty s
   | Exception_out_of_raise ->
       Format.fprintf ppf "Values of type exn are only allowed to raise."
-    
+
 
 let encode_by branch xs =
-  Binplace.fold 
-      ~leaf:(fun x -> x) 
+  Binplace.fold
+      ~leaf:(fun x -> x)
       ~branch
   & Binplace.place xs
-      
 
-let rec type_expr tyenv ty = 
-  let rec fn tyenv ty = 
+
+let rec type_expr tyenv ty =
+  let rec fn tyenv ty =
     let ty = Ctype.expand_head tyenv ty in
     match ty.desc with
     | Tvar _ when ty.level = Btype.generic_level -> Error (Type_variable ty)
@@ -187,20 +187,20 @@ let rec type_expr tyenv ty =
         (* Non generalized type variable.  We are brave enough to unify it with Unit *)
         Ctype.unify tyenv ty Predef.type_unit; (* must succeed *)
         fn tyenv ty
-    | Tarrow (Nolabel, f, t, _) -> 
+    | Tarrow (Nolabel, f, t, _) ->
         fn tyenv f >>= fun f ->
-        fn tyenv t >>= fun t -> 
+        fn tyenv t >>= fun t ->
         Ok (tyLambda (f, t))
-    | Ttuple [t1; t2] -> 
+    | Ttuple [t1; t2] ->
         fn tyenv t1 >>= fun t1 ->
         fn tyenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
-    | Ttuple tys -> 
-        Result.mapM (fn tyenv) tys 
+    | Ttuple tys ->
+        Result.mapM (fn tyenv) tys
         >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
     | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
-    | Tconstr (p, [t], _) when p = Predef.path_list -> 
+    | Tconstr (p, [t], _) when p = Predef.path_list ->
         fn tyenv t >>= fun t -> Ok (tyList t)
-    | Tconstr (p, [t], _) when p = Predef.path_option -> 
+    | Tconstr (p, [t], _) when p = Predef.path_option ->
         fn tyenv t >>= fun t -> Ok (tyOption t)
     | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
     | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
@@ -209,7 +209,7 @@ let rec type_expr tyenv ty =
         let rec f res = function
           | [] -> Ok (List.rev res)
           | ty::tys ->
-              fn tyenv ty >>= fun ty -> 
+              fn tyenv ty >>= fun ty ->
               f (ty::res) tys
         in
         f [] tys >>= fun tys ->
@@ -231,7 +231,7 @@ let rec type_expr tyenv ty =
           | Some "bytes"       , []         -> Ok (tyBytes)
           | Some "chain_id"    , []         -> Ok (tyChainID)
           | Some _, _ -> Error (Unsupported_data_type p)
-          | None, _ -> 
+          | None, _ ->
               match Env.find_type_descrs p tyenv with
               | [], [] when p = Predef.path_exn -> Error Exception_out_of_raise
               | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
@@ -249,10 +249,10 @@ let rec type_expr tyenv ty =
   | Ok () -> Ok mty
   | Error (mty', mes) -> Error (Invalid_michelson (mty', mes))
 
-and record_type tyenv ty p labels = 
+and record_type tyenv ty p labels =
   (* record *)
   let ltys = List.map (fun label ->
-      let _, ty_arg, ty_res = 
+      let _, ty_arg, ty_res =
         Ctype.instance_label false (* XXX I do not know what it is *)
           label
       in
@@ -261,52 +261,52 @@ and record_type tyenv ty p labels =
   in
   begin match ltys with
     | [] -> assert false
-    | [_l, ty] -> 
+    | [_l, ty] ->
         (* sole field cannot have annotation... *)
         type_expr tyenv ty >>| fun x -> [x]
     | _ ->
-        Result.mapM (fun (l,ty) -> 
-        type_expr tyenv ty >>| M.Type.attribute ["%" ^ l]) ltys 
+        Result.mapM (fun (l,ty) ->
+        type_expr tyenv ty >>| M.Type.attribute ["%" ^ l]) ltys
   end
   >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
   >>| M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
 
-and variant_type tyenv ty p constrs = 
+and variant_type tyenv ty p constrs =
   let consts, non_consts = Variant.variant_type tyenv ty constrs in
   let non_consts =
-    Result.mapM (fun (n,tys) -> 
+    Result.mapM (fun (n,tys) ->
         Result.mapM (type_expr tyenv) tys >>| fun tys -> (n,tys)) non_consts
     >>| fun ctys_list ->
-    List.map (fun (n,tys) -> 
+    List.map (fun (n,tys) ->
         (n, encode_by (fun ty1 ty2 -> tyPair (ty1, ty2)) tys))
-      ctys_list 
+      ctys_list
   in
   non_consts >>| fun non_consts ->
-  ( consts, 
-    non_consts, 
+  ( consts,
+    non_consts,
     M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
     & snd & encode_by (fun (c1,ty1) (c2,ty2) ->
-        let attr c ty = 
+        let attr c ty =
           if c = "" then ty
           else M.Type.attribute ["%" ^ c] ty
         in
         ("", tyOr (attr c1 ty1, attr c2 ty2)))
-      ((match consts with 
-          | None -> [] 
+      ((match consts with
+          | None -> []
           | Some names -> [String.concat "_" names, tyInt])
        @ non_consts))
 
 (* Literals *)
 
 let parse_timestamp s = match Ptime.of_rfc3339 s with
-  | Ok (t, _, _) -> 
+  | Ok (t, _, _) ->
       let t' = Ptime.truncate ~frac_s:0 t in
       if not (Ptime.equal t t') then Error "Subsecond is not allowed in timestamps"
-      else 
+      else
         let posix = Ptime.to_float_s t in
         if posix < 0. then Error "Timestamp before Epoch is not allowed"
         else Ok (C.Timestamp (Z.of_float posix))
-  | Error (`RFC3339 (_, e)) -> 
+  | Error (`RFC3339 (_, e)) ->
       Error (Format.sprintf "%a" Ptime.pp_rfc3339_error e)
 
 let parse_bytes s =
@@ -316,34 +316,34 @@ let parse_bytes s =
   | _ -> Error "Bytes must take hex representation of bytes"
 
 let constructions_by_string =
-  [ ("signature" , ("signature", "Signature", tySignature, 
+  [ ("signature" , ("signature", "Signature", tySignature,
                     fun x -> Ok (C.String x)));
-    ("key_hash"  , ("key_hash", "Key_hash", tyKeyHash, 
+    ("key_hash"  , ("key_hash", "Key_hash", tyKeyHash,
                     fun x -> Ok (C.String x)));
-    ("key"       , ("key", "Key", tyKey, 
+    ("key"       , ("key", "Key", tyKey,
                     fun x -> Ok (C.String x)));
-    ("address"   , ("address", "Address", tyAddress, 
+    ("address"   , ("address", "Address", tyAddress,
                     fun x -> Ok (C.String x)));
-    ("timestamp" , ("timestamp", "Timestamp", tyTimestamp, 
+    ("timestamp" , ("timestamp", "Timestamp", tyTimestamp,
                     parse_timestamp));
-    ("bytes"     , ("bytes", "Bytes", tyBytes, 
+    ("bytes"     , ("bytes", "Bytes", tyBytes,
                     parse_bytes));
     ("chain_id"  , ("chain_id", "Chain_id", tyChainID,
                     fun x -> Ok (C.String x)))
   ]
 
-let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
-  let typ = 
-    Result.at_Error (fun e -> 
-        errorf_type_expr ~loc "This pattern has type %a.  %a" 
-          Printtyp.type_expr mltyp pp_type_expr_error e) 
-    & type_expr tyenv mltyp 
+let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
+  let typ =
+    Result.at_Error (fun e ->
+        errorf_type_expr ~loc "This pattern has type %a.  %a"
+          Printtyp.type_expr mltyp pp_type_expr_error e)
+    & type_expr tyenv mltyp
   in
   let mk loc id typ = { loc; desc=id; typ; attrs= () } in
   let mk_dummy loc typ = mk loc Ident.dummy typ in
   match pat_desc with
   | Tpat_var (id, {loc}) -> [mk loc id typ]
-  | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> 
+  | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) ->
       (* We transform (_ as x) to x if _ and x have the same location.
          The compiler transforms (x:t) into (_ as x : t).
          This avoids transforming a warning 27 into a 26.
@@ -362,13 +362,13 @@ let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   | Tpat_lazy _      -> unsupported ~loc "lazy pattern"
   | Tpat_exception _ -> unsupported ~loc "exception pattern"
 
-let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } = 
+let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   let gloc = Location.ghost loc in
-  let typ = 
-    Result.at_Error (fun e -> errorf_type_expr ~loc 
-                        "This pattern has type %a.  %a" 
-                        Printtyp.type_expr mltyp pp_type_expr_error e) 
-    & type_expr tyenv mltyp 
+  let typ =
+    Result.at_Error (fun e -> errorf_type_expr ~loc
+                        "This pattern has type %a.  %a"
+                        Printtyp.type_expr mltyp pp_type_expr_error e)
+    & type_expr tyenv mltyp
   in
   let mk desc = { loc; desc; typ; attrs= () } in
   match pat_desc with
@@ -379,7 +379,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
   | Tpat_var (id, _) -> mk (P.Var id)
 
-  | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) -> 
+  | Tpat_alias ({pat_desc = Tpat_any; pat_loc=_}, id, _) ->
       (* We transform (_ as x) in x if _ and x have the same location.
          The compiler transforms (x:t) into (_ as x : t).
          This avoids transforming a warning 27 into a 26.
@@ -394,14 +394,14 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
   | Tpat_tuple ps -> encode_by (mkppair ~loc:gloc) & List.map pattern ps
 
-  | Tpat_constant (Const_string (s, None)) -> 
+  | Tpat_constant (Const_string (s, None)) ->
       mk (P.Constr (Cnstr.Constant (C.String s), []))
-                                                 
+
   | Tpat_constant (Const_string (s, Some _)) ->
       (* quoted string *)
       mk (P.Constr (Cnstr.Constant (C.String s), []))
 
-  | Tpat_constant _ -> 
+  | Tpat_constant _ ->
       (* Since the numbers are variant wrapped, i.e. Int 32 *)
       unsupported ~loc "constant pattern of type %s"
         (Format.sprintf "%a" Printtyp.type_scheme mltyp)
@@ -411,7 +411,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
   | Tpat_or (_, _, _)        -> unsupported ~loc "or pattern with row"
 
   | Tpat_construct (_, cdesc, ps) ->
-      
+
       (* XXX should check the module path *)
       begin match cdesc.cstr_name, typ.desc, ps with
         | "()", TyUnit, [] -> mk (P.Constr (Cnstr.Unit, []))
@@ -425,13 +425,13 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "false", TyBool, [] -> mk (P.Constr (Cnstr.Bool false, []))
         | "Int", TyInt, [{pat_desc= Tpat_constant (Const_int n)}] ->
             mk & P.Constr (Cnstr.Constant (C.Int (Z.of_int n)), [])
-        | "Int", TyInt, [_] -> 
+        | "Int", TyInt, [_] ->
             errorf_constant ~loc "Int can only take an integer constant"
         | "Nat", TyNat, [{pat_desc= Tpat_constant (Const_int n)}] ->
-            if n < 0 then 
+            if n < 0 then
               errorf_constant ~loc "Nat can only take a positive integer constant";
             mk & P.Constr (Cnstr.Constant (C.Int (Z.of_int n)), [])
-        | "Nat", TyNat, [_] -> 
+        | "Nat", TyNat, [_] ->
             errorf_constant ~loc "Nat can only take an integer constant"
         | _, TyMutez, [_] -> errorf_constant ~loc "tz constant cannot be used as a pattern"
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
@@ -440,41 +440,41 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
 
         | "Address", TyAddress, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             mk & P.Constr (Cnstr.Constant (C.String s), [])
-        | "Address", TyAddress, [_] -> 
+        | "Address", TyAddress, [_] ->
             errorf_constant ~loc "Address can only take a string constant"
 
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_timestamp s with
-              | Error _e -> errorf_constant ~loc "strange arguments for Timestamp" 
+              | Error _e -> errorf_constant ~loc "strange arguments for Timestamp"
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
         | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
 
         | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             begin match parse_bytes s with
-              | Error _e -> errorf_constant ~loc "strange arguments for Bytes" 
+              | Error _e -> errorf_constant ~loc "strange arguments for Bytes"
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
-        | "Bytes", TyBytes, [_] -> 
+        | "Bytes", TyBytes, [_] ->
             errorf_constant ~loc "Bytes can only take a string constant"
-                                     
+
         | _, _, _ ->
-            
+
             begin match repr_desc mltyp with
               | Tconstr (p, _, _) ->
                   begin match Env.find_type_descrs p tyenv with
                     | [], [] when p = Predef.path_exn ->
                         errorf_type_expr ~loc
                           "%a" pp_type_expr_error Exception_out_of_raise
-                    | [], [] -> 
-                        errorf_type_expr ~loc 
-                          "Abstract data type %s is not supported in SCaml" 
+                    | [], [] ->
+                        errorf_type_expr ~loc
+                          "Abstract data type %s is not supported in SCaml"
                           (Path.name p)
                     | [], _::_ -> assert false (* record cannot come here *)
                     | _::_, _::_ -> assert false
-                    | constrs, [] -> 
+                    | constrs, [] ->
                         let consts_ty, non_consts_ty, entire_ty =
-                          from_Ok & variant_type tyenv mltyp p constrs 
+                          from_Ok & variant_type tyenv mltyp p constrs
                         in
                         let rec find_constr i = function
                           | [] -> assert false
@@ -483,30 +483,30 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                         in
                         let rec embed ty sides arg = match ty.M.Type.desc, sides with
                           | _, [] -> arg
-                          | TyOr (ty1, ty2), Binplace.Left::sides -> 
+                          | TyOr (ty1, ty2), Binplace.Left::sides ->
                               mkpleft ~loc:gloc ty2 (embed ty1 sides arg)
-                          | TyOr (ty1, ty2), Right::sides -> 
+                          | TyOr (ty1, ty2), Right::sides ->
                               mkpright ~loc:gloc ty1 (embed ty2 sides arg)
                           | _ -> assert false
                         in
                         match cdesc.cstr_arity, consts_ty, non_consts_ty with
                         | _, None, [] -> assert false
                         | 0, None, _ -> assert false
-                        | 0, Some names, [] -> 
+                        | 0, Some names, [] ->
                             mkpint ~loc:gloc & find_constr 0 names
-                        | 0, Some names, xs -> 
+                        | 0, Some names, xs ->
                             let sides = Binplace.path 0 (List.length xs + 1) in
                             embed entire_ty sides & mkpint ~loc:gloc & find_constr 0 names
                         | _, _, [] -> assert false
                         | _, _, cs ->
                             let names = List.map fst cs in
                             let i = find_constr 0 names in
-                            let sides = 
+                            let sides =
                               let shift = if consts_ty = None then 0 else 1 in
                               Binplace.path (i + shift) (List.length names + shift)
                             in
-                            embed entire_ty sides 
-                            & encode_by (mkppair ~loc:gloc) & List.map pattern ps 
+                            embed entire_ty sides
+                            & encode_by (mkppair ~loc:gloc) & List.map pattern ps
                   end
             | _ ->  unsupported ~loc "pattern %s" cdesc.cstr_name
             end
@@ -518,10 +518,10 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
       | Tconstr (p, _, _) ->
           begin match Env.find_type_descrs p tyenv with
             | [], labels ->
-                let labels = 
+                let labels =
                   List.map (fun label ->
-                      let _, arg, res = 
-                        Ctype.instance_label false (* XXX ? *) label 
+                      let _, arg, res =
+                        Ctype.instance_label false (* XXX ? *) label
                       in
                       Ctype.unify tyenv res mltyp;
                       label.lbl_name, arg
@@ -531,13 +531,13 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                   | (n, _)::labels, (_, plabel, p)::pfields when n = plabel.Types.lbl_name ->
                       pattern p :: f labels pfields
                   | (n, typ)::labels, _ ->
-                      let typ = 
-                        Result.at_Error (fun e -> 
-                            errorf_type_expr ~loc "This pattern has a field %s with type %a.  %a" 
-                              n 
+                      let typ =
+                        Result.at_Error (fun e ->
+                            errorf_type_expr ~loc "This pattern has a field %s with type %a.  %a"
+                              n
                               Printtyp.type_expr typ
-                              pp_type_expr_error e) 
-                        & type_expr tyenv typ 
+                              pp_type_expr_error e)
+                        & type_expr tyenv typ
                       in
                       { loc; desc= P.Wild; typ; attrs= () } :: f labels pfields
                   | [], [] -> []
@@ -549,10 +549,10 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
           end
       | _ -> assert false
 
-let attr_has_entry_point = 
+let attr_has_entry_point =
   let open Parsetree in
   List.find_map_opt (function
-      | { attr_name= { txt = "entry"; loc }; attr_payload= payload; _ } -> 
+      | { attr_name= { txt = "entry"; loc }; attr_payload= payload; _ } ->
           begin match Attribute.parse_options_in_payload "entry" ~loc payload with
             | _::_::_ -> errorf_entry ~loc "@entry cannot specify more than one options"
             | [] -> Some (loc, None)
@@ -562,32 +562,32 @@ let attr_has_entry_point =
             | [_, _] -> errorf_entry ~loc "@entry can take at most one name=<name> binding"
           end
       | _ -> None)
-  
+
 module Pmatch = struct
   module Type = Michelson.Type
-  
+
   (* rows <-> columns *)
   let transpose : 'p list list -> 'p list list = fun rows ->
     if rows = [] then []
-    else 
+    else
       let ncolumns = List.length & List.hd rows in
       List.init ncolumns (fun i ->
           List.map (fun row ->
               assert (List.length row = ncolumns);
               List.nth row i) rows)
-  
+
   type id_ty = Ident.t * Type.t
-  
-  type case = 
+
+  type case =
     { pats : P.t list
     ; guard : int option
-    ; action : int 
+    ; action : int
     ; bindings : (Ident.t * Location.t * id_ty) list
     }
-  
+
   type matrix = case list
-  
-  type tree = 
+
+  type tree =
     | Fail
     | Leaf of (Ident.t * Location.t * id_ty) list * int
     | Switch of id_ty * (Cnstr.t * id_ty list * tree) list * tree option (* default *)
@@ -595,13 +595,13 @@ module Pmatch = struct
                * int (* guard *)
                * int (* case *)
                * tree (* otherwise *)
-                  
+
   let rec pp_tree ppf =
     let f fmt = Format.fprintf ppf fmt in
     function
     | Fail -> f "Fail"
-    | Leaf (binders, n) -> 
-        f "Leaf %a %d" 
+    | Leaf (binders, n) ->
+        f "Leaf %a %d"
           (Format.list ",@," (fun ppf (v,_,(v',_)) ->
                Format.fprintf ppf "%s=%s"
                  (Ident.unique_name v)
@@ -610,9 +610,9 @@ module Pmatch = struct
     | Switch (v, xs, None) ->
         f "@[<2>Switch %s@ [ @[%a@] ]@]"
           (Ident.unique_name & fst v)
-          (Format.list ";@ " (fun ppf -> 
+          (Format.list ";@ " (fun ppf ->
                let f fmt = Format.fprintf ppf fmt in
-               let pvs _ppf vs = 
+               let pvs _ppf vs =
                  f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.unique_name x) vs
                in
                fun (c, vs, t) ->
@@ -621,9 +621,9 @@ module Pmatch = struct
     | Switch (v, xs, Some d) ->
         f "@[<2>Switch %s@ [ @[%a@] default %a]@]"
           (Ident.unique_name & fst v)
-          (Format.list ";@ " (fun ppf -> 
+          (Format.list ";@ " (fun ppf ->
                let f fmt = Format.fprintf ppf fmt in
-               let pvs _ppf vs = 
+               let pvs _ppf vs =
                  f "%s" & String.concat "," & List.map (fun (x,_) -> Ident.unique_name x) vs
                in
                fun (c, vs, t) ->
@@ -631,7 +631,7 @@ module Pmatch = struct
              )) xs
           pp_tree d
     | Guard (binders, guard, case, otherwise) ->
-        f "@[<2>Guard (%a) guard%d case%d [%a]@]" 
+        f "@[<2>Guard (%a) guard%d case%d [%a]@]"
           (Format.list ",@," (fun ppf (v,_,(v',_)) ->
                Format.fprintf ppf "%s=%s"
                  (Ident.unique_name v)
@@ -639,18 +639,18 @@ module Pmatch = struct
           guard
           case
           pp_tree otherwise
-  
+
   (* specialize on Left and Right *)
   let rec specialize o c (matrix : matrix) : matrix =
     List.fold_right (fun ({ pats; bindings } as case) st ->
         match pats with
         | [] -> assert false
         | pat::pats ->
-            let rec f pat = 
+            let rec f pat =
               let loc = pat.loc in
               let gloc = Location.ghost loc in
               match c, pat.desc with
-              | _, P.Alias (pat, i, loc) -> 
+              | _, P.Alias (pat, i, loc) ->
                   let cases = f pat in
                   List.map (fun case -> { case with bindings = (i,loc,o) :: case.bindings }) cases
               | c, P.Or (p1, p2) ->
@@ -658,54 +658,54 @@ module Pmatch = struct
                   @ specialize o c [{ case with pats= p2::pats }]
               | c, P.Constr (c', ps) ->
                   if c = c' then [{ case with pats= ps @ pats }] else []
-  
-              (* For wild, we need to build another wild with arg type. 
+
+              (* For wild, we need to build another wild with arg type.
                  XXX Currently we must code for each.  Ugh.
               *)
-              | Cnstr.Pair, P.Wild -> 
+              | Cnstr.Pair, P.Wild ->
                   let ty1, ty2 = match pat.typ.desc with
                     | TyPair (ty1, ty2) -> ty1, ty2
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc ty1 P.Wild :: mkp ~loc:gloc ty2 P.Wild :: pats }]
-  
-              | Left, P.Wild -> 
+
+              | Left, P.Wild ->
                   let typl = match pat.typ.desc with
                     | TyOr (typl, _typr) -> typl
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc typl P.Wild :: pats }]
-  
-              | Right, P.Wild -> 
+
+              | Right, P.Wild ->
                   let typr = match pat.typ.desc with
                     | TyOr (_typl, typr) -> typr
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc typr P.Wild :: pats }]
-  
-              | Some, P.Wild -> 
+
+              | Some, P.Wild ->
                   let typ = match pat.typ.desc with
                     | TyOption typ -> typ
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc typ P.Wild :: pats }]
-  
-              | Cons, P.Wild -> 
+
+              | Cons, P.Wild ->
                   let typ = match pat.typ.desc with
                     | TyList typ -> typ
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc typ P.Wild :: mkp ~loc:gloc pat.typ P.Wild :: pats }]
-  
-              | (None | Nil | Unit | Bool _ | Constant _), P.Wild -> 
+
+              | (None | Nil | Unit | Bool _ | Constant _), P.Wild ->
                   [{ case with pats }]
-  
+
               | _ , P.Var v -> [{ case with pats; bindings= (v,loc,o) :: bindings }]
             in
             let cases = f pat in
             cases @ st
       ) matrix []
-  
+
   let pp_matrix ppf matrix =
     let open Format in
     fprintf ppf "matrix:@.";
@@ -720,7 +720,7 @@ module Pmatch = struct
               g
               i
       ) matrix
-  
+
   let pp_osmatrix ppf (os, matrix) =
     let open Format in
     fprintf ppf "match %a with@ " (list ", " (fun ppf (id,_) ->
@@ -737,13 +737,13 @@ module Pmatch = struct
               i
       ) matrix
 
-  
+
   let specialize o c matrix =
     if_debug (fun () -> Format.eprintf "specializing... %a@." pp_matrix matrix);
     let matrix = specialize o c matrix in
     if_debug (fun () -> Format.eprintf "specialized... %a@." pp_matrix matrix);
     matrix
-  
+
   let rec default o (matrix : matrix) : matrix =
     List.fold_right (fun ({ pats } as case) st ->
         match pats with
@@ -761,7 +761,7 @@ module Pmatch = struct
             in
             f pat
       ) matrix []
-  
+
   let swap i os (matrix : matrix) : _ * matrix =
     let rec f rev_st i xs = match i, xs with
       | 0, x::xs -> x::List.rev rev_st@xs
@@ -770,22 +770,22 @@ module Pmatch = struct
     in
     f [] i os,
     List.map (fun ({ pats } as case) -> { case with pats= f [] i pats }) matrix
-  
-  let rec cc os matrix = 
+
+  let rec cc os matrix =
     if_debug (fun () -> Format.eprintf "@[<v2>Pmatch.cc:@ @[%a@]@]@." pp_osmatrix (os, matrix));
     match matrix with
     | [] -> Fail
     | { pats=ps; guard= g; action= a; bindings }::_ ->
-        if List.for_all (fun p -> 
-            let rec f p = match p.desc with 
+        if List.for_all (fun p ->
+            let rec f p = match p.desc with
               | P.Alias (p, _, _) -> f p
-              | P.Wild | P.Var _ -> true 
+              | P.Wild | P.Var _ -> true
               | P.Constr _ -> false
               | P.Or _ -> false
             in
-            f p ) ps 
-        then 
-          let bindings = List.fold_right2 (fun v p st -> 
+            f p ) ps
+        then
+          let bindings = List.fold_right2 (fun v p st ->
               match p.desc with
               | P.Wild -> st
               | P.Var v' -> (v',p.loc,v)::st
@@ -793,17 +793,17 @@ module Pmatch = struct
           in
           match g with
           | None -> Leaf (bindings, a)
-          | Some g -> 
+          | Some g ->
               if_debug (fun () -> prerr_endline "guard");
               Guard (bindings, g, a, cc os & List.tl matrix)
-        else 
+        else
           (* find column i where at least one pattern which is not a wildcard *)
           let columns = transpose & List.map (fun case -> case.pats) matrix in
           let icolumns = List.mapi (fun i c -> (i,c)) columns in
-          let i, column = 
-            match 
+          let i, column =
+            match
               List.find_all (fun (_i,c) ->
-                  List.exists (fun p -> 
+                  List.exists (fun p ->
                       let rec f p = match p.desc with
                         | P.Alias (p, _, _) -> f p
                         | P.Wild | P.Var _ -> false
@@ -818,9 +818,9 @@ module Pmatch = struct
           in
           (* algo 3 (a) *)
           let algo os column =
-            let constructors = 
+            let constructors =
               List.sort_uniq compare
-              & List.fold_left (fun st p -> 
+              & List.fold_left (fun st p ->
                   let rec f p = match p.desc with
                     | P.Alias (p, _, _) -> f p
                     | P.Constr (c, _) -> [c]
@@ -833,7 +833,7 @@ module Pmatch = struct
             (* Mending constructors for sum, option, list and bools.
                Since non-exhaustive matches are already rejected, they are always listed fully.
             *)
-            let constructors = 
+            let constructors =
               (* Things must be sorted! *)
               match constructors with
               | [] -> assert false
@@ -844,7 +844,7 @@ module Pmatch = struct
               | _ -> constructors
             in
             (* if it is a signature, no default case is required *)
-            let is_signature = 
+            let is_signature =
               (* Things must be sorted! *)
               match constructors with
               | [Left; Right]
@@ -853,65 +853,65 @@ module Pmatch = struct
               | [Pair]
               | [Unit]
               | [(Bool false) ; (Bool true)] -> true
-              | _ -> 
-                  (* Others including integers. 
+              | _ ->
+                  (* Others including integers.
                      XXX If it is an integer for nullary constructors,
                      no default case is required *)
                   false
             in
             (* XXX weak. this depends on the above code *)
-  
+
             let ivty = List.hd os in
             Switch (ivty,
                     (let _, vty = ivty in
                     List.map (fun c ->
                         let os = List.tl os in
-                        let vs = 
+                        let vs =
                           match c with
-                          | Cnstr.Left -> 
+                          | Cnstr.Left ->
                               let ty = match vty.desc with
                                 | TyOr (ty, _) -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "l", ty ]
-                          | Right -> 
+                          | Right ->
                               let ty = match vty.desc with
                                 | TyOr (_, ty) -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "r", ty ]
-                          | Pair -> 
+                          | Pair ->
                               let ty1,ty2 = match vty.desc with
                                 | TyPair (ty1, ty2) -> ty1, ty2
                                 | _ -> assert false
                               in
-                              [ create_ident "l", ty1 ; 
+                              [ create_ident "l", ty1 ;
                                 create_ident "r", ty2 ]
-                          | Cons -> 
+                          | Cons ->
                               let ty = match vty.desc with
                                 | TyList ty -> ty
                                 | _ -> assert false
                               in
-                              [ create_ident "hd", ty 
+                              [ create_ident "hd", ty
                               ; create_ident "tl", vty
                               ]
-                          | Some -> 
+                          | Some ->
                               let ty = match vty.desc with
                                 | TyOption ty -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "x", ty ]
-  
+
                           | Nil | None | Bool _ | Constant _ (* int/nat/tz *)
                           | Unit -> []
-  
+
                         in
-                        c, 
-                        vs, 
+                        c,
+                        vs,
                         (if_debug (fun () -> Format.eprintf "specialize on %s@." (Cnstr.to_string c));
                         cc (vs @ os) (specialize ivty c matrix))
                        ) constructors),
-  
+
                     if is_signature then None
                     else Some (if_debug (fun () -> Format.eprintf "default@."); cc (List.tl os) (default ivty matrix))
                    )
@@ -921,28 +921,28 @@ module Pmatch = struct
               let o', matrix' = swap i os matrix in
               cc o' matrix' (* xxx inefficient *)
             end
-  
-  let build aty acts guards t = 
+
+  let build aty acts guards t =
     let warn_unused_default = function
       | None -> ()
       | Some _ -> Format.eprintf "Warning: meaningless default case in a pattern match found.  This is likely a compiler bug.@."
     in
     let rec f = function
-      | Fail -> 
+      | Fail ->
           (* Nullary constructor is converted to integer.
              We need the default case for them. *)
           mkassertfalse ~loc:noloc aty
-      | Leaf (binders, i) -> 
+      | Leaf (binders, i) ->
           List.fold_right (fun (v,loc,(v',ty)) st ->
-              mklet ~loc (mkp ~loc ty v) (mkvar ~loc (v',ty)) st) 
+              mklet ~loc (mkp ~loc ty v) (mkvar ~loc (v',ty)) st)
             binders (List.nth acts i)
       | Guard (binders, guard, case, otherwise) ->
           let guarde = List.nth guards guard in
           List.fold_right (fun (v,loc,(v',ty)) st ->
               mklet ~loc (mkp ~loc ty v) (mkvar ~loc (v',ty)) st)
             binders
-          & mke ~loc:guarde.loc aty & IfThenElse (guarde, 
-                                                  List.nth acts case, 
+          & mke ~loc:guarde.loc aty & IfThenElse (guarde,
+                                                  List.nth acts case,
                                                   Some (f otherwise))
       | Switch (_, [], _) -> assert false
       | Switch (v, [Pair, [v1,ty1; v2,ty2], t], d) ->
@@ -951,20 +951,20 @@ module Pmatch = struct
           (* let v1 = fst v in let v2 = snd v in <t> *)
           mklet ~loc:noloc (mkp ~loc:noloc ty1 v1) (mkfst ~loc:noloc & mkvar ~loc:noloc v)
           & mklet ~loc:noloc (mkp ~loc:noloc ty2 v2) (mksnd ~loc:noloc & mkvar ~loc:noloc v) t
-      | Switch (_, [Unit, [], t], d) -> 
+      | Switch (_, [Unit, [], t], d) ->
           warn_unused_default d;
           f t
       | Switch (v, ( [ Left,  [vl,tyl], tl
                      ; Right, [vr,tyr], tr ]
-                   | [ Right, [vr,tyr], tr 
+                   | [ Right, [vr,tyr], tr
                      ; Left,  [vl,tyl], tl ] ), d) ->
           warn_unused_default d;
           let tl = f tl in
           let tr = f tr in
-          mke ~loc:noloc aty & Switch_or (mkvar ~loc:noloc v, 
+          mke ~loc:noloc aty & Switch_or (mkvar ~loc:noloc v,
                                           mkp ~loc:noloc tyl vl, tl,
                                           mkp ~loc:noloc tyr vr, tr)
-  
+
       | Switch (v, ( [(Bool true), [], tt ;
                       (Bool false), [], tf]
                    | [(Bool false), [], tf ;
@@ -973,76 +973,76 @@ module Pmatch = struct
           let tt = f tt in
           let tf = f tf in
           mke ~loc:noloc aty & IfThenElse (mkvar ~loc:noloc v, tt, Some tf)
-  
+
       | Switch (v, ( [Some, [vs,tys], ts;
                       None, [], tn]
-                   | [None, [], tn; 
+                   | [None, [], tn;
                       Some, [vs,tys], ts]), d) ->
           warn_unused_default d;
           let ts = f ts in
           let tn = f tn in
-          mke ~loc:noloc aty & Switch_none (mkvar ~loc:noloc v, tn, mkp ~loc:noloc tys vs, ts) 
-  
+          mke ~loc:noloc aty & Switch_none (mkvar ~loc:noloc v, tn, mkp ~loc:noloc tys vs, ts)
+
       | Switch (v, ( [Cons, [v1,ty1; v2,ty2], tc;
                       Nil, [], tn]
-                   | [Nil, [], tn; 
+                   | [Nil, [], tn;
                       Cons, [v1,ty1; v2,ty2], tc]), d) ->
           warn_unused_default d;
           let tc = f tc in
           let tn = f tn in
-          mke ~loc:noloc aty & Switch_cons (mkvar ~loc:noloc v, 
-                                            mkp ~loc:noloc ty1 v1, 
+          mke ~loc:noloc aty & Switch_cons (mkvar ~loc:noloc v,
+                                            mkp ~loc:noloc ty1 v1,
                                             mkp ~loc:noloc ty2 v2, tc, tn)
-  
+
       | Switch (_v, _cases, None) -> assert false
-  
+
       | Switch (v, cases, Some d) ->
           (* all cases must be about constants with infinite members *)
           List.iter (function
               | (Cnstr.Constant (C.Int _ | String _ | Bytes _ | Set _ | Map _ | Timestamp _), _, _) -> ()
-              | ((Cnstr.Unit|Left|Right|Some|None|Cons|Nil|Pair|Bool _), _, _) -> 
+              | ((Cnstr.Unit|Left|Right|Some|None|Cons|Nil|Pair|Bool _), _, _) ->
                   assert false (* must be handled in the former cases *)
-              | (Cnstr.Constant (C.Unit | Bool _ | Option _ | List _ | Pair _ | Left _ | Right _), _, _) -> 
+              | (Cnstr.Constant (C.Unit | Bool _ | Option _ | List _ | Pair _ | Left _ | Right _), _, _) ->
                   assert false (* invalid *)
               | (Cnstr.Constant (C.Code _), _, _) -> assert false
             ) cases;
           List.fold_right (fun case telse ->
-              match case with 
+              match case with
               | (Cnstr.Constant c, [], t) ->
                   (* XXX comparable check *)
                   let t = f t in
-                  mke ~loc:noloc aty 
-                  & IfThenElse (mkeq ~loc:noloc (mkvar ~loc:noloc v) 
+                  mke ~loc:noloc aty
+                  & IfThenElse (mkeq ~loc:noloc (mkvar ~loc:noloc v)
                                   (mke ~loc:noloc (snd v) & Const c),
                                 t, Some telse)
               | _ -> assert false) cases  & f d
     in
     f t
-          
+
   let compile ~loc e (cases : (P.t * t option * t) list) =
     let gloc = Location.ghost loc in
 
     (* actions as functions *)
-    let acts = 
-      List.mapi (fun i (pat, _g, action) -> 
+    let acts =
+      List.mapi (fun i (pat, _g, action) ->
           let gloc = Location.ghost action.loc in
           let vars = IdTys.elements & P.vars pat in
 
-          let unpackables = 
-            let fvs = List.fold_left (fun fvs idty -> 
-                IdTys.remove idty fvs) 
+          let unpackables =
+            let fvs = List.fold_left (fun fvs idty ->
+                IdTys.remove idty fvs)
                 (freevars action)
                 (if vars = [] then [] else List.tl (List.rev vars)) (* the last one cannot be free inside the body *)
             in
-            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ~legacy:false ty) fvs 
+            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ~legacy:false ty) fvs
           in
           let _must_expand = not & IdTys.is_empty unpackables in
-          (* It's inefficient for the storage, but we do not want to get troubled 
+          (* It's inefficient for the storage, but we do not want to get troubled
              by unpackables around the LAMBDAs introduced by pmatch.
           *)
           let must_expand = true in
-          let case = 
-            if must_expand then 
+          let case =
+            if must_expand then
               create_ident (Printf.sprintf "case_must_expand%d" i)
             else
               create_ident (Printf.sprintf "case%d" i)
@@ -1054,14 +1054,14 @@ module Pmatch = struct
                  Think about the case of [| _ -> assert false].
               *)
               let pvar = mkp ~loc:gloc Type.tyUnit & create_ident "unit" in
-              let f = mkfun ~loc:gloc pvar action in 
+              let f = mkfun ~loc:gloc pvar action in
               let e = mke ~loc:gloc action.typ (App (mkvar ~loc:gloc (case, f.typ), [mkunit ~loc:gloc ()])) in
               if must_expand then
                 (case, None, IML.subst [(case, f)] e)
               else
                 (case, Some f, e)
 
-          | _ -> 
+          | _ ->
               (* match ... with
                  | ..x.. when g[x] -> e[x]
 
@@ -1078,20 +1078,20 @@ module Pmatch = struct
                   (create_ident & Ident.name v, ty)) vars in
               (* We use alpha_conv, not subst, to keep the original code
                  locations *)
-              let s = List.map2 (fun (v,_) (v',_) -> v, v') vars vars' in 
+              let s = List.map2 (fun (v,_) (v',_) -> v, v') vars vars' in
               let action = alpha_conv s action in
 
-              (* f = fun v'1 v'2 .. v'n -> action 
+              (* f = fun v'1 v'2 .. v'n -> action
 
-                 XXX Curried.  This makes expansion happens more often 
+                 XXX Curried.  This makes expansion happens more often
                  to avoid unstorable free vars
               *)
               let f = List.fold_right (fun (v',ty) st ->
                   mkfun ~loc:gloc (mkp ~loc:gloc ty v') st) vars' action
               in
               (* e = f v1 v2 .. vn *)
-              let e = 
-                mke ~loc:gloc action.typ (App (mkvar ~loc:gloc (case, f.typ), List.map (mkvar ~loc:gloc) vars)) 
+              let e =
+                mke ~loc:gloc action.typ (App (mkvar ~loc:gloc (case, f.typ), List.map (mkvar ~loc:gloc) vars))
               in
 
               if must_expand then
@@ -1102,7 +1102,7 @@ module Pmatch = struct
           in
 
           let cases, guards =
-            let cases, guards, _ = 
+            let cases, guards, _ =
               List.fold_left (fun (cases, guards, i) case ->
                   match case with
                   | p, None, e -> (p, None, e)::cases, guards, i
@@ -1117,7 +1117,7 @@ module Pmatch = struct
           let typ = (match List.hd cases with (_,_,e) -> e).typ in
 
           (* let casei = fun ... in let v = e in ... *)
-          let make x = 
+          let make x =
             (* let v = <e> in <x> *)
             let match_ = mklet ~loc:gloc (mkp ~loc:gloc e.typ v) e x in
             (* let casei = <f> in .. *)
@@ -1128,9 +1128,9 @@ module Pmatch = struct
                     mklet ~loc:f.loc (mkp ~loc:f.loc f.typ v) f st) acts match_
           in
 
-          let matrix : matrix = 
-            List.mapi (fun i (pat, g, _) -> 
-                { pats=[pat]; guard= g; action= i; bindings= [] }) cases 
+          let matrix : matrix =
+            List.mapi (fun i (pat, g, _) ->
+                { pats=[pat]; guard= g; action= i; bindings= [] }) cases
           in
 
           (* XXX if match target is a tuple literal, no need to form a real tuple *)
@@ -1148,10 +1148,10 @@ let rec list_elems e = match e.desc with
 
 let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   let gloc = Location.ghost loc in
-  let typ = 
+  let typ =
     Result.at_Error (fun e ->
         errorf_type_expr ~loc "This has type %a.  %a" Printtyp.type_expr exp_type pp_type_expr_error e)
-    & type_expr tyenv exp_type 
+    & type_expr tyenv exp_type
   in
   let make typ desc = { loc; typ; desc; attrs= [] } in
   match (Ctype.expand_head tyenv exp_type).Types.desc, typ.desc with
@@ -1195,7 +1195,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   | Tconstr (p, [_; _], _), TyOr (tyl, tyr) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
       let arg = match args with [arg] -> arg | _ -> internal_error ~loc "strange sum arguments" in
       begin match cstr_name with
-      | "Left" -> 
+      | "Left" ->
           let e = expression lenv arg in
           (* e.typ = ty1 *)
           mkleft ~loc tyr e
@@ -1206,7 +1206,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       | s -> internal_error ~loc "strange sum constructor %s" s
       end
 
-  | Tconstr (p, _, _), TyUnit when p = Predef.path_unit -> 
+  | Tconstr (p, _, _), TyUnit when p = Predef.path_unit ->
       make tyUnit Unit
 
   | Tconstr (p, [], _), TyInt when Path.is_scaml_dot "int" p ->
@@ -1221,27 +1221,27 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
         end
 
   | Tconstr (p, [], _), TyNat when Path.is_scaml_dot "nat" p ->
-      make tyNat begin 
+      make tyNat begin
         let arg = match args with
           | [arg] -> arg
           | _ -> internal_error ~loc "strange Nat arguments"
         in
         match arg.exp_desc with
-          | Texp_constant (Const_int n) -> 
-              if n < 0 then 
+          | Texp_constant (Const_int n) ->
+              if n < 0 then
                 errorf_constant ~loc "Nat can only take a positive integer constant";
               Const (Int (Z.of_int n))
           | _ -> errorf_constant ~loc "Nat can only take an integer constant"
       end
 
   | Tconstr (p, [], _), TyMutez when Path.is_scaml_dot "tz" p ->
-      make tyMutez begin 
+      make tyMutez begin
         let arg = match args with
           | [arg] -> arg
           | _ -> internal_error ~loc "strange Tz arguments"
         in
         match arg.exp_desc with
-          | Texp_constant (Const_float f) -> 
+          | Texp_constant (Const_float f) ->
               begin try
                 let pos = String.index f '.' in
                 let dec = String.sub f 0 pos in
@@ -1255,8 +1255,8 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                 in
                 all_dec dec;
                 all_dec sub;
-                let sub = 
-                  if String.length sub > 6 then 
+                let sub =
+                  if String.length sub > 6 then
                     errorf_constant ~loc "%s: the smallest expressive franction of tz is micro" f;
 
                   sub ^ String.init (6 - String.length sub) (fun _ -> '0')
@@ -1272,8 +1272,8 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   | Tconstr (p, [_], _), TySet _ when (match Path.is_scaml p with Some "set" -> true | _ -> false) ->
       (* XXX comparable type check *)
       if cstr_name <> "Set" then internal_error ~loc "strange set constructor";
-      begin match args with 
-        | [arg] -> 
+      begin match args with
+        | [arg] ->
             let es = list_elems & expression lenv arg in
             mke ~loc typ (Set es)
         | _ -> internal_error ~loc "strange set arguments"
@@ -1283,21 +1283,21 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   | Tconstr (p, [_; _], _), TyMap _ when (match Path.is_scaml p with Some "map" -> true | _ -> false) ->
       (* XXX comparable type check *)
       if cstr_name <> "Map" then internal_error ~loc "strange map constructor";
-      begin match args with 
-        | [arg] -> 
+      begin match args with
+        | [arg] ->
             let es = list_elems & expression lenv arg in
 (*
                 let rec check_uniq = function
                   | [] | [_] -> ()
                   | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
-                      errorf ~loc "Map literal contains duplicated key %a" C.pp c1 
+                      errorf ~loc "Map literal contains duplicated key %a" C.pp c1
                   | _::xs -> check_uniq xs
                 in
                 check_uniq xs;
 *)
             let kvs = List.map (fun e -> match e.desc with
                 | Pair (k,v) -> (k,v)
-                | _ -> 
+                | _ ->
                     errorf_constant ~loc:e.loc "Map binding must be a pair expression")
                 es
             in
@@ -1312,21 +1312,21 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   | Tconstr (p, [_; _], _), TyBigMap _ when (match Path.is_scaml p with Some "big_map" -> true | _ -> false) ->
       (* XXX comparable type check *)
       if cstr_name <> "BigMap" then internal_error ~loc "strange big_map constructor";
-      begin match args with 
-        | [arg] -> 
+      begin match args with
+        | [arg] ->
             let es = list_elems & expression lenv arg in
 (*
                 let rec check_uniq = function
                   | [] | [_] -> ()
                   | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
-                      errorf ~loc "Map literal contains duplicated key %a" C.pp c1 
+                      errorf ~loc "Map literal contains duplicated key %a" C.pp c1
                   | _::xs -> check_uniq xs
                 in
                 check_uniq xs;
 *)
             let kvs = List.map (fun e -> match e.desc with
                 | Pair (k,v) -> (k,v)
-                | _ -> 
+                | _ ->
                     errorf_constant ~loc:e.loc "Map binding must be a pair expression")
                 es
             in
@@ -1340,17 +1340,17 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
         | None -> assert false
         | Some n ->
             match List.assoc_opt n constructions_by_string with
-            | None -> 
+            | None ->
                 unsupported ~loc "constants of data type %s" (Path.name p)
             | Some (tyname, cname, typ, parse) ->
                 if cstr_name <> cname then internal_error ~loc "strange constructor for %s" tyname;
-                match args with 
+                match args with
                 | [] | _::_::_ ->
                     internal_error ~loc "strange arguments for %s" cname
-                | [arg] -> 
+                | [arg] ->
                     let e = expression lenv arg in
                     match e.desc with
-                    | Const (String s) -> 
+                    | Const (String s) ->
                         begin match parse s with
                           | Ok v -> { e with typ; desc= Const v }
                           | Error s -> errorf_constant ~loc "Parse error of %s string: %s" tyname s
@@ -1361,25 +1361,25 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
   | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
       let rec embed ty sides arg = match ty.M.Type.desc, sides with
         | _, [] -> arg
-        | TyOr (ty1, ty2), Binplace.Left::sides -> 
+        | TyOr (ty1, ty2), Binplace.Left::sides ->
             mkleft ~loc:gloc ty2 (embed ty1 sides arg)
-        | TyOr (ty1, ty2), Right::sides -> 
+        | TyOr (ty1, ty2), Right::sides ->
             mkright ~loc:gloc ty1 (embed ty2 sides arg)
         | _ -> assert false
       in
       begin match Env.find_type_descrs p tyenv with
-        | [], [] when p = Predef.path_exn -> 
+        | [], [] when p = Predef.path_exn ->
             errorf_type_expr ~loc
               "%a" pp_type_expr_error Exception_out_of_raise
-        | [], [] -> 
+        | [], [] ->
             errorf_type_expr ~loc "Abstract data type %s is not supported in SCaml" (Path.name p)
         | [], _::_ -> assert false (* record cannot come here *)
         | _::_, _::_ -> assert false
 
-        | constrs, [] -> 
+        | constrs, [] ->
             (* XXX mty is already calculated at the beginning *)
             let consts_ty, non_consts_ty, entire_ty =
-              from_Ok & variant_type tyenv exp_type p constrs 
+              from_Ok & variant_type tyenv exp_type p constrs
             in
             let rec find_constr i = function
               | [] -> assert false
@@ -1389,7 +1389,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
             match cdesc.cstr_arity, consts_ty, non_consts_ty with
             | _, None, [] -> assert false
             | 0, None, _ -> assert false
-            | 0, Some names, [] -> 
+            | 0, Some names, [] ->
                 (* XXX annotate constr name *)
                 mkint ~loc:gloc & find_constr 0 names
             | 0, Some names, xs ->
@@ -1399,7 +1399,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
             | _, _, cs ->
                 let names = List.map fst cs in
                 let i = find_constr 0 names in
-                let sides = 
+                let sides =
                   let shift = if consts_ty = None then 0 else 1 in
                   Binplace.path (i + shift) (List.length names + shift)
                 in
@@ -1421,19 +1421,19 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
   end;
   let typ = Result.at_Error (fun e ->
       errorf_type_expr ~loc "This expression has type@ %a.@ %a" Printtyp.type_expr mltyp pp_type_expr_error e)
-      & type_expr tyenv mltyp 
+      & type_expr tyenv mltyp
   in
   let mk desc = { loc; typ; desc; attrs= [] } in
   let e = match exp_desc with
-    | Texp_ident (Path.Pident id, {loc=vloc}, _vd) -> 
-        if not (List.mem id (lenv.local_variables @ lenv.non_local_variables)) then 
-          internal_error ~loc:vloc "Hey %s is not tracked!  env=%s" 
+    | Texp_ident (Path.Pident id, {loc=vloc}, _vd) ->
+        if not (List.mem id (lenv.local_variables @ lenv.non_local_variables)) then
+          internal_error ~loc:vloc "Hey %s is not tracked!  env=%s"
             (Ident.unique_name id)
             (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
         if not (List.mem id lenv.local_variables)
-           && not (Michelson.Type.is_packable ~legacy:false typ) 
+           && not (Michelson.Type.is_packable ~legacy:false typ)
            && lenv.fun_level > 0 then
-          errorf_freevar ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with unpackable type." 
+          errorf_freevar ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with unpackable type."
             (Ident.name id);
         (* if List.mem id lenv.local_variables
              && not (Michelson.Type.storable typ) then
@@ -1444,7 +1444,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         begin match Path.is_scaml p with
           | Some "Contract.self" ->
               if lenv.fun_level > 0 then
-                errorf_self ~loc:lenv.fun_loc "Contract.self cannot freely occur in a function body except the entrypoints." 
+                errorf_self ~loc:lenv.fun_loc "Contract.self cannot freely occur in a function body except the entrypoints."
               else
                 mk & Var contract_self_id
 
@@ -1454,30 +1454,30 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               *)
               errorf_contract ~loc "Contract.create_raw must be immediately applied with a string literal"
           | Some n -> mk & primitive ~loc typ n []
-          | None -> 
+          | None ->
               match Path.is_stdlib p with
               | None ->
                   (* XXX Var should take Path.t... here we use a workaround *)
                   mk & Var (Ident.create_persistent (Path.name p))
-              | Some _ -> 
+              | Some _ ->
                   errorf_stdlib ~loc "This value is defined in Stdlib module which is not supported by SCaml."
         end
-    | Texp_constant (Const_string (s, _)) -> 
+    | Texp_constant (Const_string (s, _)) ->
         mk & Const (String s)
     | Texp_constant _ -> unsupported ~loc "constant"
     | Texp_tuple [e1; e2] ->
         let e1 = expression lenv e1 in
         let e2 = expression lenv e2 in
-        (* tyPair (e1.typ, e2.typ) = typ *) 
+        (* tyPair (e1.typ, e2.typ) = typ *)
         mk & Pair (e1, e2)
     | Texp_tuple es ->
         Binplace.fold
           ~leaf:(fun c -> c)
           ~branch:(fun c1 c2 -> mk & Pair (c1, c2))
-          & Binplace.place 
+          & Binplace.place
           & List.map (expression lenv) es
 
-    | Texp_construct ({loc}, c, args) -> 
+    | Texp_construct ({loc}, c, args) ->
         construct lenv ~loc tyenv mltyp c args
 
     | Texp_assert e ->
@@ -1494,7 +1494,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         if not Flags.(!flags.iml_pattern_match) then begin
           (* simple let x = e in e' *)
           let rev_vbs =
-            List.fold_left (fun rev_vbs vb -> 
+            List.fold_left (fun rev_vbs vb ->
                 let _, v, e = value_binding lenv vb in
                 (v, e) :: rev_vbs) [] vbs
           in
@@ -1517,18 +1517,18 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               let i = create_ident "x" in
               let x = { desc= i; typ; loc= Location.none; attrs= () } in
               let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
-              { desc= Let (x, vb_expr, 
+              { desc= Let (x, vb_expr,
                            Pmatch.compile ~loc ex [(pattern vb_pat, None, e')])
               ; typ= e'.typ
               ; loc
-              ; attrs= [] 
+              ; attrs= []
               }
             ) vbs & expression lenv' e
         end
 
     | Texp_apply (_, []) -> assert false
 
-    | Texp_apply (f, args) -> 
+    | Texp_apply (f, args) ->
         let get_args = List.map (function
             | (Nolabel, Some (e: Typedtree.expression)) -> expression lenv e
             | _ -> unsupported ~loc "labeled arguments")
@@ -1538,7 +1538,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | _ -> None
         in
         begin match name with
-        | None -> 
+        | None ->
           let name = match f with
             | { exp_desc= Texp_ident (p, _, _) } -> Path.is_stdlib p
             | _ -> None
@@ -1547,48 +1547,48 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
             | Some "@@" ->
                 (* e1 @@ e2 => e1 e2 *)
                 begin match get_args args with
-                  | [e] -> e 
+                  | [e] -> e
                   | e1 :: es -> mk & App (e1, es)
                   | [] -> assert false
                 end
             | _ -> mk & App (expression lenv f, get_args args)
           end
-  
+
         | Some "Obj.pack'" ->
             let fty = Result.at_Error (fun e ->
                 errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type
                   pp_type_expr_error e)
-                & type_expr f.exp_env 
+                & type_expr f.exp_env
                 & match (Ctype.repr f.exp_type).Types.desc with
                   | Tarrow (_, _, ty, _) -> ty
                   | _ -> assert false
             in
             (* fty = fty' *)
             mk & primitive ~loc:f.exp_loc fty "Obj.pack" & get_args (List.tl args)
-            
+
         | Some "Obj.unpack'" ->
             let fty = Result.at_Error (fun e ->
                 errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type
                   pp_type_expr_error e)
-                & type_expr f.exp_env 
+                & type_expr f.exp_env
                 & match (Ctype.repr f.exp_type).Types.desc with
                   | Tarrow (_, _, ty, _) -> ty
                   | _ -> assert false
             in
             (* fty = fty' *)
             mk & primitive ~loc:f.exp_loc fty "Obj.unpack" & get_args (List.tl args)
-            
+
         | Some "raise" -> translate_raise ~loc lenv typ args
         | Some n when  String.is_prefix "Contract.create" n ->
             mk & contract_create ~loc n & get_args args
-        | Some n -> 
+        | Some n ->
             let fty = Result.at_Error (fun e ->
                 errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type
                   pp_type_expr_error e)
-                & type_expr f.exp_env f.exp_type 
+                & type_expr f.exp_env f.exp_type
             in
             mk & primitive ~loc:f.exp_loc fty n & get_args args
         end
@@ -1600,7 +1600,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         if partial = Partial then errorf_pattern_match ~loc "Pattern match is not exhaustive";
         (* name the same name of the original if possible *)
         let i = create_ident & match cases with
-          | [ { c_lhs = { pat_desc= (Tpat_var (id, _) | 
+          | [ { c_lhs = { pat_desc= (Tpat_var (id, _) |
                                      Tpat_alias ({ pat_desc= Tpat_any }, id, _)) } } ] ->
               Ident.name id
           | _ -> "arg"
@@ -1617,9 +1617,9 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         end else begin
           (* function case1 | .. | casen
              =>
-             fun xnew -> match xnew with case1 | .. | casen 
+             fun xnew -> match xnew with case1 | .. | casen
           *)
-          let compile_case case = 
+          let compile_case case =
             let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
             let guard = Option.fmap (expression lenv) case.c_guard in
             (pattern case.c_lhs, guard, expression lenv case.c_rhs)
@@ -1628,7 +1628,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           mkfun ~loc var t
         end
 
-    | Texp_ifthenelse (cond, then_, Some else_) -> 
+    | Texp_ifthenelse (cond, then_, Some else_) ->
         let econd = expression lenv cond in
         let ethen = expression lenv then_ in
         let eelse = expression lenv else_ in
@@ -1642,15 +1642,15 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         if ethen.typ.desc <> TyUnit then internal_error ~loc:ethen.loc "else None has non unit type";
         mk & IfThenElse (econd, ethen, None)
 
-    | Texp_match (_ , _, Partial) -> 
+    | Texp_match (_ , _, Partial) ->
         unsupported ~loc "non exhaustive pattern match"
 
-    | Texp_match (e , cases, Total) -> 
+    | Texp_match (e , cases, Total) ->
         let e = expression lenv e in
         if not Flags.(!flags.iml_pattern_match) then begin
           switch lenv ~loc e cases
         end else begin
-          let compile_case case = 
+          let compile_case case =
             let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
             let guard = Option.fmap (expression lenv) case.c_guard in
             (pattern case.c_lhs, guard, expression lenv case.c_rhs)
@@ -1660,9 +1660,9 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_try _ -> unsupported ~loc "try-with"
     | Texp_variant _ -> unsupported ~loc "polymorphic variant"
 
-    | Texp_record { fields; extended_expression= None; _ } -> 
+    | Texp_record { fields; extended_expression= None; _ } ->
         (* I believe fields are already sorted *)
-        let es = 
+        let es =
           List.map (fun (_ldesc, ldef) -> match ldef with
               | Overridden (_, e) -> expression lenv e
               | Kept _ -> assert false) & Array.to_list fields
@@ -1675,7 +1675,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_record { fields; extended_expression= Some e; } ->
         (* optimal code, I hope *)
         (* I believe fields are already sorted *)
-        let es = 
+        let es =
           List.map (fun (_ldesc, ldef) -> match ldef with
               | Overridden (_, e) -> Some (expression lenv e)
               | Kept _ -> None) & Array.to_list fields
@@ -1683,7 +1683,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         let tree = Binplace.place es in
         let rec simplify = function
           | Binplace.Leaf x as t -> t, x = None
-          | Branch (t1, t2) -> 
+          | Branch (t1, t2) ->
               let t1, b1 = simplify t1 in
               let t2, b2 = simplify t2 in
               if b1 && b2 then Leaf None, true
@@ -1736,8 +1736,8 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
 and primitive ~loc fty n args =
   let apply_left x left = match left with
     | [] -> x
-    | _ -> 
-        let typ = 
+    | _ ->
+        let typ =
           let rec f ty = function
             | [] -> ty
             | _arg::args ->
@@ -1756,21 +1756,21 @@ and primitive ~loc fty n args =
   | "Contract.self" -> assert false (* must be handled already *)
   | "Contract.contract'" ->
       begin match args with
-        | [] | [_] -> 
+        | [] | [_] ->
             errorf_contract ~loc "Contract.contract' must be fully applied"
         | address :: ({ desc= Const (M.Constant.String _) } as entry) :: left ->
             apply_left (Prim (n, fty, [address; entry])) left
         | _ :: { loc } :: _ ->
             errorf_contract ~loc "contract entry name must be a constant"
       end
-  | _ -> 
+  | _ ->
       match List.assoc_opt n Primitives.primitives with
       | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
       | Some (arity, _conv) ->
           if arity > List.length args then
             let tys, ret = M.Type.args fty in
-            let tys = 
-              List.take (arity - List.length args) 
+            let tys =
+              List.take (arity - List.length args)
               & List.drop (List.length args) tys
             in
             let xtys = List.map (fun ty -> create_ident "x", ty) tys in
@@ -1788,12 +1788,12 @@ and switch lenv ~loc:loc0 e cases =
   let ty = e.typ in
   let compile_case case = match case.c_guard with
     | Some e -> unsupported ~loc:e.exp_loc "guard"
-    | None -> 
+    | None ->
         match case.c_lhs.pat_desc with
         | Tpat_construct (_, { cstr_name }, xs) -> cstr_name, xs, expression lenv case.c_rhs
         | _ -> unsupported ~loc:case.c_lhs.pat_loc "non variant pattern"
   in
-  let cases = 
+  let cases =
     List.sort (fun (n1,_,_) (n2,_,_) -> compare n1 n2) (List.map compile_case cases)
   in
   let mk desc = { desc; loc=loc0; typ= (let _, _, e = List.hd cases in e.typ); attrs= [] } in
@@ -1821,7 +1821,7 @@ and switch lenv ~loc:loc0 e cases =
                         rv, re)
   | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
 
-and value_binding lenv { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } = 
+and value_binding lenv { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } =
   (* currently we only handle very simple sole variable pattern *)
   match pattern_simple vb_pat with
   | [v] ->
@@ -1848,7 +1848,7 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_value (Recursive, _vbs) -> unsupported ~loc "recursive definitions"
 
   | Tstr_value (Nonrecursive, vbs) ->
-      let rev_vbs = 
+      let rev_vbs =
         List.fold_left (fun rev_vbs vb ->
             let _pat_typ,v,b = value_binding lenv vb in
             (v,b)::rev_vbs) [] vbs
@@ -1861,7 +1861,7 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_exception _ -> lenv, []
   | Tstr_type _ -> lenv, []
 
-  | Tstr_module mb -> 
+  | Tstr_module mb ->
       let mname = Ident.name mb.mb_id in
       let rec module_expr me = match me.mod_desc with
         | Tmod_structure str -> structure lenv str
@@ -1871,28 +1871,28 @@ and structure_item lenv { str_desc; str_loc=loc } =
       let lenv, vbs = module_expr mb.mb_expr in
       (* Make local defs accessible from the outside *)
       (* XXX Dirty boolean hack to prevent x in
-         module X = struct 
-           module Y = struct 
+         module X = struct
+           module Y = struct
              let x = 1
            end
          end
-         
+
          from being copied as X.x_0.  It should be copied only to Y.x_0 and X.Y.x_0.
-         
+
       *)
       let vbs' = List.filter_map (fun (pv,t,defined_here) ->
           if defined_here then
             (* XXX Check shaodowing *)
-            Some ({ pv with IML.desc= Ident.create_persistent (mname ^ "." ^ Ident.name pv.IML.desc) }, 
+            Some ({ pv with IML.desc= Ident.create_persistent (mname ^ "." ^ Ident.name pv.IML.desc) },
                   { t with IML.desc= IML.Var pv.desc },
                   true)
-          else None) vbs 
+          else None) vbs
       in
       Lenv.add_locals (List.map (fun (pv,_,_) -> pv.IML.desc) vbs') lenv,
-      List.map (fun (pv,def,_) -> (pv,def,false)) vbs 
+      List.map (fun (pv,def,_) -> (pv,def,false)) vbs
       @ vbs'
 
-  | Tstr_attribute _ -> 
+  | Tstr_attribute _ ->
       (* simply ignores it for now *)
       lenv, []
 
@@ -1900,7 +1900,7 @@ and structure lenv { str_items= sitems } =
   let lenv, rev_vbss =
     List.fold_left (fun (lenv, rev_vbss) sitem ->
         let lenv, vbs = structure_item lenv sitem in
-        lenv, vbs :: rev_vbss) (lenv, []) sitems 
+        lenv, vbs :: rev_vbss) (lenv, []) sitems
   in
   let vbs = List.flatten & List.rev rev_vbss in
   (lenv, vbs)
@@ -1913,7 +1913,7 @@ and contract_create ~loc n args = match n with
       | [e0; e1; e2; e3] ->
           let s = match e0.desc with
             | Const (C.String s) -> s
-            | _ -> 
+            | _ ->
                 errorf_contract ~loc:e0.loc
                   "The first argument of %s must be a string literal of Michelson code" n
           in
@@ -1927,7 +1927,7 @@ and contract_create ~loc n args = match n with
       | [e0; e1; e2; e3] ->
           let s = match e0.desc with
             | Const (C.String s) -> s
-            | _ -> 
+            | _ ->
                 errorf_contract ~loc:e0.loc
                   "The first argument of %s must be a string literal of Michelson file path" n
           in
@@ -1943,7 +1943,7 @@ and translate_raise lenv ~loc typ args = match args with
             (* raise C(a1, .., an)  = >  failwith ("C", a1, .., an) *)
             begin match cdesc.cstr_tag with
               | Cstr_extension (p, _) ->
-                  let name = 
+                  let name =
                     let rec make_name = function
                       | Path.Pident id ->
                           if Ident.persistent id || Ident.is_predef id then Ident.name id
@@ -1958,11 +1958,11 @@ and translate_raise lenv ~loc typ args = match args with
                     make_name p
                   in
                   let args = List.map (expression lenv) args in
-                  let arg = 
+                  let arg =
                     Binplace.fold
                        ~leaf:(fun c -> c)
                        ~branch:(fun c1 c2 -> mkpair ~loc:arg.exp_loc c1 c2)
-                       & Binplace.place 
+                       & Binplace.place
                        & mke ~loc:cdesc.cstr_loc tyString (Const (C.String name)) :: args
                   in
                   mke ~loc typ
@@ -1980,7 +1980,7 @@ let toplevel_value_bindings str =
     match str_desc with
       | Tstr_value (Nonrecursive, vbs) ->
           List.rev_append vbs st
-      | Tstr_module mb -> 
+      | Tstr_module mb ->
           let rec module_expr me = match me.mod_desc with
             | Tmod_structure str -> structure str
             | Tmod_constraint (me, _, _, _) -> module_expr me
@@ -1996,23 +1996,23 @@ let toplevel_value_bindings str =
   structure str
 
 let get_explicit_entries vbs =
-  List.filter_map (fun vb -> 
+  List.filter_map (fun vb ->
       match attr_has_entry_point & Migrate_parsetree__.Migrate_parsetree_409_408_migrate.copy_attributes vb.vb_attributes with
       | None -> None
       | Some (_, name) -> Some (vb, name)) vbs
 
 let get_entries compile_only vbs =
   match get_explicit_entries vbs with
-  | [] -> 
+  | [] ->
       if compile_only then []
-      else begin 
+      else begin
         (* XXX This is obsolete *)
         match List.last vbs with
         | None -> []
         | Some vb -> [vb, None]
       end
   | ents -> ents
-    
+
 let type_check_entry templ vb =
   let unify ty ty' =
     let open Ctype in
@@ -2023,26 +2023,26 @@ let type_check_entry templ vb =
         wrap_ocaml_exn
           (Typecore.Error(loc, env, Pattern_type_clash(trace, None)))
           310
-          ~loc:vb.vb_loc 
+          ~loc:vb.vb_loc
           "Entry point typing error"
     | Tags(l1,l2) ->
         wrap_ocaml_exn
           (Typetexp.Error(loc, env, Typetexp.Variant_tags (l1, l2)))
           310
-          ~loc:vb.vb_loc 
+          ~loc:vb.vb_loc
           "Entry point typing error"
     | e ->
         internal_error ~loc:vb.vb_loc
           "unify raised something unfamiliar: %s" (Printexc.to_string e)
   in
-  unify 
+  unify
     vb.vb_pat.pat_type (* the actual type of the pattern *)
     templ              (* must have this type *)
 
 (*
    Even if the parameter and storage types of the entries are generalized,
-   they are canceled by unifing with non-generalized type variables. 
-   
+   they are canceled by unifing with non-generalized type variables.
+
    XXX This was ... unintentionally introduced, but useful feature.
    XXX This must be documented.
 *)
@@ -2064,7 +2064,7 @@ let type_check_entries tyenv vbns =
       let ty_parameter, templ = ty_entry () in
       type_check_entry templ vb;
       (ty_parameter, vb, name)
-    ) vbns, 
+    ) vbns,
   ty_storage
 
 
@@ -2166,7 +2166,7 @@ let compile_global_entry ty_storage ty_return node =
           | _ -> assert false
         in
         if not (M.Type.is_parameterable param_type) then begin
-          errorf_entry_typing ~loc:var.loc "The entry point has a contract parameter of %a which is not parameterable.  It cannot contain operation.@." 
+          errorf_entry_typing ~loc:var.loc "The entry point has a contract parameter of %a which is not parameterable.  It cannot contain operation.@."
             M.Type.pp param_type
         end;
         let param_var = mkvar ~loc:noloc (param_id, param_type) in
@@ -2190,10 +2190,10 @@ let compile_global_entry ty_storage ty_return node =
   let param_id = Ident.create_local "global_param" in
   let e, param_typ = f param_id node in
 
-  (* This is the last defence.  We should check it earlier where the locations 
+  (* This is the last defence.  We should check it earlier where the locations
      are known. *)
   if not (M.Type.is_parameterable param_typ) then begin
-    errorf_entry_typing ~loc:noloc "Contract's parameter type %a is not parameterable.  It cannot contain operation.@." 
+    errorf_entry_typing ~loc:noloc "Contract's parameter type %a is not parameterable.  It cannot contain operation.@."
       M.Type.pp param_typ
   end;
 
@@ -2201,8 +2201,8 @@ let compile_global_entry ty_storage ty_return node =
   let e = add_self (tyContract param_typ) e in
 
   let param_pat = mkp ~loc:noloc param_typ param_id in
-  
-  (* fun param_storage -> 
+
+  (* fun param_storage ->
        let param = fst param_storage in
        let storage = snd param_storage in
        e
@@ -2211,24 +2211,24 @@ let compile_global_entry ty_storage ty_return node =
   let id_param_storage = Ident.create_local "param_storage" in
   let pat_param_storage = mkp ~loc:noloc ty_param_storage id_param_storage in
   let e_param_storage = mkvar ~loc:noloc (id_param_storage, ty_param_storage) in
-  mkfun ~loc:noloc pat_param_storage 
+  mkfun ~loc:noloc pat_param_storage
   & mklet ~loc:noloc param_pat (mkfst ~loc:noloc e_param_storage)
   & mklet ~loc:noloc pat_storage (mksnd ~loc:noloc e_param_storage)
   & e
 
-let with_flags_in_code str f = 
-  let attrs = Attribute.get_scaml_toplevel_attributes str in
-  Flags.with_flags 
-    (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
+let with_flags_in_code str f =
+  let attrs = List.concat @@ List.map snd @@ Attribute.get_scaml_toplevel_attributes str in
+  Flags.with_flags
+    (fun t -> List.fold_left (fun t ({txt; loc}, v) ->
          Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
          t attrs) f
 
-let compile_structure sourcefile str = 
+let compile_structure sourcefile str =
   let _loc_file = Location.in_file sourcefile in
   let loc = { local_variables= []; non_local_variables= []; fun_loc= Location.none; fun_level= -2} in
   snd & structure loc str
 
-let compile_entry_points compile_only sourcefile str = 
+let compile_entry_points compile_only sourcefile str =
   let vbs = toplevel_value_bindings str in
   match get_entries compile_only vbs with
   | [] ->
@@ -2237,11 +2237,11 @@ let compile_entry_points compile_only sourcefile str =
       errorf_entry ~loc:(Location.in_file sourcefile)
         "SCaml requires at least one value definition for an entry point"
   | entry_vbns ->
-      let _entry_ids = 
-        List.map (fun (vb, _) -> 
+      let _entry_ids =
+        List.map (fun (vb, _) ->
             match vb.vb_pat.pat_desc with
             | Tpat_var (id, _) -> id
-            | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> 
+            | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) ->
                 (* We transform (_ as x) to x if _ and x have the same location.
                    The compiler transforms (x:t) into (_ as x : t).
                    This avoids transforming a warning 27 into a 26.
@@ -2257,7 +2257,7 @@ let compile_entry_points compile_only sourcefile str =
       let ty_param = global_parameter_type tyenv entry_tree in
 
       (* self type *)
-      let () = 
+      let () =
         let path =
           Env.lookup_type (*~loc: *)
             (Longident.(Ldot (Lident "SCaml", "contract"))) tyenv
@@ -2268,8 +2268,8 @@ let compile_entry_points compile_only sourcefile str =
 
       (* convert to Michelson types *)
 
-      let ty_operations = 
-        let ty_operations = 
+      let ty_operations =
+        let ty_operations =
           let path =
             Env.lookup_type (*~loc: *)
               (Longident.(Ldot (Lident "SCaml", "operations"))) str.str_final_env
@@ -2277,22 +2277,22 @@ let compile_entry_points compile_only sourcefile str =
           Ctype.newconstr path []
         in
         Result.at_Error (fun e ->
-            errorf_type_expr ~loc:(Location.in_file sourcefile) 
+            errorf_type_expr ~loc:(Location.in_file sourcefile)
               "SCaml.operations failed to be converted to Michelson type: %a"
               pp_type_expr_error e)
           & type_expr tyenv ty_operations
       in
 
       let ty_storage =
-        let res = 
+        let res =
           Result.at_Error (fun e ->
               errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has storage type %a.  %a"
                 Printtyp.type_expr ty_storage
                 pp_type_expr_error e)
-            & type_expr tyenv ty_storage 
+            & type_expr tyenv ty_storage
         in
         if not & M.Type.is_storable res then
-          errorf_entry_typing ~loc:(Location.in_file sourcefile) "Contract has non storable type %a for the storage.@." 
+          errorf_entry_typing ~loc:(Location.in_file sourcefile) "Contract has non storable type %a for the storage.@."
             (* XXX show the original type if the expansion is different from it *)
             Printtyp.type_expr (Ctype.full_expand tyenv ty_storage);
         res
@@ -2302,19 +2302,19 @@ let compile_entry_points compile_only sourcefile str =
 
       let global_entry = compile_global_entry ty_storage ty_return entry_tree in
 
-      let ty_param = 
+      let ty_param =
         Result.at_Error (fun e ->
             errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a.  %a"
               Printtyp.type_expr ty_param
               pp_type_expr_error e)
-          & type_expr tyenv ty_param 
+          & type_expr tyenv ty_param
       in
       let ty_param = match entry_tree with
         | Leaf _ (* sole entry point *) -> ty_param
         | Branch _ ->
             let open M.Type in
             let rec add_annot ty node = match ty.desc, node with
-              | _, Binplace.Leaf (_,vb,name) -> 
+              | _, Binplace.Leaf (_,vb,name) ->
                   (* XXX dup *)
                   let id = match pattern_simple vb.vb_pat with
                     | [p] -> p.desc
@@ -2329,7 +2329,7 @@ let compile_entry_points compile_only sourcefile str =
                   let ty1 = add_annot ty1 n1 in
                   let ty2 = add_annot ty2 n2 in
                   { ty with desc= TyOr (ty1, ty2) }
-              | _, Branch _ -> 
+              | _, Branch _ ->
                   if_debug (fun () -> Format.eprintf "Entry point type: %a@." M.Type.pp ty);
                   assert false
             in
@@ -2337,7 +2337,7 @@ let compile_entry_points compile_only sourcefile str =
       in
       Some (ty_param, ty_storage, global_entry)
 
-let implementation compile_only sourcefile outputprefix str = 
+let implementation compile_only sourcefile outputprefix str =
     modname := Some (String.capitalize_ascii (Filename.basename outputprefix));
     let entry_points = compile_entry_points compile_only sourcefile str in
     let vbs = compile_structure sourcefile str in
@@ -2345,9 +2345,9 @@ let implementation compile_only sourcefile outputprefix str =
     entry_points, vbs
 
 let link (ty_param, ty_storage, global_entry) vbs =
-  ty_param, 
-  ty_storage, 
-  List.fold_right (fun (v,b) x -> 
+  ty_param,
+  ty_storage,
+  List.fold_right (fun (v,b) x ->
       (* Format.eprintf "subst %s: @[%a@]@." (Ident.unique_name v.desc) IML.pp b; *)
       IML.subst [v.desc, b] x) vbs global_entry
 
@@ -2356,7 +2356,7 @@ let connect vbs =
   let es = List.map (fun ({desc=id; typ}, _) -> mkvar ~loc:Location.none (id, typ)) vbs in
   if es = [] then mkunit ~loc:Location.none ()
   else
-    let t = 
+    let t =
       Binplace.fold
         ~leaf:(fun c -> c)
         ~branch:(fun c1 c2 -> mkpair ~loc:Location.none c1 c2)
@@ -2367,11 +2367,11 @@ let connect vbs =
       | (p,t)::vbs -> mklet ~loc:Location.none p t (f vbs)
     in
     f vbs
-  
+
 (* convert mode *)
-let convert str = 
-  let attrs = Attribute.get_scaml_toplevel_attributes str in
-  Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) -> 
+let convert str =
+  let attrs = List.concat @@ List.map snd @@ Attribute.get_scaml_toplevel_attributes str in
+  Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) ->
       Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
       t attrs);
 
@@ -2380,7 +2380,7 @@ let convert str =
     | Tstr_value (Recursive, _) -> unsupported ~loc "recursive definitions"
     | Tstr_primitive _          -> unsupported ~loc "primitive declaration"
     | Tstr_typext _             -> unsupported ~loc "type extension"
-    | Tstr_module _ 
+    | Tstr_module _
     | Tstr_recmodule _          -> unsupported ~loc "module declaration"
     | Tstr_class _              -> unsupported ~loc "class declaration"
     | Tstr_class_type _         -> unsupported ~loc "class type declaration"
@@ -2394,14 +2394,14 @@ let convert str =
               | Tpat_var (id, _) -> (Some id, vb_expr)
               | Tpat_alias ({ pat_desc = Tpat_any; pat_loc=_ }, id, _) -> (Some id, vb_expr)
               | Tpat_any -> (None, vb_expr)
-              | _ -> 
+              | _ ->
                   errorf_pattern_match ~loc:vb_pat.pat_loc "Conversion mode does not support complex patterns"
             in
             `Value (ido, expression lenv e)
           ) vbs
     | Tstr_open _open_description -> []
     | Tstr_exception _ -> [] (* XXX *)
-    | Tstr_type (_, tds) -> 
+    | Tstr_type (_, tds) ->
         List.map (fun td -> match td.typ_params with
             | _::_ -> errorf_type_expr ~loc:td.typ_loc "Conversion mode does not support parameterized type declarations"
             | [] ->
@@ -2409,7 +2409,7 @@ let convert str =
                 let ty = Btype.newgenty (Tconstr (Path.Pident td.typ_id, [], ref Types.Mnil)) in
                 match type_expr str_final_env ty with
                 | Ok x -> `Type (id, x)
-                | Error e -> 
+                | Error e ->
                     errorf_type_expr ~loc:td.typ_loc "Type %a.  %a" Printtyp.type_expr ty pp_type_expr_error e) tds
     | Tstr_attribute _ -> []
   in
@@ -2417,3 +2417,64 @@ let convert str =
     List.concat_map (structure_item { local_variables= []; non_local_variables= []; fun_loc= Location.none; fun_level= -1 } str_final_env) sitems
   in
   structure str
+
+let reject_SCaml_attribute_in_complex_structure str =
+  let open Typedtree in
+  let open Tast_iterator in
+  let bad loc = errorf_attribute ~loc "SCaml attributes cannot appear in let module, functors, functor applications and packed modules" in
+
+  let module Reject = struct
+    let structure iter str = 
+      match Attribute.get_scaml_toplevel_attributes str with
+      | [] -> default_iterator.structure iter str
+      | (loc,_)::_ -> bad loc
+    let iter = { default_iterator with structure }
+  end in
+  
+  let module Check = struct
+    let expr iter expr = match expr.exp_desc with
+      | Texp_letmodule (_, _, _, me, e) ->
+          Reject.iter.module_expr Reject.iter me;
+          iter.expr iter e
+      | Texp_pack me ->
+          Reject.iter.module_expr Reject.iter me
+      | _ -> default_iterator.expr iter expr
+    let module_expr iter me = match me.mod_desc with
+      | Tmod_functor (_, _, _, me) ->
+          Reject.iter.module_expr Reject.iter me
+      | Tmod_apply (me1, me2, _) ->
+          Reject.iter.module_expr Reject.iter me1;
+          Reject.iter.module_expr Reject.iter me2
+      | _ -> default_iterator.module_expr iter me
+    let iter = { default_iterator with expr; module_expr }
+  end in
+  Check.iter.structure Check.iter str
+
+let filter_by_SCaml_attribute str =
+  let open Tast_mapper in
+  let open Typedtree in
+  let structure mapper str =
+    match Attribute.get_scaml_toplevel_attributes str with
+    | _::_ -> str
+    | [] ->
+        let str_items =
+          let do_mb mb = match mb.mb_expr.mod_desc with 
+            | Tmod_structure str ->
+                Some { mb with mb_expr= 
+                                 { mb.mb_expr with mod_desc= Tmod_structure (mapper.structure mapper str) } }
+            | _ -> None
+          in
+          List.filter_map (fun sitem -> match sitem.str_desc with
+              | Tstr_module mb ->
+                  Option.fmap (fun mb -> { sitem with str_desc= Tstr_module mb }) @@ do_mb mb
+              | Tstr_recmodule mbs ->
+                  begin match List.filter_map do_mb mbs with
+                  | [] -> None
+                  | mbs -> Some { sitem with str_desc= Tstr_recmodule mbs }
+                  end
+              | _ -> None) str.str_items
+        in
+        { str with str_items }
+  in
+  let mapper = { default with structure } in
+  mapper.structure mapper str

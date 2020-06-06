@@ -69,6 +69,7 @@ type module_ =
 let rev_compiled = ref ([] : module_ list)
 
 let compile_only sourcefile outputprefix modulename (str, _coercion) =
+  Translate.reject_SCaml_attribute_in_complex_structure str;
   Translate.with_flags_in_code str & fun () ->
     let (gento, defs), secs = with_time & fun () -> 
         Translate.implementation true sourcefile outputprefix str 
@@ -217,6 +218,7 @@ let link modules =
       close_out oc
 
 let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
+  Translate.reject_SCaml_attribute_in_complex_structure str;
   let module Compile = Compile.Make(struct let allow_big_map = true end) in
   prerr_endline "convert_all";
   let ts = Translate.convert str in
@@ -244,6 +246,7 @@ let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
           end) ts
 
 let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
+  Translate.reject_SCaml_attribute_in_complex_structure str;
   let module Compile = Compile.Make(struct let allow_big_map = true end) in
   let ts = Translate.convert str in
   let t = try List.find
@@ -266,6 +269,7 @@ let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
   | _ -> assert false
 
 let convert_type ident _sourcefile _outputprefix _modulename (str, _coercion) =
+  Translate.reject_SCaml_attribute_in_complex_structure str;
   let ts = Translate.convert str in
   let t = try List.find
                 (fun t -> match t with
@@ -280,6 +284,7 @@ let convert_type ident _sourcefile _outputprefix _modulename (str, _coercion) =
   | _ -> assert false
 
 let revert m _sourcefile _outputprefix _modulename (str, _coercion) =
+  Translate.reject_SCaml_attribute_in_complex_structure str;
   match File.to_string m with
   | Error (`Exn e) -> raise e
   | Ok m ->

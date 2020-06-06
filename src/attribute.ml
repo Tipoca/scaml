@@ -65,7 +65,7 @@ let get_scaml_toplevel_attributes str =
             | _ -> ()
           end;
           if nomore then errorf_attribute ~loc "SCaml attributes must appear at the head of the source file.";
-          parse_options_in_payload ~loc "SCaml" payload @ st, false
+          (loc, parse_options_in_payload ~loc "SCaml" payload) :: st, false
       | _ -> st, true (* we cannot have SCaml attributes later *)
   in
   let structure { str_items= sitems } =
