@@ -36,3 +36,7 @@ val convert
   -> [> `Type of Ident.t * Michelson.Type.t | `Value of Ident.t option * IML.t ] list
 
 val with_flags_in_code : Typedtree.structure -> (unit -> 'a) -> 'a
+
+val reject_SCaml_attribute_in_complex_structure : Typedtree.structure -> unit
+
+val filter_by_SCaml_attribute : Typedtree.structure -> Typedtree.structure

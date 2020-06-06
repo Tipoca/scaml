@@ -276,7 +276,7 @@ and revert_variant_type tyenv ty _p constrs =
 
 (* revert mode *)
 let get_type str = 
-  let attrs = Attribute.get_scaml_toplevel_attributes str in
+  let attrs = List.concat @@ List.map snd @@ Attribute.get_scaml_toplevel_attributes str in
   Flags.update (fun t -> List.fold_left (fun t ({Location.txt; loc}, v) -> 
       Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
       t attrs);

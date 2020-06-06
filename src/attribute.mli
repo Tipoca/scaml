@@ -18,4 +18,6 @@ val parse_options_in_payload :
   -> Ppxlib.Parsetree.payload 
   -> (Ppxlib.Longident.t Asttypes.loc * [> `Bool of bool | `Constant of Ppxlib.Parsetree.constant ]) list
 
-val get_scaml_toplevel_attributes : Typedtree.structure -> (Ppxlib.Longident.t Asttypes.loc * [`Bool of bool | `Constant of Ppxlib.Parsetree.constant ]) list
+val get_scaml_toplevel_attributes 
+  : Typedtree.structure 
+  -> (Location.t * (Ppxlib.Longident.t Asttypes.loc * [`Bool of bool | `Constant of Ppxlib.Parsetree.constant ]) list) list
