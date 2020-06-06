@@ -506,8 +506,10 @@ let unknorm exp =
             VMap.exists (fun _ (_, typ) -> not & Michelson.Type.is_storable typ)
             & count_variables true t
           in
+(*
           Format.eprintf "%s is not expandable inside fun@."
             (Ident.unique_name id);
+*)
           cache := VMap.add id res !cache;
           res
       | Some res -> res
