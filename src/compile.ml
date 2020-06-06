@@ -312,7 +312,7 @@ module Make(Config : Config) = struct
         List.fold_left (fun ofun arg ->
             let oarg = compile env arg in
             ofun @ oarg @ [ EXEC ]) ofun ts
-    | Contract_create (s, sloc, e1, e2, e3) -> (* XXX *)
+    | Contract_create (s, sloc, e1, e2, e3) ->
         match s with
         | Tz_file path -> 
             let s = 
