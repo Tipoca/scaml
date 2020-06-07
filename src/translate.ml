@@ -157,6 +157,7 @@ type type_expr_error =
   | Unsupported_data_type of Path.t
   | Invalid_michelson of M.Type.t * string
   | Exception_out_of_raise
+  | GADT of Path.t
 
 let pp_type_expr_error ppf = function
   | Type_variable ty ->
@@ -169,6 +170,8 @@ let pp_type_expr_error ppf = function
       Format.fprintf ppf "Michelson type %a is invalid: %s" M.Type.pp mty s
   | Exception_out_of_raise ->
       Format.fprintf ppf "Values of type exn are only allowed to raise."
+  | GADT p ->
+      Format.fprintf ppf "Data type %s is GADT, not supported in SCaml." (Path.name p)
 
 
 let encode_by branch xs =
@@ -177,6 +180,10 @@ let encode_by branch xs =
       ~branch
   & Binplace.place xs
 
+let unify tyenv ty1 ty2 =
+  let tr = Printexc.get_backtrace () in
+  try Ctype.unify tyenv ty1 ty2 with e ->
+    prerr_endline tr; raise e
 
 let rec type_expr tyenv ty =
   let rec fn tyenv ty =
@@ -185,7 +192,7 @@ let rec type_expr tyenv ty =
     | Tvar _ when ty.level = Btype.generic_level -> Error (Type_variable ty)
     | Tvar _ ->
         (* Non generalized type variable.  We are brave enough to unify it with Unit *)
-        Ctype.unify tyenv ty Predef.type_unit; (* must succeed *)
+        unify tyenv ty Predef.type_unit; (* must succeed *)
         fn tyenv ty
     | Tarrow (Nolabel, f, t, _) ->
         fn tyenv f >>= fun f ->
@@ -256,7 +263,7 @@ and record_type tyenv ty p labels =
         Ctype.instance_label false (* XXX I do not know what it is *)
           label
       in
-      Ctype.unify tyenv ty ty_res; (* XXX should succeed *)
+      unify tyenv ty ty_res; (* XXX should succeed *)
       (label.lbl_name, ty_arg)) labels
   in
   begin match ltys with
@@ -272,6 +279,9 @@ and record_type tyenv ty p labels =
   >>| M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
 
 and variant_type tyenv ty p constrs =
+  if List.exists (fun c -> c.Types.cstr_generalized) constrs then
+    Error (GADT p)
+  else
   let consts, non_consts = Variant.variant_type tyenv ty constrs in
   let non_consts =
     Result.mapM (fun (n,tys) ->
@@ -523,7 +533,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                       let _, arg, res =
                         Ctype.instance_label false (* XXX ? *) label
                       in
-                      Ctype.unify tyenv res mltyp;
+                      unify tyenv res mltyp;
                       label.lbl_name, arg
                     ) labels
                 in
@@ -1842,8 +1852,8 @@ and structure_item lenv { str_desc; str_loc=loc } =
   | Tstr_recmodule _  -> unsupported ~loc "recursive module declaration"
   | Tstr_class _      -> unsupported ~loc "class declaration"
   | Tstr_class_type _ -> unsupported ~loc "class type declaration"
-  | Tstr_include _    -> unsupported ~loc "include"
   | Tstr_modtype _    -> unsupported ~loc "module type declaration"
+  | Tstr_include _    -> unsupported ~loc "include"
 
   | Tstr_value (Recursive, _vbs) -> unsupported ~loc "recursive definitions"
 
@@ -2047,6 +2057,7 @@ let type_check_entry templ vb =
    XXX This must be documented.
 *)
 let type_check_entries tyenv vbns =
+prerr_endline "type_check_entries";  
   let ty_storage = Ctype.newvar () in
   let ty_entry () =
     let ty_parameter = Ctype.newvar () in
@@ -2385,6 +2396,7 @@ let convert str =
     | Tstr_class _              -> unsupported ~loc "class declaration"
     | Tstr_class_type _         -> unsupported ~loc "class type declaration"
     | Tstr_include _            -> unsupported ~loc "include"
+
     | Tstr_modtype _            -> unsupported ~loc "module type declaration"
 
     | Tstr_eval (e, _) -> [ `Value (None, expression lenv e) ]
