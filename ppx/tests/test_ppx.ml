@@ -10,7 +10,7 @@ module Smart_contract = struct
   let x = Int 1
   let [@entry] default () _ = 
     [], 
-    (assert (One.i = x); Foo (Int 42))
+    (assert (One.i = x && One.f () = x); Foo (Int 42))
 end
 
 (* Emit the compiled Michelson.  This call must be executed after all 

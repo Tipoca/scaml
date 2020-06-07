@@ -15,6 +15,8 @@
 open Ppxlib
 open Ocaml_common
 
+let log fmt = Format.eprintf fmt
+
 (* XXX Maybe not precise, but I do not know the proper way to get the source 
    code name *)
 let get_source_of_str = function
@@ -57,8 +59,28 @@ let is_with_scaml str =
   let i = new M.iter in
   try i#structure str; false with Exit -> true
 
+open Spotlib.Spot
+
+(* PPX only inherits the following Clflag options.  See parsing/ast_mapper.ml,
+   PpxContext.make:
+
+   lid "tool_name",    make_string tool_name;
+   lid "include_dirs", make_list make_string !Clflags.include_dirs;
+   lid "load_path",    make_list make_string (Load_path.get_paths ());
+   lid "open_modules", make_list make_string !Clflags.open_modules;
+   lid "for_package",  make_option make_string !Clflags.for_package;
+   lid "debug",        make_bool !Clflags.debug;
+   lid "use_threads",  make_bool !Clflags.use_threads;
+   lid "use_vmthreads", make_bool false;
+   lid "recursive_types", make_bool !Clflags.recursive_types;
+   lid "principal", make_bool !Clflags.principal;
+   lid "transparent_modules", make_bool !Clflags.transparent_modules;
+   lid "unboxed_types", make_bool !Clflags.unboxed_types;
+   lid "unsafe_string", make_bool !Clflags.unsafe_string;
+*)
 let preprocess str info =
   Clflags.dont_write_files := true;
+  
   (* We need OCaml's str, not one for Ppxlib *)
   let str' = Ppxlib_ast.Selected_ast.to_ocaml Structure str in
   let typed = Compile_common.typecheck_impl info str' in
@@ -76,6 +98,7 @@ let preprocess str info =
   in
   (* We have to put the def NOT at the bottom but at the head,
      since it must precede the call of SCamlPPX.emit *)
+  (* log "Adding IML to %s@." info.Compile_common.module_name; *)
   [ let open Ast_builder.Default in
     pstr_value ~loc:Location.none
       Nonrecursive
@@ -89,20 +112,15 @@ let preprocess str info =
     ]
   @ str 
 
-let log fmt =
-  Format.kasprintf (fun s -> 
-      let oc = open_out_gen [Open_wronly; Open_append; Open_creat] 0o644 "/tmp/scaml.ppx.log" in
-      output_string oc s;
-      close_out oc) fmt
-
 let impl str =
   let tool_name = Ast_mapper.tool_name () in
   match tool_name with
   | "ocamldep" -> str
   | _ when not @@ is_with_scaml str -> str
   | "merlin" | "ocamlc" | "ocamlopt" ->
-      let n = Option.value ~default:"???" @@ get_source_of_str str in
-      log "processing %s %s@." tool_name n;
+      SCamlc.Flags.if_debug (fun () -> 
+          log "scaml.ppx: %s %s@." tool_name 
+            (Stdlib.Option.value (get_source_of_str str) ~default:"???"));
       with_info str @@ preprocess str
   | _ -> 
       Format.eprintf "scaml.ppx: called from unknown tool %s.  Skip processing" tool_name;
