@@ -1,13 +1,15 @@
 open Spotlib.Spot
 open Typerep_lib.Std
 
+module C = Michelson.Constant
+
 module Convert = struct
-  open Michelson.Constant
+  open C
 
   let name = "Convert"
   let required = []
 
-  type 'a t = 'a -> Michelson.Constant.t
+  type 'a t = 'a -> C.t
       
   include Typerep_lib.Variant_and_record_intf.M(struct
       type nonrec 'a t = 'a t
@@ -96,18 +98,109 @@ module Convert = struct
 
   module Named = Type_generic.Make_named_for_closure(struct
       type 'a input = 'a
-      type 'a output = Michelson.Constant.t
+      type 'a output = C.t
+      type 'a t = 'a input -> 'a output
+    end)
+end
+
+module ConvertType = struct
+
+  let name = "ConvertType"
+  let required = []
+
+  type 'a t = unit -> Michelson.Type.t
+
+  module Ty = Michelson.Type
+
+  include Typerep_lib.Variant_and_record_intf.M(struct
+      type nonrec 'a t = 'a t
+    end)
+
+  exception Unsupported of string
+  let unsupported n = raise (Unsupported n)
+
+  let int _ = unsupported "int"
+  let int32 _ = unsupported "int32"
+  let int64 _ = unsupported "int64"
+  let nativeint _ = unsupported "nativeint"
+  let char _ = unsupported "char"
+  let float _ = unsupported "float"
+  let bytes _ = unsupported "bytes"
+  let array _ _ = unsupported "array"
+  let lazy_t _ _ = unsupported "lazy_t"
+  let ref_ _ _ = unsupported "ref"
+  let function_ _ _ _ = unsupported "function"
+
+  let string () = Ty.tyString
+  let bool () = Ty.tyBool
+  let unit () = Ty.tyUnit
+  let option f () = Ty.tyOption (f ())
+  let list f () = Ty.tyList (f ())
+      
+  let encode_by branch xs =
+    Binplace.fold
+        ~leaf:(fun x -> x)
+        ~branch
+    & Binplace.place xs
+
+  let tuple2 f1 f2 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 ()]
+  let tuple3 f1 f2 f3 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 (); f3 ()]
+  let tuple4 f1 f2 f3 f4 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 (); f3 (); f4 ()]
+  let tuple5 f1 f2 f3 f4 f5 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 (); f3 (); f4 (); f5 ()]
+
+  let record : 'a Record.t -> 'a t = fun r () ->
+    let xs = List.rev & Record.fold r ~init:[] ~f:(fun acc (Field f) ->
+        let c = Field.traverse f () in
+        let k = Field.label f in
+        (k, c) :: acc)
+    in
+    encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2))
+    @@ List.map (fun (l,ty) -> Ty.attribute ["%" ^ l] ty) xs
+
+  let variant : 'a Variant.t -> 'a t = fun v () ->
+    let nulls, nonnulls = 
+      Variant.fold v ~init:(0,0) ~f:(fun (nulls, nonnulls) (Tag tag) ->
+          let arity = Tag.arity tag in
+          if arity = 0 then (nulls + 1, nonnulls) else (nulls, nonnulls+1))
+    in
+    let n_nulls = 
+      Variant.fold v ~init:[] ~f:(fun revs (Tag tag) ->
+          let arity = Tag.arity tag in
+          if arity = 0 then Tag.label tag :: revs else revs)
+    in
+    let c_nonnulls = 
+      Variant.fold v ~init:[] ~f:(fun revs (Tag tag) ->
+          let arity = Tag.arity tag in
+          if arity = 0 then revs
+          else
+            (Tag.label tag, Tag.traverse tag ()) :: revs)
+    in
+    match nulls, nonnulls with
+    | 0, 0 -> assert false
+    | _, 0 ->
+        Ty.attribute ["%" ^ String.concat "_" n_nulls] Ty.tyInt
+    | 0, _ ->
+        encode_by (fun ty1 ty2 -> Ty.tyOr (ty1, ty2))
+        & List.map (fun (l,ty) -> Ty.attribute ["%" ^ l] ty) c_nonnulls
+    | _, _ ->
+        encode_by (fun ty1 ty2 -> Ty.tyOr (ty1, ty2))
+        & Ty.attribute ["%" ^ String.concat "_" n_nulls] Ty.tyInt
+          :: List.map (fun (l,ty) -> Ty.attribute ["%" ^ l] ty) c_nonnulls
+
+  module Named = Type_generic.Make_named_for_closure(struct
+      type 'a input = unit
+      type 'a output = Michelson.Type.t
       type 'a t = 'a input -> 'a output
     end)
 end
 
 module Revert = struct
-  open Michelson.Constant
+  open C
 
   let name = "Revert"
   let required = []
 
-  type 'a t = Michelson.Constant.t -> 'a option
+  type 'a t = C.t -> 'a option
       
   include Typerep_lib.Variant_and_record_intf.M(struct
       type nonrec 'a t = 'a t
@@ -255,7 +348,7 @@ module Revert = struct
           end
 
   module Named = Type_generic.Make_named_for_closure(struct
-      type 'a input = Michelson.Constant.t
+      type 'a input = C.t
       type 'a output = 'a option
       type 'a t = 'a input -> 'a output
     end)
@@ -263,7 +356,7 @@ end
 
 module Revert' = struct
   module M = Tezos_micheline.Micheline
-  module C = Michelson.Constant
+  module C = C
                
   let name = "Revert'"
   let required = []
@@ -426,14 +519,14 @@ let to_michelson typerep v =
     type 'a t = 'a set
     let typename_of_t = typename_of_set
     let typerep_of_t = typerep_of_set
-    let compute fa = fun (SCaml.Set xs) -> Michelson.Constant.Set (List.map fa xs)
+    let compute fa = fun (SCaml.Set xs) -> C.Set (List.map fa xs)
   end);
   M.register2 (module struct 
     type ('a,'b) t = ('a,'b) map
     let typename_of_t = typename_of_map
     let typerep_of_t = typerep_of_map
     let compute fk fv = fun (SCaml.Map kvs) -> 
-      Michelson.Constant.Map (List.map (fun (k,v) -> (fk k, fv v)) kvs)
+      C.Map (List.map (fun (k,v) -> (fk k, fv v)) kvs)
   end);
   M.register typerep_of_bytes (fun (Bytes bs) -> Bytes bs);
   M.register typerep_of_address (fun (Address s) -> String s);
@@ -478,7 +571,7 @@ let of_michelson typerep v =
     let typename_of_t = typename_of_set
     let typerep_of_t = typerep_of_set
     let compute fa = function 
-      | Michelson.Constant.Set xs -> Spotlib.Spot.Option.mapM fa xs >>| fun xs -> SCaml.Set xs
+      | C.Set xs -> Spotlib.Spot.Option.mapM fa xs >>| fun xs -> SCaml.Set xs
       | _ -> None
   end);
   M.register2 (module struct
@@ -486,7 +579,7 @@ let of_michelson typerep v =
     let typename_of_t = typename_of_map
     let typerep_of_t = typerep_of_map
     let compute fk fv = function 
-      | Michelson.Constant.Map kvs -> 
+      | C.Map kvs -> 
           Spotlib.Spot.Option.mapM (fun (k,v) -> 
               fk k >>= fun k ->
               fv v >>| fun v -> (k,v)) kvs 
@@ -515,12 +608,12 @@ let of_michelson typerep v =
   let `generic f = M.of_typerep typerep in
   f v
 
-let of_micheline typerep v = 
+let michelson_of_micheline typerep v = 
   let open SCaml in
   let open Spotlib.Spot.Option.Infix in
   let module X = Type_generic.Make(Revert') in
   let module M = Tezos_micheline.Micheline in
-  let module C = Michelson.Constant in
+  let module C = C in
   X.register typerep_of_int (function
       | M.Int (_, z) -> Some (C.Int z)
       | _ -> None);
@@ -580,6 +673,43 @@ let of_micheline typerep v =
   let `generic f = X.of_typerep typerep in
   f v
 
+let to_michelson_type typerep = 
+  let open SCaml in
+  let module M = Type_generic.Make(ConvertType) in
+  let module Ty = Michelson.Type in
+  M.register typerep_of_int (fun () -> Ty.tyInt);
+  M.register typerep_of_nat (fun () -> Ty.tyNat);
+  M.register typerep_of_tz (fun () -> Ty.tyMutez); (* XXX tricky *)
+  M.register1 (module struct
+    type 'a t = 'a set
+    let typename_of_t = typename_of_set
+    let typerep_of_t = typerep_of_set
+    let compute fa () = Ty.tySet (fa ())
+  end);
+  M.register2 (module struct
+    type ('k,'v) t = ('k,'v) map
+    let typename_of_t = typename_of_map
+    let typerep_of_t = typerep_of_map
+    let compute fk fv () = Ty.tyMap (fk (), fv ())
+  end);
+  M.register typerep_of_bytes (fun () -> Ty.tyBytes);
+  M.register typerep_of_address (fun () -> Ty.tyAddress);
+  M.register typerep_of_key_hash (fun () -> Ty.tyKeyHash);
+  M.register typerep_of_timestamp (fun () -> Ty.tyTimestamp);
+  M.register typerep_of_key (fun () -> Ty.tyKey);
+  M.register typerep_of_signature (fun () -> Ty.tySignature);
+  let `generic f = M.of_typerep typerep in
+  f ()
+
+let to_micheline rep x =
+  C.to_micheline ~block_comment:false @@ to_michelson rep x
+
+let of_micheline rep x = 
+  let open Option.Infix in
+  michelson_of_micheline rep x >>= fun m ->
+  of_michelson rep m
+
+let micheline_of_michelson = C.to_micheline ~block_comment:false
 
 module TypeSafePack : SCaml.Obj.Internal.TypeSafePack = struct
   let expr_encoding =
@@ -591,7 +721,7 @@ module TypeSafePack : SCaml.Obj.Internal.TypeSafePack = struct
     match 
       Data_encoding.Binary.to_bytes expr_encoding
       @@ Tezos_micheline.Micheline.strip_locations
-      @@ Michelson.Constant.to_micheline ~block_comment:false
+      @@ C.to_micheline ~block_comment:false
       @@ to_michelson rep a
     with
     | Error _ -> assert false
@@ -608,8 +738,7 @@ module TypeSafePack : SCaml.Obj.Internal.TypeSafePack = struct
         @@ Bytes.of_string @@ String.(sub s 1 (length s - 1))
       in
       Result.to_option mres >>= fun m ->
-      of_micheline rep @@ Tezos_micheline.Micheline.root m >>= fun c ->
-      of_michelson rep c
+      of_micheline rep @@ Tezos_micheline.Micheline.root m
 end
   
 let () = SCaml.Obj.Internal.type_safe_pack := Some (module TypeSafePack)

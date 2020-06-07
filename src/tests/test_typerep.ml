@@ -12,7 +12,7 @@ let f tr v =
   | None -> assert false
   end;
   prerr_endline "of_michelson: ok";
-  match of_micheline tr @@ Michelson.Micheline.to_parsed ml with
+  match michelson_of_micheline tr @@ Michelson.Micheline.to_parsed ml with
   | None -> prerr_endline "of_micheline failed"; assert false
   | Some c -> 
       Format.eprintf "of_michelson: %a@." Michelson.Constant.pp c;
