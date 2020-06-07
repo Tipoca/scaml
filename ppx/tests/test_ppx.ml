@@ -28,10 +28,18 @@ let () =
   | Error _ -> assert false
   | Ok node ->
       match SCamlc.Typerep.of_micheline (typerep_of_list typerep_of_t) node with
-                                                                                      | None -> assert false
-      | Some m -> 
-          match SCamlc.Typerep.of_michelson (typerep_of_list typerep_of_t) m with
-          | None -> assert false
-          | Some e -> 
-              assert (e = [ Foo (Int 42); Bar ]);
-              prerr_endline "OK!"
+      | None -> assert false
+      | Some e -> 
+          assert (e = [ Foo (Int 42); Bar ]);
+          prerr_endline "OK!"
+
+(* Example of converting OCaml/SCaml type to Michelson *)
+let () =
+  let mty =
+    SCamlc.Typerep.to_michelson_type (typerep_of_list typerep_of_t)
+  in
+  (* list (or (int %Bar) (int %Foo)) *)
+  Format.eprintf "%a@." SCamlc.Michelson.Type.pp mty;
+  assert (mty = SCamlc.Michelson.Type.(tyList (tyOr (attribute ["%Bar"] tyInt , attribute ["%Foo"] tyInt))))
+
+
