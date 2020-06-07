@@ -1,14 +1,9 @@
-(executables
+(tests
  (names test_ppx)
- (libraries typerep scaml.scamlib)
+ (libraries typerep scaml.scamlib scaml.compiler)
  (preprocess (staged_pps ppx_typerep_conv scaml.ppx)))
 
 (rule
  (target out.tz)
  (deps ./test_ppx.exe)
  (action (run ./test_ppx.exe)))
- 
-
- 
- 
- 

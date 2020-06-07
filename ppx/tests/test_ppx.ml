@@ -15,22 +15,22 @@ end
 
 (* Emit the compiled Michelson.  This call must be executed after all 
    the smart contract code are declared. *)
-let () = SCaml_compiler_lib.SCamlPPX.emit ~outputprefix:"out"
+let () = SCamlc.Ppx.emit ~outputprefix:"out"
 
 (* Example of converting OCaml/SCaml values to Michelson constants *)
 let () = 
-  let c = SCamlTyperep.to_michelson (typerep_of_list typerep_of_t) [ Foo (Int 42); Bar ] in
-  Format.eprintf "Foo=%a@." SCaml_compiler_lib.Michelson.Constant.pp c
+  let c = SCamlc.Typerep.to_michelson (typerep_of_list typerep_of_t) [ Foo (Int 42); Bar ] in
+  Format.eprintf "Foo=%a@." SCamlc.Michelson.Constant.pp c
 
 (* Example of reverting Michelson constants to OCaml/SCaml values *)
 let () =
-  match SCaml_compiler_lib.Michelson.Micheline.parse_expression_string "{ Right 42 ; Left 0 }" with
+  match SCamlc.Michelson.Micheline.parse_expression_string "{ Right 42 ; Left 0 }" with
   | Error _ -> assert false
   | Ok node ->
-      match SCamlTyperep.of_micheline (typerep_of_list typerep_of_t) node with
+      match SCamlc.Typerep.of_micheline (typerep_of_list typerep_of_t) node with
                                                                                       | None -> assert false
       | Some m -> 
-          match SCamlTyperep.of_michelson (typerep_of_list typerep_of_t) m with
+          match SCamlc.Typerep.of_michelson (typerep_of_list typerep_of_t) m with
           | None -> assert false
           | Some e -> 
               assert (e = [ Foo (Int 42); Bar ]);

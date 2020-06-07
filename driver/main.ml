@@ -27,7 +27,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-open SCaml_compiler_lib
+open SCamlc
 
 module Compile_common = struct
 open Misc
@@ -137,7 +137,7 @@ let implementation info ~backend =
   Misc.try_finally ?always:None ~exceptionally (fun () ->
     let parsed = parse_impl info in
 
-    let m = SCaml_compiler_lib.Preprocess.mapper in
+    let m = SCamlc.Preprocess.mapper in
     let parsed = m.Ast_mapper.structure m parsed in
 
     if Clflags.(should_stop_after Compiler_pass.Parsing) then () else begin
@@ -165,7 +165,7 @@ let interface ~source_file:_ ~output_prefix:_ = assert false
 *)
 
 let implementation ~source_file ~output_prefix =
-  let backend i typed = SCamlc.compile i.source_file i.output_prefix i.module_name typed in
+  let backend i typed = SCamlc.SCamlComp.compile i.source_file i.output_prefix i.module_name typed in
   with_info ~source_file ~output_prefix ~dump_ext:"cmo" @@ fun info ->
   Compile_common.implementation info ~backend
 end
@@ -309,7 +309,7 @@ let scaml_print_version_and_library compiler =
   Printf.printf "The SCaml %s, version %s for Tezos protocol version %s" 
     compiler Version.scaml Version.protocol; print_newline();
   Printf.printf "SCaml library directory: ";
-  print_string begin match !SCamlc.scamlib with None -> "none" | Some d -> d end; print_newline ();
+  print_string begin match !SCamlc.SCamlComp.scamlib with None -> "none" | Some d -> d end; print_newline ();
   Printf.printf "The OCaml %s, version " compiler;
   print_string Config.version; print_newline();
   print_string "Standard library directory: ";
@@ -355,7 +355,7 @@ let main () =
   try
     readenv ppf Before_args;
     Clflags.parse_arguments anonymous usage;
-    SCamlc.init ();
+    SCamlc.SCamlComp.init ();
     Compmisc.read_clflags_from_env ();
     if !Clflags.plugin then
       fatal "-plugin is only supported up to OCaml 4.08.0";
@@ -397,11 +397,11 @@ let main () =
       assert false
     end
     else if not !compile_only && !objfiles <> [] then begin
-      let compiled = List.rev !SCamlc.rev_compiled in
+      let compiled = List.rev !SCamlc.SCamlComp.rev_compiled in
       (* --scaml-convert and --scaml-revert do not produce compiled modules *)
       if compiled <> [] then begin
-        Format.eprintf "Linking %s@." (String.concat ", " (List.map (fun x -> x.SCamlc.Module.name) compiled));
-        SCamlc.link None (List.rev !SCamlc.rev_compiled);
+        Format.eprintf "Linking %s@." (String.concat ", " (List.map (fun x -> x.SCamlc.SCamlComp.Module.name) compiled));
+        SCamlc.SCamlComp.link None (List.rev !SCamlc.SCamlComp.rev_compiled);
       end else begin
         Format.eprintf "Nothing to link...@."
       end;

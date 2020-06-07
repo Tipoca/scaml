@@ -23,7 +23,6 @@ let get_source_of_str = function
 
 (* modified version of Compile_common.with_info *)
 let with_info str k =
-  let open Ocaml_common in
   Compmisc.init_path ();
   let source_file = 
     match get_source_of_str str with
@@ -65,13 +64,13 @@ let preprocess str info =
   let typed = Compile_common.typecheck_impl info str' in
   let typed = 
     let str, coe = typed in 
-    let str = SCaml_compiler_lib.Translate.filter_by_SCaml_attribute str in
+    let str = SCamlc.Translate.filter_by_SCaml_attribute str in
     str, coe
   in
   let module_ = 
     (* Exceptions must be raised as are, to be handled nicely by
        ocamlc and merlin *)
-    SCaml_compiler_lib.SCamlc.compile_only
+    SCamlc.SCamlComp.compile_only
       info.source_file info.output_prefix info.module_name
       typed
   in
@@ -83,7 +82,7 @@ let preprocess str info =
       [ value_binding ~loc:Location.none 
           ~pat:(punit ~loc:Location.none)
           ~expr:(eapply ~loc:Location.none
-                   (evar ~loc:Location.none "SCaml_compiler_lib.SCamlPPX.register")
+                   (evar ~loc:Location.none "SCamlc.Ppx.register")
                    [estring ~loc:Location.none 
                       (Marshal.to_string module_ [])])
       ]
