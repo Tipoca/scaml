@@ -28,7 +28,6 @@ and t =
   ; scaml_time : bool
   ; scaml_mode : mode option
   ; scaml_noscamlib : bool (** do not add -I `opam config var prefix`/scaml/lib *)
-  ; dump_iml0 : bool
   ; dump_iml : bool
   } [@@deriving conv{ocaml}]
 
