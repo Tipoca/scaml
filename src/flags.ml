@@ -30,7 +30,6 @@ and t =
   ; scaml_time : bool
   ; scaml_mode : mode option
   ; scaml_noscamlib : bool
-  ; dump_iml0 : bool
   ; dump_iml : bool
   } [@@deriving conv{ocaml}]
 
@@ -60,8 +59,6 @@ let eval flags (k, v) =
 *)
   | "scaml_noscamlib", `Bool b -> Ok { flags with scaml_noscamlib= b }
   | "scaml_noscamlib", _ -> must_be_a_bool ()
-  | "dump_iml0", `Bool b -> Ok { flags with dump_iml0= b }
-  | "dump_iml0", _ -> must_be_a_bool ()
   | "dump_iml", `Bool b -> Ok { flags with dump_iml= b }
   | "dump_iml", _ -> must_be_a_bool ()
   | n, _ -> Error (Printf.sprintf "Unknown attribute %s" n)
@@ -73,8 +70,7 @@ let flags = ref
     ; scaml_time        = false
     ; scaml_mode        = None
     ; scaml_noscamlib   = false
-    ; dump_iml0         = false
-    ; dump_iml          = false
+    ; dump_iml          = begin try ignore (Sys.getenv "SCAML_DUMP_IML"); true with _ -> false end 
     }
 
 let update f = flags := f !flags
