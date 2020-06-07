@@ -469,6 +469,13 @@ module Env = struct
     
   let env = ref (None : t option)
   let get () = Option.get !env
+
+  let now      env = env.now
+  let amount   env = env.amount
+  let balance  env = env.balance
+  let source   env = env.source
+  let sender   env = env.sender
+  let chain_id env = env.chain_id
 end
 
 (* maybe the place is not good *)
