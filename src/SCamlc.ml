@@ -101,7 +101,7 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
           let res, secs = with_time & fun () ->
               let t, sec = with_time & fun () -> Optimize.knormalize t in
               Flags.if_time (fun () -> Format.eprintf "knorm %f@." sec);
-              IML.save (outputprefix ^ ".iml_0knorm") t;
+              IML.save (outputprefix ^ ".iml_000knorm") t;
               let rec f i t =
                 let _t0 = t in
                 let modified = ref false in
@@ -146,7 +146,7 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
 
 let link outputprefix_opt modules =
   match List.rev modules with
-  | [] -> assert false
+  | [] -> assert false (* XXX error message *)
   | last::rest ->
       let outputprefix = match outputprefix_opt with
         | Some op -> op
