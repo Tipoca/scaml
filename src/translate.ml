@@ -2057,7 +2057,6 @@ let type_check_entry templ vb =
    XXX This must be documented.
 *)
 let type_check_entries tyenv vbns =
-prerr_endline "type_check_entries";  
   let ty_storage = Ctype.newvar () in
   let ty_entry () =
     let ty_parameter = Ctype.newvar () in
