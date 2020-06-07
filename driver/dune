@@ -6,5 +6,5 @@
      (pps ppx_meta_conv.ppx ppxlib.metaquot))
   (libraries compiler-libs.common ocaml-migrate-parsetree spotlib camlon
   	     hex ptime zarith tezos-micheline ppx_meta_conv.ocaml
-             scaml.compiler-lib
+             scaml.compiler
 	     ))

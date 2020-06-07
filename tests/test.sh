@@ -14,7 +14,7 @@ if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
 # Make sure the library module is COMPiled
 if [ ! -d $BUILD_DIR ]; then mkdir $BUILD_DIR; fi
 
-dune build ../lib/SCamlib.cmxa
+dune build ../lib/SCamLib.cmxa
 SCAMLIB_DIR=../_build/install/default/lib/scaml/scamlib
 
 # Compilation command

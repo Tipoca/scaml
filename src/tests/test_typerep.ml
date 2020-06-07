@@ -1,7 +1,7 @@
 open Typerep_lib.Std (* must be before open SCaml *)
-open SCaml_compiler_lib
 open SCaml
-open SCamlTyperep
+open SCamlc
+open SCamlc.Typerep
 
 let f tr v =
   let m = to_michelson tr v in
@@ -60,4 +60,3 @@ let () = f typerep_of_key_hash (Key_hash "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx")
 let () = f typerep_of_timestamp (Timestamp "2020-04-01T00:00:00Z")
 let () = f typerep_of_key (Key "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav")
 let () = f typerep_of_signature (Signature "edsigu3QszDjUpeqYqbvhyRxMpVFamEnvm9FYnt7YiiNt9nmjYfh8ZTbsybZ5WnBkhA7zfHsRVyuTnRsGLR6fNHt1Up1FxgyRtF")
-

@@ -1,10 +1,10 @@
 (library
-  (name SCaml_compiler_lib)
-  (public_name scaml.compiler-lib)
+  (name SCamlc)
+  (public_name scaml.compiler)
   (flags -w A-4-9-40-41-42-44-45)
   (preprocess
      (pps ppx_meta_conv.ppx ppxlib.metaquot))
   (libraries compiler-libs.common ocaml-migrate-parsetree spotlib camlon
   	     hex ptime zarith tezos-micheline ppx_meta_conv.ocaml
-	     	 ppxlib
+	     	 ppxlib scaml.scamlib
 	     ))

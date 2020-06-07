@@ -95,40 +95,41 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
     let t = Translate.connect defs in
     if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
     let t = 
-        let optimize = Flags.(!flags.iml_optimization) in
-        if not optimize then t
-        else begin
-          let res, secs = with_time & fun () ->
-              let t, sec = with_time & fun () -> Optimize.knormalize t in
-              Flags.if_time (fun () -> Format.eprintf "knorm %f@." sec);
-              IML.save (outputprefix ^ ".iml_000knorm") t;
-              let rec f i t =
-                let _t0 = t in
-                let modified = ref false in
-                let g fmt = Printf.sprintf fmt i in
-                let t, sec = with_time & fun () -> Optimize.beta modified t in
-                Flags.if_time (fun () -> Format.eprintf "beta %f@." sec);
-                IML.save (outputprefix ^ g ".iml_%03d1beta") t;
-                let t, sec = with_time & fun () -> Optimize.assoc modified t in
-                Flags.if_time (fun () -> Format.eprintf "assoc %f@." sec);
-                IML.save (outputprefix ^ g ".iml_%03d2assoc") t;
-                let t, sec = with_time & fun () -> Optimize.inline modified t in
-                Flags.if_time (fun () -> Format.eprintf "inline %f@." sec);
-                IML.save (outputprefix ^ g ".iml_%03d3inline") t;
-                let t, sec = with_time & fun () -> Optimize.elim modified t in
-                Flags.if_time (fun () -> Format.eprintf "elim %f@." sec);
-                IML.save (outputprefix ^ g ".iml_%03d4elim") t;
-                if i = 100 then t, i 
-                else if !modified then f (i+1) t else t, i
-              in
-              let t, i = f 1 t in
-              Flags.if_time (fun () -> Format.eprintf "Iterated %d times@." i);
-              let t = Optimize.unknormalize t in
-              t
-          in
-          Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
-          res
-        end
+      let optimize = Flags.(!flags.iml_optimization) in
+      if not optimize then t
+      else begin
+        let res, secs = with_time & fun () ->
+            let t, sec = with_time & fun () -> Optimize.knormalize t in
+            Flags.if_time (fun () -> Format.eprintf "knorm %f@." sec);
+            if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml_000knorm") t;
+            let rec f i t =
+              let _t0 = t in
+              let modified = ref false in
+              let g fmt = Printf.sprintf fmt i in
+              let save fn t = if Flags.(!flags.dump_iml) then IML.save fn t in
+              let t, sec = with_time & fun () -> Optimize.beta modified t in
+              Flags.if_time (fun () -> Format.eprintf "beta %f@." sec);
+              save (outputprefix ^ g ".iml_%03d1beta") t;
+              let t, sec = with_time & fun () -> Optimize.assoc modified t in
+              Flags.if_time (fun () -> Format.eprintf "assoc %f@." sec);
+              save (outputprefix ^ g ".iml_%03d2assoc") t;
+              let t, sec = with_time & fun () -> Optimize.inline modified t in
+              Flags.if_time (fun () -> Format.eprintf "inline %f@." sec);
+              save (outputprefix ^ g ".iml_%03d3inline") t;
+              let t, sec = with_time & fun () -> Optimize.elim modified t in
+              Flags.if_time (fun () -> Format.eprintf "elim %f@." sec);
+              save (outputprefix ^ g ".iml_%03d4elim") t;
+              if i = 100 then t, i 
+              else if !modified then f (i+1) t else t, i
+            in
+            let t, i = f 1 t in
+            Flags.if_time (fun () -> Format.eprintf "Iterated %d times@." i);
+            let t = Optimize.unknormalize t in
+            t
+        in
+        Flags.if_time (fun () -> Format.eprintf "Optimized in %f secs@." secs);
+        res
+      end
     in
     if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml") t;
 
@@ -201,23 +202,24 @@ let link outputprefix_opt modules =
           let res, secs = with_time & fun () ->
               let t, sec = with_time & fun () -> Optimize.knormalize t in
               Flags.if_time (fun () -> Format.eprintf "knorm %f@." sec);
-              IML.save (outputprefix ^ "__link.iml_0knorm") t;
+              if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "__link.iml_000knorm") t;
               let rec f i t =
                 let _t0 = t in
                 let modified = ref false in
                 let g fmt = Printf.sprintf fmt i in
+                let save fn t = if Flags.(!flags.dump_iml) then IML.save fn t in
                 let t, sec = with_time & fun () -> Optimize.beta modified t in
                 Flags.if_time (fun () -> Format.eprintf "beta %f@." sec);
-                IML.save (outputprefix ^ g "__link.iml_%03d1beta") t;
+                save (outputprefix ^ g "__link.iml_%03d1beta") t;
                 let t, sec = with_time & fun () -> Optimize.assoc modified t in
                 Flags.if_time (fun () -> Format.eprintf "assoc %f@." sec);
-                IML.save (outputprefix ^ g "__link.iml_%03d2assoc") t;
+                save (outputprefix ^ g "__link.iml_%03d2assoc") t;
                 let t, sec = with_time & fun () -> Optimize.inline modified t in
                 Flags.if_time (fun () -> Format.eprintf "inline %f@." sec);
-                IML.save (outputprefix ^ g "__link.iml_%03d3inline") t;
+                save (outputprefix ^ g "__link.iml_%03d3inline") t;
                 let t, sec = with_time & fun () -> Optimize.elim modified t in
                 Flags.if_time (fun () -> Format.eprintf "elim %f@." sec);
-                IML.save (outputprefix ^ g "__link.iml_%03d4elim") t;
+                save (outputprefix ^ g "__link.iml_%03d4elim") t;
                 if i = 100 then t, i 
                 else if !modified then f (i+1) t else t, i
               in

@@ -1,6 +1,5 @@
 open Spotlib.Spot
 open Typerep_lib.Std
-open SCaml_compiler_lib
 
 module Convert = struct
   open Michelson.Constant
@@ -345,10 +344,12 @@ module Revert' = struct
     Option.mapM (fun (m, Record.Field f) -> Field.traverse f m) mfs 
     >>| build
 
+(*
   let pp_ml ppf ml =
     Tezos_micheline.Micheline_printer.print_expr ppf
       (Tezos_micheline.Micheline_printer.printable (fun _ -> "") 
          (Tezos_micheline.Micheline.strip_locations ml))
+*)
 
   let variant : 'a Variant.t -> 'a t = fun v m ->
     let _, rev_nulls, rev_nonnulls = 
@@ -415,9 +416,8 @@ module Revert' = struct
     end)
 end
 
-open SCaml
-
 let to_michelson typerep v = 
+  let open SCaml in
   let module M = Type_generic.Make(Convert) in
   M.register typerep_of_int (fun (Int n) -> Int (Z.of_int n));
   M.register typerep_of_nat (fun (Nat n) -> Int (Z.of_int n));
@@ -448,6 +448,7 @@ exception Overflow
 exception Rounded
 
 let of_michelson typerep v = 
+  let open SCaml in
   let open Spotlib.Spot.Option.Infix in
   let module M = Type_generic.Make(Revert) in
   M.register typerep_of_int (function
@@ -515,6 +516,7 @@ let of_michelson typerep v =
   f v
 
 let of_micheline typerep v = 
+  let open SCaml in
   let open Spotlib.Spot.Option.Infix in
   let module X = Type_generic.Make(Revert') in
   let module M = Tezos_micheline.Micheline in
@@ -578,6 +580,37 @@ let of_micheline typerep v =
   let `generic f = X.of_typerep typerep in
   f v
 
-let () = SCaml.Obj.to_michelson_ref := { SCaml.Obj.to_michelson }
-let () = SCaml.Obj.of_micheline_ref := { SCaml.Obj.of_micheline }
-let () = SCaml.Obj.of_michelson_ref := { SCaml.Obj.of_michelson }
+
+module TypeSafePack : SCaml.Obj.Internal.TypeSafePack = struct
+  let expr_encoding =
+    Tezos_micheline.Micheline.canonical_encoding_v1
+      ~variant:"michelson_v1"
+      Data_encoding.Encoding.string
+  
+  let pack' rep a =
+    match 
+      Data_encoding.Binary.to_bytes expr_encoding
+      @@ Tezos_micheline.Micheline.strip_locations
+      @@ Michelson.Constant.to_micheline ~block_comment:false
+      @@ to_michelson rep a
+    with
+    | Error _ -> assert false
+    | Ok bs -> "\005" ^ Stdlib.Bytes.to_string bs
+  
+  let unpack' rep s =
+    if s = "" then None
+    else if Stdlib.String.unsafe_get s 0 <> '\005' then None
+    else 
+      let open Stdlib in
+      let (>>=) = Option.bind in
+      let mres =
+        Data_encoding.Binary.of_bytes expr_encoding 
+        @@ Bytes.of_string @@ String.(sub s 1 (length s - 1))
+      in
+      Result.to_option mres >>= fun m ->
+      of_micheline rep @@ Tezos_micheline.Micheline.root m >>= fun c ->
+      of_michelson rep c
+end
+  
+let () = SCaml.Obj.Internal.type_safe_pack := Some (module TypeSafePack)
+

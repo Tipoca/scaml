@@ -454,6 +454,10 @@ module Crypto : sig
   val sha256 : bytes -> bytes
   val sha512 : bytes -> bytes
   val hash_key  : key -> key_hash
+    
+  module Internal : sig
+    val test : unit -> unit
+  end
 end
 
 (** Serialization *)
@@ -462,24 +466,16 @@ module Obj : sig
   val pack : 'a -> bytes
   val unpack : bytes -> 'a option
 
-  open Typerep_lib.Std
+  val pack' : 'a Typerep_lib.Std.Typerep.t -> 'a -> bytes
+  val unpack' : 'a Typerep_lib.Std.Typerep.t -> bytes -> 'a option
 
-  val pack' : 'a Typerep.t -> 'a -> bytes
-  val unpack' : 'a Typerep.t -> bytes -> 'a option
-
-  (** Internal use *)
-
-  type to_michelson = 
-    { to_michelson : 'a. 'a Typerep.t -> 'a -> SCaml_compiler_lib.Michelson.Constant.t }
-
-  val to_michelson_ref : to_michelson ref
-
-  type of_micheline = 
-    { of_micheline : 'a. 'a Typerep.t -> (ocaml_int, string) Tezos_micheline.Micheline.node -> SCaml_compiler_lib.Michelson.Constant.t option }
-  val of_micheline_ref : of_micheline ref
-
-  type of_michelson = 
-    { of_michelson : 'a. 'a Typerep.t -> SCaml_compiler_lib.Michelson.Constant.t -> 'a option }
-
-  val of_michelson_ref : of_michelson ref
+  module Internal : sig
+    module type TypeSafePack = sig
+      open Typerep_lib.Std
+      val pack' : 'a Typerep.t -> 'a -> string
+      val unpack' : 'a Typerep.t -> string -> 'a option
+    end
+  
+    val type_safe_pack : (module TypeSafePack) option ref
+  end
 end

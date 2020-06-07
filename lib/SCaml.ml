@@ -21,6 +21,8 @@ open Typerep_lib.Std_internal
 type 'a const = 'a [@@deriving typerep]
 
 type ocaml_int = int [@@deriving typerep]
+type ocaml_string = string 
+
 type nat = Nat of ocaml_int const [@@deriving typerep]
 type int = Int of ocaml_int const [@@deriving typerep]
 type tz = Tz of float const [@@deriving typerep]
@@ -326,11 +328,11 @@ module Bytes = struct
     try Some (Bytes (Stdlib.String.sub s (Stdlib.( * ) a 2) (Stdlib.( * ) b 2))) with _ -> None
   let length (Bytes a) = Nat (Stdlib.(/) (Stdlib.String.length a) 2)
       
-  let of_string s = 
+  let of_ocaml_string s = 
     let `Hex hs = Hex.of_string s in
     Bytes hs
 
-  let to_string (Bytes hs) = Hex.to_string (`Hex hs)
+  let to_ocaml_string (Bytes hs) = Hex.to_string (`Hex hs)
 end
 
 type address = Address of string const [@@deriving typerep]
@@ -510,59 +512,27 @@ module Obj = struct
     in
     match Data_encoding.(Binary.to_bytes expr_encoding s) with
     | Error _ -> assert false
-    | Ok bs -> Bytes.of_string ("\005" ^ Stdlib.Bytes.to_string bs)
+    | Ok bs -> Bytes.of_ocaml_string ("\005" ^ Stdlib.Bytes.to_string bs)
     
   let pack : 'a -> bytes = fun _ -> assert false
   let unpack : bytes -> 'a option = fun _ -> assert false
 
-  open Typerep_lib.Std
+  module Internal = struct
+    module type TypeSafePack = sig
+      val pack' : 'a Typerep.t -> 'a -> ocaml_string
+      val unpack' : 'a Typerep.t -> ocaml_string -> 'a option
+    end
+  
+    let type_safe_pack = ref (None : (module TypeSafePack) option)
+  end
 
-  let expr_encoding =
-    Tezos_micheline.Micheline.canonical_encoding_v1
-      ~variant:"michelson_v1"
-      Data_encoding.Encoding.string
-
-  type to_michelson = 
-    { to_michelson : 'a. 'a Typerep.t -> 'a -> SCaml_compiler_lib.Michelson.Constant.t }
-
-  let to_michelson_ref : to_michelson ref = ref { to_michelson = fun _ -> assert false }
-
-  let pack' : 'a Typerep.t -> 'a -> bytes = fun rep a ->
-    match 
-      Data_encoding.Binary.to_bytes expr_encoding
-      @@ Tezos_micheline.Micheline.strip_locations
-      @@ SCaml_compiler_lib.Michelson.Constant.to_micheline 
-      @@ !to_michelson_ref.to_michelson rep a
-    with
-    | Error _ -> assert false
-    | Ok bs -> Bytes.of_string ("\005" ^ Stdlib.Bytes.to_string bs)
+  let pack' rep a =
+    let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
+    Bytes.of_ocaml_string (M.pack' rep a)
     
-  let unpack' : 'a Typerep.t -> bytes -> 'a option = fun _ -> assert false
-
-  type of_micheline = 
-    { of_micheline : 'a. 'a Typerep.t -> (ocaml_int, string) Tezos_micheline__Micheline.node -> SCaml_compiler_lib.Michelson.Constant.t option }
-
-  let of_micheline_ref : of_micheline ref = ref { of_micheline = fun _ -> assert false }
-
-  type of_michelson = 
-    { of_michelson : 'a. 'a Typerep.t -> SCaml_compiler_lib.Michelson.Constant.t -> 'a option }
-
-  let of_michelson_ref : of_michelson ref = ref { of_michelson = fun _ -> assert false }
-
-  let unpack' : 'a Typerep.t -> bytes -> 'a option = fun rep bs ->
-    let s = Bytes.to_string bs in
-    if s = "" then None
-    else if Stdlib.String.unsafe_get s 0 <> '\005' then None
-    else 
-      let open Stdlib in
-      let (>>=) = Option.bind in
-      let mres =
-        Data_encoding.Binary.of_bytes expr_encoding 
-        @@ Bytes.of_string @@ String.(sub s 1 (length s - 1))
-      in
-      Result.to_option mres >>= fun m ->
-      !of_micheline_ref.of_micheline rep @@ Tezos_micheline.Micheline.root m >>= fun c ->
-      !of_michelson_ref.of_michelson rep c
+  let unpack' rep b =
+    let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
+    M.unpack' rep (Bytes.to_ocaml_string b)
 end
 
 module Crypto = struct
@@ -570,8 +540,8 @@ module Crypto = struct
   (* XXX Signature.check key signature message of tezos-crypto *)
 
   let blake2b bs = 
-    let Hash bs = Blake2.Blake2b.direct (Stdlib.Bytes.of_string @@ Bytes.to_string bs) 32 in 
-    Bytes.of_string @@ Stdlib.Bytes.to_string bs
+    let Hash bs = Blake2.Blake2b.direct (Stdlib.Bytes.of_string @@ Bytes.to_ocaml_string bs) 32 in 
+    Bytes.of_ocaml_string @@ Stdlib.Bytes.to_string bs
 
   (* test *)
   let test_blake2b () =
@@ -579,11 +549,11 @@ module Crypto = struct
     assert (s = "c5b7e76c15ce98128a840b54c38f462125766d2ed3a6bff0e76f7f3eb415df04")
 
   let sha256 bs = 
-    Bytes.of_string
+    Bytes.of_ocaml_string
     @@ Bigstring.to_string 
     @@ Hacl.Hash.SHA256.digest 
     @@ Bigstring.of_string 
-    @@ Bytes.to_string bs
+    @@ Bytes.to_ocaml_string bs
 
   (* test *)
   let test_sha256 () =
@@ -591,11 +561,11 @@ module Crypto = struct
             Bytes "55c53f5d490297900cefa825d0c8e8e9532ee8a118abe7d8570762cd38be9818")
 
   let sha512 bs = 
-    Bytes.of_string
+    Bytes.of_ocaml_string
     @@ Bigstring.to_string 
     @@ Hacl.Hash.SHA512.digest 
     @@ Bigstring.of_string 
-    @@ Bytes.to_string bs
+    @@ Bytes.to_ocaml_string bs
 
   (* test *)
   let test_sha512 () =
@@ -606,9 +576,11 @@ module Crypto = struct
   (* XXX we need Signagure.Public_key.hash 
          of tezos-crypto but it requires 
          the current OPAM package of hacl which required dune < 2.0 for now *)
-    
-  let test () =
-    test_blake2b ();
-    test_sha256 ();
-    test_sha512 ()
+
+  module Internal = struct
+    let test () =
+      test_blake2b ();
+      test_sha256 ();
+      test_sha512 ()
+  end
 end
