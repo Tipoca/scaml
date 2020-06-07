@@ -16,12 +16,18 @@ open Spotlib.Spot
 open Tools
 
 (* Micheline parser and printer tools *)
-module Mline = struct
+module Micheline = struct
   open Tezos_micheline.Micheline
+
+  type t = Tezos_micheline.Micheline_printer.node
+  (* Comment as Location *)
+
+  type parsed = (canonical_location, string) node
+
+  let to_parsed t = root @@ strip_locations t
+
   open Tezos_micheline.Micheline_printer
 
-  type t = node
-    
   let no_comment = { comment = None }
 
   let add_comment c n = match c, n with
@@ -50,7 +56,16 @@ module Mline = struct
   let seq ts = Seq (no_comment, ts)
       
   let pp = print_expr_unwrapped
+    
+  let parse_expression_string s = 
+    let open Tezos_micheline.Micheline_parser in
+    let open Result.Infix in
+    no_parsing_error (tokenize s) >>= fun tokens ->
+    no_parsing_error (parse_expression tokens) >>| fun node ->
+    root & strip_locations node
 end
+
+module Mline = Micheline
 
 module Type = struct
 

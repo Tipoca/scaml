@@ -14,10 +14,24 @@
 
 open Spotlib.Spot
 
-module Mline : sig
+module Micheline : sig
+  open Tezos_micheline.Micheline
+
   type t = Tezos_micheline.Micheline_printer.node
+  (** For printing with comments *)
+
   val pp : Format.t -> t -> unit
+
+  type parsed = (canonical_location, string) node
+  (** parsed result *)      
+      
+  val parse_expression_string 
+    : string -> (parsed, Tezos_error_monad.Error_monad.trace) result
+      
+  val to_parsed : t -> parsed
 end
+
+module Mline : module type of struct include Micheline end
 
 module Type : sig
   type t = { desc : desc 
@@ -106,6 +120,8 @@ module rec Constant : sig
     | Code of Opcode.t list
 
   val pp : Format.formatter -> t -> unit
+  (** Print in Micheline *)
+
   val to_micheline : ?block_comment:bool -> t -> Mline.t
 end
 
