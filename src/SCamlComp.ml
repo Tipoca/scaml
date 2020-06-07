@@ -75,7 +75,7 @@ module Module = struct
       t.outputprefix
       (option (fun ppf (_ty, _ty', iml) -> IML.pp ppf iml)) t.global_entry
       (list ";@ " (fun ppf (pv,iml) -> 
-           fprintf ppf "%s=%a" (Ident.unique_name pv.IML.desc) IML.pp iml)) t.defs
+           fprintf ppf "@[<1>%s=@ @[%a@]@]" (Ident.unique_name pv.IML.desc) IML.pp iml)) t.defs
       Flags.pp t.flags
 end
 
@@ -93,7 +93,7 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
 
     (* To make iml0 and iml, we must connect these definitions *)
     let t = Translate.connect defs in
-    if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ ".iml0") t;
+    if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml_0000") t;
     let t = 
       let optimize = Flags.(!flags.iml_optimization) in
       if not optimize then t
@@ -101,7 +101,7 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
         let res, secs = with_time & fun () ->
             let t, sec = with_time & fun () -> Optimize.knormalize t in
             Flags.if_time (fun () -> Format.eprintf "knorm %f@." sec);
-            if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml_000knorm") t;
+            if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ ".iml_0001knorm") t;
             let rec f i t =
               let _t0 = t in
               let modified = ref false in
@@ -190,7 +190,7 @@ let link outputprefix_opt modules =
       let parameter = Compile.clean_field_annot parameter in
       let storage = Compile.clean_field_annot storage in
 
-      if Flags.(!flags.dump_iml0) then IML.save (outputprefix ^ "__link.iml0") t;
+      if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "__link.iml_0000") t;
 
       let t = 
         let optimize = 
@@ -202,7 +202,7 @@ let link outputprefix_opt modules =
           let res, secs = with_time & fun () ->
               let t, sec = with_time & fun () -> Optimize.knormalize t in
               Flags.if_time (fun () -> Format.eprintf "knorm %f@." sec);
-              if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "__link.iml_000knorm") t;
+              if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "__link.iml_0001knorm") t;
               let rec f i t =
                 let _t0 = t in
                 let modified = ref false in
