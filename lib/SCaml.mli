@@ -433,6 +433,19 @@ module Global : sig
   val get_chain_id : unit -> chain_id
 end
 
+module Env : sig
+  type t
+
+  val get : unit -> t
+
+  val now      : t -> timestamp
+  val amount   : t -> tz
+  val balance  : t -> tz
+  val source   : t -> address
+  val sender   : t -> address
+  val chain_id : t -> chain_id
+end
+
 (** Keys *)
 type key = Key of string const [@@deriving typerep]
 
