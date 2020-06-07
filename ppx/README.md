@@ -72,9 +72,20 @@ The example is so simple as everything is in one module.  Smart contract codes c
 
 ### Dune
 
+#### `wrapped-executables false`
+
+For Dune 2.0 or newer, `(wrapped-executables false)` MUST BE SPECIFIED in the `dune-project` file.  Otherwise `SCamlc.Ppx.emit` fails complaining about `Error: [ESCaml010] Variable not found: Dune__exe....`:
+
+Your `dune-project` file should look like:
+```
+(lang dune 2.x)
+(name myproject) ;; Name of your porject
+(wrapped_executables false)  ;; You NEED this!!!
+```
+
 #### Build an executable
 
-* Use libraries `typerep` and `scaml.scamlib`
+* Use libraries `typerep`, `scaml.scamlib` and `scaml.compiler`
 * Preprocessor: `(staged_pps ppx_typerep_conv scaml.ppx)`.  `staged_pps` is mandatory.
 
 `typerep` and `ppx_typerep_conv` are not mandatory but they are useful to convert SCaml and Michelson values:
@@ -82,7 +93,7 @@ The example is so simple as everything is in one module.  Smart contract codes c
 ```
 (executable
   (name my_smart_contract)
-  (libraries typerep scaml.scamlib)
+  (libraries typerep scaml.scamlib scaml.compiler)
   (preprocess (staged_pps ppx_typerep_conv scaml.ppx)))
 ```
 
