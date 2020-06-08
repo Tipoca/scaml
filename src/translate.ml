@@ -1467,6 +1467,10 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | None ->
               match Path.is_stdlib p with
               | None ->
+                  (* XXX If we see Dune__exe, it is highly likely that 
+                     scaml.ppx is used without (wrapped_executables false)
+                     in dune-project.  Should be warned.
+                  *)
                   (* XXX Var should take Path.t... here we use a workaround *)
                   mk & Var (Ident.create_persistent (Path.name p))
               | Some _ ->
