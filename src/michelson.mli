@@ -35,7 +35,7 @@ module Mline : module type of struct include Micheline end
 
 module Type : sig
   type t = { desc : desc 
-           ; attrs : string list
+           ; tyannot : string option
            }
   and desc = 
     | TyString
@@ -45,9 +45,9 @@ module Type : sig
     | TyBool
     | TyUnit
     | TyList of t
-    | TyPair of t * t
-    | TyOption of t
-    | TyOr of t * t
+    | TyPair of string option * t * string option * t
+    | TyOption of string option * t
+    | TyOr of string option * t * string option * t
     | TySet of t
     | TyMap of t * t
     | TyBigMap of t * t
@@ -71,9 +71,9 @@ module Type : sig
   val tyBool : t
   val tyUnit : t
   val tyList : t -> t
-  val tyPair : (t * t) -> t
-  val tyOption : t -> t
-  val tyOr : (t * t) -> t
+  val tyPair : (string option * t * string option * t) -> t
+  val tyOption : (string option * t) -> t
+  val tyOr : (string option * t * string option * t) -> t
   val tySet : t -> t
   val tyMap : (t * t) -> t
   val tyBigMap : (t * t) -> t
@@ -96,9 +96,9 @@ module Type : sig
   val is_packable : legacy: bool -> t -> bool
   val is_parameterable : t -> bool
   val is_storable : t -> bool
-    
-  val attribute : string list -> t -> t
-    
+
+  val type_annotate : (string option -> string option) -> t -> t
+
   val args : t -> t list * t
 end
 

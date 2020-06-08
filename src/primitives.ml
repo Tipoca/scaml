@@ -373,7 +373,7 @@ let primitives =
 
   ; "Obj.unpack", (1, fun ~loc ty xs ->
       match ty.desc with
-      | TyLambda (_, { desc= TyOption ty }) ->
+      | TyLambda (_, { desc= TyOption (None, ty) }) ->
           if not & M.Type.is_packable ~legacy:false ty then
             errorf_primitive ~loc "Obj.unpack cannot unpack to a non packable type %a"
               M.Type.pp ty;
@@ -385,13 +385,13 @@ let primitives =
                    
   ; "Contract.contract", (1, fun ~loc:_ ty xs ->
         match ty.desc with
-        | TyLambda (_, { desc= TyOption ({ desc= TyContract ty }) }) ->
+        | TyLambda (_, { desc= TyOption (None, { desc= TyContract ty }) }) ->
             xs @ [ CONTRACT ty ]
         | _ -> assert false)
       
   ; "Contract.contract'", (2, fun ~loc:_ ty xs ->
         match ty.desc with
-        | TyLambda (_, { desc= TyLambda (_, { desc= TyOption ({ desc= TyContract ty })})})  ->
+        | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->
             begin match xs with
               | [ M.Opcode.PUSH (_, M.Constant.String entry); address] ->
                   [address; CONTRACT' (ty, entry) ]
@@ -456,6 +456,6 @@ let primitives =
     
 let contract' entry ~loc:_ ty xs =
   match ty.desc with
-  | TyLambda (_, { desc= TyLambda (_, { desc= TyOption ({ desc= TyContract ty })})})  ->
+  | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->
       xs @ [ CONTRACT' (ty, entry) ]
   | _ -> assert false
