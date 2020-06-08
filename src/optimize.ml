@@ -369,7 +369,11 @@ let may_have_effect t =
     | AssertFalse
     | App _ -> true
 
-    | Prim _ -> true (* some of prims are pure *)
+    | Prim (s, _, _) -> 
+        begin match List.assoc_opt s Primitives.primitives with
+          | None -> assert false
+          | Some (is_pure, _, _) -> not is_pure
+        end
 
     | IfThenElse (_, t1, None) -> f t1
     | IfThenElse (_, t1, Some t2)
