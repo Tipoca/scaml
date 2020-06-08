@@ -188,6 +188,7 @@ let assoc modified exp =
     (* XXX many are already in K normal form therefore f t is likely t *)
     | Contract_create _ -> t0
     | App (t, ts) -> 
+        (* XXX t and ts are variables.  Should cause no change *)
         let lets, body = get_lets & f t in
         add_lets lets & mk & App (body, List.map f ts)
     | IML_Some t -> mk & IML_Some (f t)
@@ -351,6 +352,35 @@ let inline modified exp =
   in
   f [] exp
     
+let may_have_effect t =
+  let rec f t = match t.desc with
+    | Const _ | Nil | IML_None | Unit | Var _ -> false
+    | Fun _ -> false
+
+    (* args are variables or constants *)
+    | IML_Some _ | Left _ | Right _
+    | Cons _ | Pair _
+    | Contract_create _
+    | Set _
+    | Map _
+    | BigMap _ -> false
+
+    | Assert _
+    | AssertFalse
+    | App _ -> true
+
+    | Prim _ -> true (* some of prims are pure *)
+
+    | IfThenElse (_, t1, None) -> f t1
+    | IfThenElse (_, t1, Some t2)
+    | Let (_, t1, t2)
+    | Switch_or (_, _, t1, _, t2)
+    | Switch_cons (_, _, _, t1, t2)
+    | Switch_none (_, t1, _, t2)
+    | Seq (t1, t2) -> f t1 || f t2
+  in
+  f t
+
 let elim modified exp =
   let module S = Set.Make(struct type t = Ident.t let compare = compare end) in
   let (+) = S.union in
@@ -360,7 +390,7 @@ let elim modified exp =
     | Let (pv, t1, t2) ->
         let ids1, t1 = f t1 in
         let ids2, t2 = f t2 in
-        if S.mem pv.desc ids2 then
+        if S.mem pv.desc ids2 || may_have_effect t1 then
           ids1 + S.remove pv.desc ids2,
           mk & Let (pv, t1, t2)
         else begin
@@ -524,7 +554,9 @@ let unknorm exp =
         mk & Let (pv, t1, g t2)
     | Let (pv, t1, t2) ->
         begin match VMap.find_opt pv.desc vmap with
+          | _ when may_have_effect t1 -> mk & Let (pv, g t1, g t2) 
           | Some (1,_) ->
+              (* XXX If application is really pure, we should expand it... *)
               let t1 = g t1 in
               let env = (pv.desc,t1)::env in
               (* We cannot simply remove Let since some variables cannot be expanded ... *)
