@@ -20,4 +20,3 @@ module Make(Config : sig
   val constant : IML.t -> Michelson.Constant.t option
 end
 
-val clean_field_annot : Michelson.Type.t -> Michelson.Type.t

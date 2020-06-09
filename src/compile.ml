@@ -58,6 +58,7 @@ let var ~loc env id = match Env.find id env with
   | Some (n,_typ) ->
       [ COMMENT( "var " ^ Ident.unique_name id, [ DIG n; DUP; DUG (n+1) ]) ] 
 
+(*
 (* Field annotation cannot appear at the first level of type tree.
    The followings are rejectred:
    
@@ -77,6 +78,7 @@ let clean_field_annot typ =
   (* remove field annotations
      * not under Pair
      * not under Or
+     * not under Option
   *)
   let rec f parent_can_have_annotations typ = 
     let attrs = 
@@ -86,6 +88,7 @@ let clean_field_annot typ =
     let desc = match typ.desc with
       | TyPair (t1, t2) -> TyPair (f true t1, f true t2)
       | TyOr (t1, t2) -> TyOr (f true t1, f true t2)
+      | TyOption t -> TyOption (f true t)
       | TyString
       | TyNat
       | TyInt
@@ -101,22 +104,22 @@ let clean_field_annot typ =
       | TySignature
       | TyOperation -> typ.desc
       | TyList t -> TyList (f false t)
-      | TyOption t -> TyOption (f false t)
       | TySet t -> TySet (f false t)
       | TyMap (t1, t2) -> TyMap (f false t1, f false t2)
       | TyBigMap (t1, t2) -> TyBigMap (f false t1, f false t2)
       | TyContract t -> TyContract (f false t)
       | TyLambda (t1, t2) -> TyLambda (f false t1, f false t2)
     in
-    { desc; attrs }
+    { desc; attrs; tyannot=typ.tyannot }
   in
   f false typ
+*)
 
 module Make(Config : Config) = struct
   let rec compile env t = match constant t with
     | None -> compile' env t 
     | Some c -> 
-        [ PUSH (clean_field_annot t.IML.typ, c) ]
+        [ PUSH (t.IML.typ, c) ]
       
   and compile' env t = 
     let os = desc env t in 
@@ -137,40 +140,40 @@ module Make(Config : Config) = struct
     | Map _ -> errorf_constant ~loc "Map bindings must be constants"
     | BigMap _ -> errorf_constant ~loc "BigMap bindings must be constants"
     | Const c -> 
-        [ PUSH (clean_field_annot t.typ, c) ]
+        [ PUSH (t.typ, c) ]
     | Nil -> 
         let ty = match t.typ.desc with
           | TyList ty -> ty
           | _ -> assert false
         in
-        [ NIL (clean_field_annot ty) ]
+        [ NIL ty ]
     | Cons (t1, t2) -> 
         let os2 = compile env t2 in
         let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
         os2 @ os1 @ [ CONS ]
     | IML_None -> 
         let ty = match t.IML.typ.desc with
-          | TyOption ty -> ty
+          | TyOption (_,ty) -> ty
           | _ -> assert false
         in
-        [ NONE (clean_field_annot ty) ]
+        [ NONE ty ]
     | IML_Some t1 -> 
         let os1 = compile env t1 in
         os1 @ [ SOME ]
     | Left t' ->
         let ty = match t.typ.desc with
-          | TyOr (_, ty) -> ty
+          | TyOr (_,_, _,ty) -> ty
           | _ -> assert false
         in
         let os = compile env t' in
-        os @ [ LEFT (clean_field_annot ty) ]
+        os @ [ LEFT ty ]
     | Right t' -> 
         let ty = match t.typ.desc with
-          | TyOr (ty, _) -> ty
+          | TyOr (_,ty, _,_) -> ty
           | _ -> assert false
         in
         let os = compile env t' in
-        os @ [ RIGHT (clean_field_annot ty) ]
+        os @ [ RIGHT ty ]
     | Unit -> [ UNIT ]
   
     | Var id -> var ~loc env id
@@ -259,7 +262,7 @@ module Make(Config : Config) = struct
                     let env = [p.desc,p.typ] in
                     let o = compile env body in
                     let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP 1 ]) ]) ] in
-                    [ LAMBDA (clean_field_annot ty1, clean_field_annot ty2, o @ clean) ]
+                    [ LAMBDA (ty1, ty2, o @ clean) ]
                 | _ -> 
                     (* fvars: x1:ty1 :: x2:ty2 :: .. :: xn:tyn 
   
@@ -272,7 +275,7 @@ module Make(Config : Config) = struct
                       let ity = 
                         (* (tyn * (ty(n-1) * .. * (ty1 * p.typ) .. )) *)
                         List.fold_left (fun st (_x,ty) ->
-                            tyPair (ty,st)) p.typ fvars
+                            tyPair (None,ty,None,st)) p.typ fvars
                       in
                       (* 
                          -   (xn, (xn-1, .., (x1, p1) ..))  :: 0
@@ -293,7 +296,7 @@ module Make(Config : Config) = struct
                       in
                       let len = List.length fvars in
                       let clean = [ COMMENT ("lambda clean up", [DIP (1, [ DROP (len + 1) ]) ]) ] in
-                      LAMBDA (clean_field_annot ity, clean_field_annot ty2, extractor @ compile env body @ clean)
+                      LAMBDA (ity, ty2, extractor @ compile env body @ clean)
                     in
                     let partial_apply =
                       (* Apply fvars from xn to x1 *)

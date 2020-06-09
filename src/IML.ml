@@ -86,20 +86,8 @@ module P = struct
 
   let loc = Location.none
 
-  let rec type_ ty = 
+  let rec type_ (ty : M.Type.t) = 
     let open M.Type in
-    let _attrs = ty.attrs in
-    let add_attrs ty =
-(*
-      { ty 
-        with ptyp_attributes = 
-               List.map (fun a -> { attr_name= {Location.txt=a; loc=Location.none}
-                                  ; attr_payload= PStr []
-                                  ; attr_loc= Location.none }) attrs }
-*)
-      ty
-    in
-    add_attrs @@
     match ty.desc with
     | TyString -> [%type: string]
     | TyNat    -> [%type: nat]
@@ -108,9 +96,9 @@ module P = struct
     | TyBool   -> [%type: bool]
     | TyUnit   -> [%type: unit]
     | TyList t -> [%type: [%t type_ t] list]
-    | TyPair (t1, t2) -> [%type: [%t type_ t1] * [%t type_ t2]]
-    | TyOption t -> [%type: [%t type_ t] option]
-    | TyOr (t1, t2) -> [%type: ([%t type_ t1], [%t type_ t2]) sum]
+    | TyPair (_,t1, _,t2) -> [%type: [%t type_ t1] * [%t type_ t2]]
+    | TyOption (_,t) -> [%type: [%t type_ t] option]
+    | TyOr (_,t1, _,t2) -> [%type: ([%t type_ t1], [%t type_ t2]) sum]
     | TySet t -> [%type: [%t type_ t] set]
     | TyMap (k,v) -> [%type: ([%t type_ k], [%t type_ v]) map]
     | TyBigMap (k,v) -> [%type: ([%t type_ k], [%t type_ v]) big_map]
@@ -399,7 +387,7 @@ let mkvar ~loc (id, typ) = mke ~loc typ & Var id
 let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
 let mkunit ~loc () = mke ~loc tyUnit Unit
 let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
-let mkpair ~loc e1 e2 = mke ~loc (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
+let mkpair ~loc e1 e2 = mke ~loc (tyPair (None,e1.typ, None,e2.typ)) (Pair (e1, e2))
 
 let mkprim ~loc ty name ty' args =
   match List.assoc_opt name Primitives.primitives with
@@ -408,24 +396,24 @@ let mkprim ~loc ty name ty' args =
 
 let mkfst ~loc e =
   let ty = match e.typ.desc with
-    | TyPair (ty, _) -> ty
+    | TyPair (_,ty, _,_) -> ty
     | _ -> assert false
   in
   mkprim ~loc ty "fst" (tyLambda (e.typ, ty)) [e]
 
 let mksnd ~loc e =
   let ty = match e.typ.desc with
-    | TyPair (_, ty) -> ty
+    | TyPair (_,_, _,ty) -> ty
     | _ -> assert false
   in
   mkprim ~loc ty "snd" (tyLambda (e.typ, ty)) [e]
 
-let mkleft ~loc ty e = mke ~loc (tyOr (e.typ, ty)) (Left e)
-let mkright ~loc ty e = mke ~loc (tyOr (ty, e.typ)) (Right e)
+let mkleft ~loc ty e = mke ~loc (tyOr (None, e.typ, None, ty)) (Left e)
+let mkright ~loc ty e = mke ~loc (tyOr (None, ty, None, e.typ)) (Right e)
 
 let mkint ~loc n = mke ~loc tyInt (Const (M.Constant.Int (Z.of_int n)))
 let mkcons ~loc h t = mke ~loc t.typ (Cons (h, t))
-let mksome ~loc t = mke ~loc (tyOption t.typ) (IML_Some t)
+let mksome ~loc t = mke ~loc (tyOption (None, t.typ)) (IML_Some t)
 let mkassert ~loc t = mke ~loc tyUnit & Assert t
 let mkassertfalse ~loc ty = mke ~loc ty & AssertFalse
 

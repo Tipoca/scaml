@@ -187,9 +187,10 @@ let link outputprefix_opt modules =
 
          which is illegal
        *)
+(*
       let parameter = Compile.clean_field_annot parameter in
       let storage = Compile.clean_field_annot storage in
-
+*)
       if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "__link.iml_0000") t;
 
       let t = 
