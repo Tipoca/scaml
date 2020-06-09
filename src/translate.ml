@@ -1775,7 +1775,7 @@ and primitive ~loc fty n args =
   | _ ->
       match List.assoc_opt n Primitives.primitives with
       | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
-      | Some (arity, _conv) ->
+      | Some (_pure, arity, _conv) ->
           if arity > List.length args then
             let tys, ret = M.Type.args fty in
             let tys =

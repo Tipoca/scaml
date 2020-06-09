@@ -210,7 +210,7 @@ module Make(Config : Config) = struct
     | Prim (n, ty, ts) ->
         begin match List.assoc_opt n Primitives.primitives with
           | None -> assert false
-          | Some (_arity, f) -> 
+          | Some (_pure, _arity, f) -> 
               (* Prim (ops, [t1; t2])
                  t2 ; t1; ops
               *)
