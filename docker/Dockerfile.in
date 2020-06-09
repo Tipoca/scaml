@@ -13,7 +13,7 @@ RUN apt install -y --no-install-recommends libgmp-dev
 RUN git submodule init
 RUN git submodule update
 RUN opam update
-RUN eval $(opam env) && env && opam install -y vendors/*/*.opam ./scaml.opam
+RUN eval $(opam env) && env && opam install -y ./scaml.opam
 
 # Cleanup
 WORKDIR /
