@@ -71,7 +71,7 @@ module Type = struct
 
   (* Michelson type.  This is shamelessly used as types for IML, too. *)
   type t = { desc : desc 
-           ; attrs : string list
+           ; tyannot : string option
            } 
 
   and desc = 
@@ -82,9 +82,9 @@ module Type = struct
     | TyBool
     | TyUnit
     | TyList of t
-    | TyPair of t * t
-    | TyOption of t
-    | TyOr of t * t
+    | TyPair of string option * t * string option * t
+    | TyOption of string option * t
+    | TyOr of string option * t * string option * t
     | TySet of t (* comparable *)
     | TyMap of t (* comparable *) * t
     | TyBigMap of t (* comparable *) * t
@@ -101,9 +101,9 @@ module Type = struct
     | TyContract of t
     | TyLambda of t * t
 
-  let attribute ss t = { t with attrs= t.attrs @ ss }
+  let type_annotate f t = { t with tyannot= f t.tyannot }
 
-  let mk desc = { desc ; attrs= [] }
+  let mk desc = { desc ; tyannot= None  }
 
   let tyString              = mk TyString
   let tyNat                 = mk TyNat
@@ -112,9 +112,9 @@ module Type = struct
   let tyBool                = mk TyBool
   let tyUnit                = mk TyUnit
   let tyList t              = mk & TyList t
-  let tyPair (t1, t2)       = mk & TyPair (t1, t2)
-  let tyOption t            = mk & TyOption t
-  let tyOr (t1, t2)         = mk & TyOr (t1, t2)
+  let tyPair (f1,t1, f2,t2)       = mk & TyPair (f1,t1, f2,t2)
+  let tyOption (f,t)            = mk & TyOption (f,t)
+  let tyOr (f1,t1, f2,t2)         = mk & TyOr (f1,t1, f2,t2)
   let tySet t               = mk & TySet t
   let tyMap (t1, t2)        = mk & TyMap (t1, t2)
   let tyBigMap (t1, t2)     = mk & TyBigMap (t1, t2)
@@ -136,7 +136,19 @@ module Type = struct
     | _ -> [], t
 
   let rec to_micheline t = 
-    let prim n args = Mline.prim n args t.attrs in
+    let prim n args = 
+      let attrs = 
+        (match t.tyannot with Some s -> [":"^s] | None -> [])
+      in
+      Mline.prim n args attrs 
+    in
+    (* XXX should not use Tezos_micheline *)
+    let add_field f t = match f, t with
+      | None, _ -> t
+      | Some f, Tezos_micheline.Micheline.Prim (c,s,ts,annots) -> 
+          Tezos_micheline.Micheline.Prim (c,s,ts,("%"^f)::annots)
+      | _ -> t
+    in
     let (!) x = prim x [] in
     match t.desc with
     | TyString -> !"string"
@@ -146,9 +158,11 @@ module Type = struct
     | TyBool   -> !"bool"
     | TyUnit   -> !"unit"
     | TyList t -> prim "list" [to_micheline t]
-    | TyPair (t1, t2)   -> prim "pair" [to_micheline t1; to_micheline t2]
-    | TyOption t        -> prim "option" [to_micheline t]
-    | TyOr (t1, t2)     -> prim "or" [to_micheline t1; to_micheline t2]
+    | TyPair (f1,t1, f2,t2)   -> prim "pair" [add_field f1 & to_micheline t1
+                                             ;add_field f2 & to_micheline t2]
+    | TyOption (f,t)        -> prim "option" [add_field f & to_micheline t]
+    | TyOr (f1,t1, f2,t2)     -> prim "or" [add_field f1 & to_micheline t1; 
+                                            add_field f2 & to_micheline t2]
     | TySet t           -> prim "set" [to_micheline t]
     | TyMap (t1, t2)    -> prim "map" [to_micheline t1; to_micheline t2]
     | TyBigMap (t1, t2) -> prim "big_map" [to_micheline t1; to_micheline t2]
@@ -200,8 +214,8 @@ module Type = struct
           else
             Ok ()
           
-      | (TyList ty | TyOption ty) -> f ty
-      | (TyPair (ty1, ty2) | TyOr (ty1, ty2) | TyLambda (ty1, ty2)) -> 
+      | (TyList ty | TyOption (_,ty)) -> f ty
+      | (TyPair (_,ty1, _,ty2) | TyOr (_,ty1, _,ty2) | TyLambda (ty1, ty2)) -> 
           f ty1 >>= fun () -> f ty2
 
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit | TyMutez
@@ -220,7 +234,7 @@ module Type = struct
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyMutez 
       | TyKeyHash | TyTimestamp | TyAddress -> true
         
-      | TyPair (ty1, ty2) -> f ty1 && f ty2 (* since 005_Babylon *)
+      | TyPair (_,ty1, _,ty2) -> f ty1 && f ty2 (* since 005_Babylon *)
     in
     f ty
       
@@ -233,8 +247,8 @@ module Type = struct
       | TyOperation -> false
       | TyContract _ -> legacy
       | TyLambda (_t1, _t2) -> true
-      | TyList t | TyOption t | TySet t -> f t
-      | TyPair (t1, t2) | TyOr (t1, t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyList t | TyOption (_,t) | TySet t -> f t
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) -> f t1 && f t2
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
@@ -251,9 +265,9 @@ module Type = struct
       | TyOperation -> false
       | TyContract _ -> true
 
-      | TyList t | TyOption t | TySet t -> f t
+      | TyList t | TyOption (_,t) | TySet t -> f t
       | TyLambda (_t1, _t2) -> true
-      | TyPair (t1, t2) | TyOr (t1, t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) -> f t1 && f t2
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
@@ -270,9 +284,9 @@ module Type = struct
       | TyOperation -> false
       | TyContract _ -> false
 
-      | TyList t | TyOption t | TySet t -> f t
+      | TyList t | TyOption (_,t) | TySet t -> f t
       | TyLambda (_t1, _t2) -> true
-      | TyPair (t1, t2) | TyOr (t1, t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) -> f t1 && f t2
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true

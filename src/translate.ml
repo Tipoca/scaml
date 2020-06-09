@@ -114,31 +114,31 @@ let mke ~loc typ desc = { typ; desc; loc; attrs= [] }
 
 let mkfst ~loc e =
   let ty = match e.typ.desc with
-    | TyPair (ty, _) -> ty
+    | TyPair (_, ty, _, _) -> ty
     | _ -> assert false
   in
   mke ~loc ty (Prim ("fst", tyLambda (e.typ, ty), [e]))
 
 let mksnd ~loc e =
   let ty = match e.typ.desc with
-    | TyPair (_, ty) -> ty
+    | TyPair (_, _, _, ty) -> ty
     | _ -> assert false
   in
   mke ~loc ty (Prim ("snd", tyLambda (e.typ, ty), [e]))
 
-let mkleft ~loc ty e = mke ~loc (tyOr (e.typ, ty)) (Left e)
-let mkright ~loc ty e = mke ~loc (tyOr (ty, e.typ)) (Right e)
+let mkleft ~loc ty e = mke ~loc (tyOr (None, e.typ, None, ty)) (Left e)
+let mkright ~loc ty e = mke ~loc (tyOr (None, ty, None, e.typ)) (Right e)
 
 let mkeq ~loc e1 e2 =
   mke ~loc tyBool (Prim ("=", tyLambda (e1.typ, tyLambda (e2.typ, tyBool)), [e1; e2]))
 
-let mkpair ~loc e1 e2 = mke ~loc (tyPair (e1.typ, e2.typ)) (Pair (e1, e2))
+let mkpair ~loc e1 e2 = mke ~loc (tyPair (None, e1.typ, None, e2.typ)) (Pair (e1, e2))
 
 let mkint ~loc n = mke ~loc tyInt (Const (M.Constant.Int (Z.of_int n)))
 
 let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
 let mkcons ~loc h t = mke ~loc t.typ (Cons (h, t))
-let mksome ~loc t = mke ~loc (tyOption t.typ) (IML_Some t)
+let mksome ~loc t = mke ~loc (tyOption (None, t.typ)) (IML_Some t)
 let mkunit ~loc () = mke ~loc tyUnit Unit
 let mkassert ~loc t = mke ~loc tyUnit & Assert t
 let mkassertfalse ~loc ty = mke ~loc ty & AssertFalse
@@ -146,10 +146,10 @@ let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
 let mkvar ~loc (id, typ) = mke ~loc typ & Var id
 
 let mkp ~loc typ desc =  { loc; desc; typ; attrs= () }
-let mkppair ~loc p1 p2 = mkp ~loc (tyPair (p1.typ, p2.typ)) (P.Constr (Cnstr.Pair, [p1; p2]))
+let mkppair ~loc p1 p2 = mkp ~loc (tyPair (None, p1.typ, None, p2.typ)) (P.Constr (Cnstr.Pair, [p1; p2]))
 let mkpint ~loc n = mkp ~loc tyInt (P.Constr (Cnstr.Constant (Michelson.Constant.Int (Z.of_int n)), []))
-let mkpleft ~loc ty p = mkp ~loc (tyOr (p.typ, ty)) & P.Constr (Cnstr.Left, [p])
-let mkpright ~loc ty p = mkp ~loc (tyOr (ty, p.typ)) & P.Constr (Cnstr.Right, [p])
+let mkpleft ~loc ty p = mkp ~loc (tyOr (None, p.typ, None, ty)) & P.Constr (Cnstr.Left, [p])
+let mkpright ~loc ty p = mkp ~loc (tyOr (None, ty, None, p.typ)) & P.Constr (Cnstr.Right, [p])
 
 type type_expr_error =
   | Type_variable of Types.type_expr
@@ -200,15 +200,15 @@ let rec type_expr tyenv ty =
         Ok (tyLambda (f, t))
     | Ttuple [t1; t2] ->
         fn tyenv t1 >>= fun t1 ->
-        fn tyenv t2 >>= fun t2 -> Ok (tyPair (t1, t2))
+        fn tyenv t2 >>= fun t2 -> Ok (tyPair (None, t1, None, t2))
     | Ttuple tys ->
         Result.mapM (fn tyenv) tys
-        >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
+        >>| encode_by (fun ty1 ty2 -> tyPair (None, ty1, None, ty2))
     | Tconstr (p, [], _) when p = Predef.path_bool -> Ok (tyBool)
     | Tconstr (p, [t], _) when p = Predef.path_list ->
         fn tyenv t >>= fun t -> Ok (tyList t)
     | Tconstr (p, [t], _) when p = Predef.path_option ->
-        fn tyenv t >>= fun t -> Ok (tyOption t)
+        fn tyenv t >>= fun t -> Ok (tyOption (None, t))
     | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
     | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
     (* | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes) *)
@@ -221,7 +221,8 @@ let rec type_expr tyenv ty =
         in
         f [] tys >>= fun tys ->
         begin match Path.is_scaml p, tys with
-          | Some "sum", [t1; t2] -> Ok (attribute [":sum"] & tyOr (t1, t2))
+          | Some "sum", [t1; t2] -> 
+              Ok (type_annotate (fun _ -> Some "sum") & tyOr (None, t1, None, t2))
           | Some "int", [] -> Ok (tyInt)
           | Some "nat", [] -> Ok (tyNat)
           | Some "tz",  [] -> Ok (tyMutez)
@@ -266,17 +267,10 @@ and record_type tyenv ty p labels =
       unify tyenv ty ty_res; (* XXX should succeed *)
       (label.lbl_name, ty_arg)) labels
   in
-  begin match ltys with
-    | [] -> assert false
-    | [_l, ty] ->
-        (* sole field cannot have annotation... *)
-        type_expr tyenv ty >>| fun x -> [x]
-    | _ ->
-        Result.mapM (fun (l,ty) ->
-        type_expr tyenv ty >>| M.Type.attribute ["%" ^ l]) ltys
-  end
-  >>| encode_by (fun ty1 ty2 -> tyPair (ty1, ty2))
-  >>| M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
+  Result.mapM (fun (l,ty) ->
+      type_expr tyenv ty >>| fun ty -> Some l, ty) ltys
+  >>| encode_by (fun (f1,ty1) (f2,ty2) -> None,tyPair (f1,ty1, f2,ty2))
+  >>| fun (_,ty) -> M.Type.type_annotate (fun _ -> Some (Path.name p)) (* XXX p=P(Q) fails *) ty
 
 and variant_type tyenv ty p constrs =
   if List.exists (fun c -> c.Types.cstr_generalized) constrs then
@@ -288,23 +282,20 @@ and variant_type tyenv ty p constrs =
         Result.mapM (type_expr tyenv) tys >>| fun tys -> (n,tys)) non_consts
     >>| fun ctys_list ->
     List.map (fun (n,tys) ->
-        (n, encode_by (fun ty1 ty2 -> tyPair (ty1, ty2)) tys))
+        (n, encode_by (fun ty1 ty2 -> tyPair (None,ty1, None,ty2)) tys))
       ctys_list
   in
   non_consts >>| fun non_consts ->
   ( consts,
     non_consts,
-    M.Type.attribute [":" ^ Path.name p] (* XXX P(Q) fails *)
-    & snd & encode_by (fun (c1,ty1) (c2,ty2) ->
-        let attr c ty =
-          if c = "" then ty
-          else M.Type.attribute ["%" ^ c] ty
-        in
-        ("", tyOr (attr c1 ty1, attr c2 ty2)))
+    M.Type.type_annotate (fun _ -> Some (Path.name p)) (* XXX p=P(Q) fails *)
+    & snd & encode_by (fun (f1,ty1) (f2,ty2) -> (None, tyOr (f1, ty1, f2, ty2)))
+    & List.map (fun (f,ty) -> Some f, ty)
       ((match consts with
           | None -> []
           | Some names -> [String.concat "_" names, tyInt])
-       @ non_consts))
+       @ non_consts) 
+  )
 
 (* Literals *)
 
@@ -493,9 +484,9 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
                         in
                         let rec embed ty sides arg = match ty.M.Type.desc, sides with
                           | _, [] -> arg
-                          | TyOr (ty1, ty2), Binplace.Left::sides ->
+                          | TyOr (_,ty1, _,ty2), Binplace.Left::sides ->
                               mkpleft ~loc:gloc ty2 (embed ty1 sides arg)
-                          | TyOr (ty1, ty2), Right::sides ->
+                          | TyOr (_,ty1, _,ty2), Right::sides ->
                               mkpright ~loc:gloc ty1 (embed ty2 sides arg)
                           | _ -> assert false
                         in
@@ -674,28 +665,28 @@ module Pmatch = struct
               *)
               | Cnstr.Pair, P.Wild ->
                   let ty1, ty2 = match pat.typ.desc with
-                    | TyPair (ty1, ty2) -> ty1, ty2
+                    | TyPair (_,ty1, _,ty2) -> ty1, ty2
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc ty1 P.Wild :: mkp ~loc:gloc ty2 P.Wild :: pats }]
 
               | Left, P.Wild ->
                   let typl = match pat.typ.desc with
-                    | TyOr (typl, _typr) -> typl
+                    | TyOr (_,typl, _,_typr) -> typl
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc typl P.Wild :: pats }]
 
               | Right, P.Wild ->
                   let typr = match pat.typ.desc with
-                    | TyOr (_typl, typr) -> typr
+                    | TyOr (_,_typl, _,typr) -> typr
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc typr P.Wild :: pats }]
 
               | Some, P.Wild ->
                   let typ = match pat.typ.desc with
-                    | TyOption typ -> typ
+                    | TyOption (_,typ) -> typ
                     | _ -> assert false
                   in
                   [{ case with pats= mkp ~loc:gloc typ P.Wild :: pats }]
@@ -880,19 +871,19 @@ module Pmatch = struct
                           match c with
                           | Cnstr.Left ->
                               let ty = match vty.desc with
-                                | TyOr (ty, _) -> ty
+                                | TyOr (_,ty, _,_) -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "l", ty ]
                           | Right ->
                               let ty = match vty.desc with
-                                | TyOr (_, ty) -> ty
+                                | TyOr (_,_, _,ty) -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "r", ty ]
                           | Pair ->
                               let ty1,ty2 = match vty.desc with
-                                | TyPair (ty1, ty2) -> ty1, ty2
+                                | TyPair (_,ty1, _,ty2) -> ty1, ty2
                                 | _ -> assert false
                               in
                               [ create_ident "l", ty1 ;
@@ -907,7 +898,7 @@ module Pmatch = struct
                               ]
                           | Some ->
                               let ty = match vty.desc with
-                                | TyOption ty -> ty
+                                | TyOption (_,ty) -> ty
                                 | _ -> assert false
                               in
                               [ create_ident "x", ty ]
@@ -1188,9 +1179,9 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       end
 
   (* option *)
-  | Tconstr (p, [_], _), TyOption ty when p = Predef.path_option ->
+  | Tconstr (p, [_], _), TyOption (_,ty) when p = Predef.path_option ->
       begin match cstr_name with
-        | "None" -> make (tyOption ty) IML_None
+        | "None" -> make (tyOption (None, ty)) IML_None
         | "Some" ->
             begin match args with
               | [e1] ->
@@ -1202,7 +1193,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       end
 
   (* sum *)
-  | Tconstr (p, [_; _], _), TyOr (tyl, tyr) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
+  | Tconstr (p, [_; _], _), TyOr (_,tyl, _,tyr) when (match Path.is_scaml p with Some "sum" -> true | _ -> false) ->
       let arg = match args with [arg] -> arg | _ -> internal_error ~loc "strange sum arguments" in
       begin match cstr_name with
       | "Left" ->
@@ -1216,9 +1207,11 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
       | s -> internal_error ~loc "strange sum constructor %s" s
       end
 
+  (* unit *)
   | Tconstr (p, _, _), TyUnit when p = Predef.path_unit ->
       make tyUnit Unit
 
+  (* int *)
   | Tconstr (p, [], _), TyInt when Path.is_scaml_dot "int" p ->
       make tyInt begin
         let arg = match args with
@@ -1230,6 +1223,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
             | _ -> errorf_constant ~loc "Int can only take an integer constant"
         end
 
+  (* nat *)
   | Tconstr (p, [], _), TyNat when Path.is_scaml_dot "nat" p ->
       make tyNat begin
         let arg = match args with
@@ -1244,6 +1238,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
           | _ -> errorf_constant ~loc "Nat can only take an integer constant"
       end
 
+  (* tz *)
   | Tconstr (p, [], _), TyMutez when Path.is_scaml_dot "tz" p ->
       make tyMutez begin
         let arg = match args with
@@ -1368,12 +1363,13 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                     | _ -> errorf_constant ~loc "%s only takes a string literal" cname
       end
 
+  (* others *)
   | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
       let rec embed ty sides arg = match ty.M.Type.desc, sides with
         | _, [] -> arg
-        | TyOr (ty1, ty2), Binplace.Left::sides ->
+        | TyOr (_,ty1, _,ty2), Binplace.Left::sides ->
             mkleft ~loc:gloc ty2 (embed ty1 sides arg)
-        | TyOr (ty1, ty2), Right::sides ->
+        | TyOr (_,ty1, _,ty2), Right::sides ->
             mkright ~loc:gloc ty1 (embed ty2 sides arg)
         | _ -> assert false
       in
@@ -1400,7 +1396,6 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
             | _, None, [] -> assert false
             | 0, None, _ -> assert false
             | 0, Some names, [] ->
-                (* XXX annotate constr name *)
                 mkint ~loc:gloc & find_constr 0 names
             | 0, Some names, xs ->
                 let sides = Binplace.path 0 (List.length xs + 1) in
@@ -1467,6 +1462,10 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | None ->
               match Path.is_stdlib p with
               | None ->
+                  (* XXX If we see Dune__exe, it is highly likely that 
+                     scaml.ppx is used without (wrapped_executables false)
+                     in dune-project.  Should be warned.
+                  *)
                   (* XXX Var should take Path.t... here we use a workaround *)
                   mk & Var (Ident.create_persistent (Path.name p))
               | Some _ ->
@@ -1776,7 +1775,7 @@ and primitive ~loc fty n args =
   | _ ->
       match List.assoc_opt n Primitives.primitives with
       | None -> errorf_primitive ~loc "Unknown primitive SCaml.%s" n
-      | Some (arity, _conv) ->
+      | Some (_pure, arity, _conv) ->
           if arity > List.length args then
             let tys, ret = M.Type.args fty in
             let tys =
@@ -1808,7 +1807,7 @@ and switch lenv ~loc:loc0 e cases =
   in
   let mk desc = { desc; loc=loc0; typ= (let _, _, e = List.hd cases in e.typ); attrs= [] } in
   match ty.desc, cases with
-  | TyOr (_ty1, _ty2), [("Left",[l],le); ("Right",[r],re)] ->
+  | TyOr (_,_ty1, _,_ty2), [("Left",[l],le); ("Right",[r],re)] ->
       let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
       let lv = get_var l in
       let rv = get_var r in
@@ -1823,7 +1822,7 @@ and switch lenv ~loc:loc0 e cases =
       mk & Switch_cons (e,
                         lv1, lv2, le,
                         re)
-  | TyOption _ty1, [("None",[],le); ("Some",[r],re)] ->
+  | TyOption (_,_ty1), [("None",[],le); ("Some",[r],re)] ->
       let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
       let rv = get_var r in
       mk & Switch_none (e,
@@ -2078,7 +2077,7 @@ let type_check_entries tyenv vbns =
   ty_storage
 
 
-let global_parameter_type tyenv node =
+let global_parameter_ocaml_type tyenv node =
   let path =
     Env.lookup_type (*~loc: *)
       (Longident.(Ldot (Lident "SCaml", "sum"))) tyenv
@@ -2192,7 +2191,7 @@ let compile_global_entry ty_storage ty_return node =
         let e_r, param_typ_r = f id_r n2 in
         let pat_l = mkp ~loc:noloc param_typ_l id_l in
         let pat_r = mkp ~loc:noloc param_typ_r id_r in
-        let param_typ = tyOr (param_typ_l, param_typ_r) in
+        let param_typ = tyOr (None,param_typ_l, None,param_typ_r) in
         let param_var = mkvar ~loc:noloc (param_id, param_typ) in
         mke ~loc:noloc ty_return (Switch_or (param_var, pat_l, e_l, pat_r, e_r)),
         param_typ
@@ -2217,7 +2216,7 @@ let compile_global_entry ty_storage ty_return node =
        let storage = snd param_storage in
        e
   *)
-  let ty_param_storage = tyPair (param_typ, ty_storage) in
+  let ty_param_storage = tyPair (Some "parameter",param_typ, Some "storage",ty_storage) in
   let id_param_storage = Ident.create_local "param_storage" in
   let pat_param_storage = mkp ~loc:noloc ty_param_storage id_param_storage in
   let e_param_storage = mkvar ~loc:noloc (id_param_storage, ty_param_storage) in
@@ -2264,7 +2263,7 @@ let compile_entry_points compile_only sourcefile str =
       let tyenv = str.str_final_env in
       let entry_pvbns, ty_storage = type_check_entries str.str_final_env entry_vbns in
       let entry_tree = Binplace.place entry_pvbns in
-      let ty_param = global_parameter_type tyenv entry_tree in
+      let ocaml_ty_param = global_parameter_ocaml_type tyenv entry_tree in
 
       (* self type *)
       let () =
@@ -2272,7 +2271,7 @@ let compile_entry_points compile_only sourcefile str =
           Env.lookup_type (*~loc: *)
             (Longident.(Ldot (Lident "SCaml", "contract"))) tyenv
         in
-        let self_type = Ctype.newconstr path [ty_param] in
+        let self_type = Ctype.newconstr path [ocaml_ty_param] in
         check_self self_type str
       in
 
@@ -2308,42 +2307,38 @@ let compile_entry_points compile_only sourcefile str =
         res
       in
 
-      let ty_return = tyPair (ty_operations, ty_storage) in
+      let ty_return = tyPair (Some "operations", ty_operations, Some "storage", ty_storage) in
 
       let global_entry = compile_global_entry ty_storage ty_return entry_tree in
 
       let ty_param =
         Result.at_Error (fun e ->
             errorf_type_expr ~loc:(Location.in_file sourcefile) "Contract has parameter type %a.  %a"
-              Printtyp.type_expr ty_param
+              Printtyp.type_expr ocaml_ty_param
               pp_type_expr_error e)
-          & type_expr tyenv ty_param
+          & type_expr tyenv ocaml_ty_param
       in
-      let ty_param = match entry_tree with
-        | Leaf _ (* sole entry point *) -> ty_param
-        | Branch _ ->
-            let open M.Type in
-            let rec add_annot ty node = match ty.desc, node with
-              | _, Binplace.Leaf (_,vb,name) ->
-                  (* XXX dup *)
-                  let id = match pattern_simple vb.vb_pat with
-                    | [p] -> p.desc
-                    | _ -> assert false
-                  in
-                  let fix_name s = match name with
-                    | Some n -> n
-                    | None -> s
-                  in
-                  { ty with attrs= [ "%" ^ fix_name (Ident.name id) ] }
-              | TyOr (ty1, ty2), Branch (n1, n2) ->
-                  let ty1 = add_annot ty1 n1 in
-                  let ty2 = add_annot ty2 n2 in
-                  { ty with desc= TyOr (ty1, ty2) }
-              | _, Branch _ ->
-                  if_debug (fun () -> Format.eprintf "Entry point type: %a@." M.Type.pp ty);
-                  assert false
-            in
-            add_annot ty_param entry_tree
+      let ty_param = 
+        let get_field = function
+          | Binplace.Leaf (_,vb,name) ->
+              (* XXX dup *)
+              let id = match pattern_simple vb.vb_pat with
+                | [p] -> p.desc
+                | _ -> assert false
+              in
+              let fix_name s = match name with
+                | Some n -> n
+                | None -> s
+              in
+              Some (fix_name (Ident.name id))
+          | _ -> None
+        in
+        let rec add_fields (ty, b) = match ty.M.Type.desc, b with
+          | TyOr (_,ty1, _,ty2), Binplace.Branch (n1,n2) ->
+              tyOr (get_field n1, add_fields (ty1,n1), get_field n2, add_fields (ty2,n2))
+          | _, _ -> ty
+        in
+        add_fields (ty_param, entry_tree)
       in
       Some (ty_param, ty_storage, global_entry)
 

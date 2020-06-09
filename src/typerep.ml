@@ -134,7 +134,7 @@ module ConvertType = struct
   let string () = Ty.tyString
   let bool () = Ty.tyBool
   let unit () = Ty.tyUnit
-  let option f () = Ty.tyOption (f ())
+  let option f () = Ty.tyOption (None, f ())
   let list f () = Ty.tyList (f ())
       
   let encode_by branch xs =
@@ -143,10 +143,10 @@ module ConvertType = struct
         ~branch
     & Binplace.place xs
 
-  let tuple2 f1 f2 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 ()]
-  let tuple3 f1 f2 f3 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 (); f3 ()]
-  let tuple4 f1 f2 f3 f4 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 (); f3 (); f4 ()]
-  let tuple5 f1 f2 f3 f4 f5 () = encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2)) [f1 (); f2 (); f3 (); f4 (); f5 ()]
+  let tuple2 f1 f2 () = encode_by (fun ty1 ty2 -> Ty.tyPair (None,ty1, None,ty2)) [f1 (); f2 ()]
+  let tuple3 f1 f2 f3 () = encode_by (fun ty1 ty2 -> Ty.tyPair (None,ty1, None,ty2)) [f1 (); f2 (); f3 ()]
+  let tuple4 f1 f2 f3 f4 () = encode_by (fun ty1 ty2 -> Ty.tyPair (None,ty1, None,ty2)) [f1 (); f2 (); f3 (); f4 ()]
+  let tuple5 f1 f2 f3 f4 f5 () = encode_by (fun ty1 ty2 -> Ty.tyPair (None,ty1, None,ty2)) [f1 (); f2 (); f3 (); f4 (); f5 ()]
 
   let record : 'a Record.t -> 'a t = fun r () ->
     let xs = List.rev & Record.fold r ~init:[] ~f:(fun acc (Field f) ->
@@ -154,8 +154,9 @@ module ConvertType = struct
         let k = Field.label f in
         (k, c) :: acc)
     in
-    encode_by (fun ty1 ty2 -> Ty.tyPair (ty1, ty2))
-    @@ List.map (fun (l,ty) -> Ty.attribute ["%" ^ l] ty) xs
+    snd
+    @@ encode_by (fun (f1,ty1) (f2,ty2) -> None, Ty.tyPair (f1,ty1, f2,ty2))
+    @@ List.map (fun (l,ty) -> (Some l, ty)) xs
 
   let variant : 'a Variant.t -> 'a t = fun v () ->
     let nulls, nonnulls = 
@@ -178,14 +179,16 @@ module ConvertType = struct
     match nulls, nonnulls with
     | 0, 0 -> assert false
     | _, 0 ->
-        Ty.attribute ["%" ^ String.concat "_" n_nulls] Ty.tyInt
+        Ty.tyInt
     | 0, _ ->
-        encode_by (fun ty1 ty2 -> Ty.tyOr (ty1, ty2))
-        & List.map (fun (l,ty) -> Ty.attribute ["%" ^ l] ty) c_nonnulls
+        snd
+        & encode_by (fun (f1,ty1) (f2,ty2) -> None, Ty.tyOr (f1,ty1, f2,ty2))
+        & List.map (fun (l,ty) -> Some l, ty) c_nonnulls
     | _, _ ->
-        encode_by (fun ty1 ty2 -> Ty.tyOr (ty1, ty2))
-        & Ty.attribute ["%" ^ String.concat "_" n_nulls] Ty.tyInt
-          :: List.map (fun (l,ty) -> Ty.attribute ["%" ^ l] ty) c_nonnulls
+        snd
+        & encode_by (fun (f1,ty1) (f2,ty2) -> None, Ty.tyOr (f1,ty1, f2,ty2))
+        & (Some (String.concat "_" n_nulls), Ty.tyInt)
+          :: List.map (fun (l,ty) -> Some l, ty) c_nonnulls
 
   module Named = Type_generic.Make_named_for_closure(struct
       type 'a input = unit

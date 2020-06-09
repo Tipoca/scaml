@@ -543,6 +543,8 @@ module Obj = struct
 end
 
 module Crypto = struct
+  (* XXX These functions should have polymorphic versions *)
+
   let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
   (* XXX Signature.check key signature message of tezos-crypto *)
 

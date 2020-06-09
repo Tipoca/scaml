@@ -39,46 +39,46 @@ let comparison ~loc os ty pre =
   | _ -> assert false
 
 let primitives = 
-  [ "fst"     , (1, simple [CAR])
-  ; "snd"     , (1, simple [CDR])
+  [ "fst"     , (true,  1, simple [CAR])
+  ; "snd"     , (true,  1, simple [CDR])
 
-  ; "compare" , (2, comparison [COMPARE])
-  ; "="       , (2, comparison [COMPARE; EQ])
-  ; "<>"      , (2, comparison [COMPARE; NEQ])
-  ; "<"       , (2, comparison [COMPARE; LT])
-  ; ">"       , (2, comparison [COMPARE; GT])
-  ; "<="      , (2, comparison [COMPARE; LE])
-  ; ">="      , (2, comparison [COMPARE; GE])
+  ; "compare" , (true,  2, comparison [COMPARE])
+  ; "="       , (true,  2, comparison [COMPARE; EQ])
+  ; "<>"      , (true,  2, comparison [COMPARE; NEQ])
+  ; "<"       , (true,  2, comparison [COMPARE; LT])
+  ; ">"       , (true,  2, comparison [COMPARE; GT])
+  ; "<="      , (true,  2, comparison [COMPARE; LE])
+  ; ">="      , (true,  2, comparison [COMPARE; GE])
 
-  ; "+"       , (2, simple [ADD])
-  ; "+^"      , (2, simple [ADD])
-  ; "+$"      , (2, simple [ADD])
-  ; "-"       , (2, simple [SUB])
-  ; "-^"      , (2, simple [SUB])
-  ; "-$"      , (2, simple [SUB])
-  ; "*"       , (2, simple [MUL])
-  ; "*^"      , (2, simple [MUL])
-  ; "*$"      , (2, simple [MUL])
-  ; "lsl"     , (2, simple [LSL])
-  ; "lsr"     , (2, simple [LSR])
-  ; "&&"      , (2, simple [AND])
-  ; "||"      , (2, simple [OR])
-  ; "xor"     , (2, simple [XOR])
-  ; "not"     , (1, simple [NOT])
-  ; "abs"     , (1, simple [ABS])
-  ; "isnat"   , (1, simple [ISNAT])
-  ; "~-"      , (1, simple [NEG])
-  ; "~-^"     , (1, simple [NEG])
+  ; "+"       , (true,  2, simple [ADD])
+  ; "+^"      , (true,  2, simple [ADD])
+  ; "+$"      , (false, 2, simple [ADD])
+  ; "-"       , (true,  2, simple [SUB])
+  ; "-^"      , (true,  2, simple [SUB])
+  ; "-$"      , (false, 2, simple [SUB])
+  ; "*"       , (true,  2, simple [MUL])
+  ; "*^"      , (true,  2, simple [MUL])
+  ; "*$"      , (false, 2, simple [MUL])
+  ; "lsl"     , (true,  2, simple [LSL])
+  ; "lsr"     , (true,  2, simple [LSR])
+  ; "&&"      , (true,  2, simple [AND])
+  ; "||"      , (true,  2, simple [OR])
+  ; "xor"     , (true,  2, simple [XOR])
+  ; "not"     , (true,  1, simple [NOT])
+  ; "abs"     , (true,  1, simple [ABS])
+  ; "isnat"   , (true,  1, simple [ISNAT])
+  ; "~-"      , (true,  1, simple [NEG])
+  ; "~-^"     , (true,  1, simple [NEG])
 
-  ; "lor"          , (2, simple [OR])
-  ; "land"         , (2, simple [AND])
-  ; "land_int_nat" , (2, simple [AND])
-  ; "lxor"         , (2, simple [XOR])
-  ; "lnot_nat"     , (1, simple [NOT])
-  ; "lnot"         , (1, simple [NOT])
+  ; "lor"          , (true,  2, simple [OR])
+  ; "land"         , (true,  2, simple [AND])
+  ; "land_int_nat" , (true,  2, simple [AND])
+  ; "lxor"         , (true,  2, simple [XOR])
+  ; "lnot_nat"     , (true,  1, simple [NOT])
+  ; "lnot"         , (true,  1, simple [NOT])
 
-  ; "List.length"  , (1, simple [SIZE])
-  ; "List.map"     , (2,
+  ; "List.length"  , (true,  1, simple [SIZE])
+  ; "List.map"     , (false, 2,
 (* lambda : map : S              SWAP ;
    { hd; <tl> } : lambda : S     MAP {
      hd : lambda : S              DIP DUP
@@ -100,7 +100,7 @@ let primitives =
              ])
 
 
-  ; "List.fold_left"    , (3,
+  ; "List.fold_left"    , (false, 3,
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
@@ -121,7 +121,7 @@ let primitives =
           DIP (1, [ DROP 1])
         ])
 
-  ; "List.fold_left'"    , (3,
+  ; "List.fold_left'"    , (false, 3,
 (*
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
@@ -140,25 +140,25 @@ let primitives =
           DIP (1, [ DROP 1])
         ])
 
-  ; "List.rev", (1, fun ~loc:_ ty xs -> 
+  ; "List.rev", (true,  1, fun ~loc:_ ty xs -> 
         match ty.desc with
         | TyLambda ({ desc= TyList ty }, { desc= TyList _ty' }) ->
             (* ty = _ty' *)
             xs @ [DIP (1, [NIL ty]); ITER [CONS]]
         | _ -> assert false)
-  ; "List.rev_append", (2, simple [ITER [CONS]])
+  ; "List.rev_append", (true,  2, simple [ITER [CONS]])
     
-  ; "Set.empty", (0, fun ~loc:_ typ xs ->
+  ; "Set.empty", (true,  0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
         | TySet ty -> [EMPTY_SET ty]
         | _ -> assert false)
 
-  ; "Set.length"  , (1, simple [SIZE])
-  ; "Set.mem"     , (2, simple [MEM])
-  ; "Set.update"  , (3, simple [UPDATE])
+  ; "Set.length"  , (true,  1, simple [SIZE])
+  ; "Set.mem"     , (true,  2, simple [MEM])
+  ; "Set.update"  , (true,  3, simple [UPDATE])
 
-  ; "Set.fold"    , (3,
+  ; "Set.fold"    , (false, 3,
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -184,7 +184,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
       
-  ; "Set.fold'"    , (3,
+  ; "Set.fold'"    , (false, 3,
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -204,7 +204,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
       
-  ; "Loop.left"    , (2, fun ~loc:_ typ xs -> 
+  ; "Loop.left"    , (false, 2, fun ~loc:_ typ xs -> 
         let rty =
           match typ.desc with
           | TyLambda (_, { desc= TyLambda(_, rty) }) -> rty
@@ -229,24 +229,24 @@ let primitives =
           LOOP_LEFT (  DIP (1, [ DUP ]) :: [ EXEC ] );
           DIP (1, [ DROP 1 ]) ])
       
-  ; "String.concat",   (2, simple [CONCAT])
-  ; "^",               (2, simple [CONCAT])
-  ; "String.length",   (1, simple [SIZE])
-  ; "Bytes.concat",    (2, simple [CONCAT])
-  ; "Bytes.length",    (1, simple [SIZE]) 
+  ; "String.concat",   (true,  2, simple [CONCAT])
+  ; "^",               (true,  2, simple [CONCAT])
+  ; "String.length",   (true,  1, simple [SIZE])
+  ; "Bytes.concat",    (true,  2, simple [CONCAT])
+  ; "Bytes.length",    (true,  1, simple [SIZE]) 
 
-  ; "Map.empty", (0, fun ~loc:_ typ xs ->
+  ; "Map.empty", (true,  0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
         | TyMap (ty1,ty2) -> [EMPTY_MAP (ty1, ty2)]
         | _ -> assert false)
 
-  ; "Map.length"  , (1, simple [SIZE])
-  ; "Map.get", (2, simple [ GET ] )
-  ; "Map.mem", (2, simple [MEM])
-  ; "Map.update", (3, simple [UPDATE])
+  ; "Map.length", (true,  1, simple [SIZE])
+  ; "Map.get", (true,  2, simple [ GET ] )
+  ; "Map.mem", (true,  2, simple [MEM])
+  ; "Map.update", (true,  3, simple [UPDATE])
 
-  ; "Map.map", (2,
+  ; "Map.map", (false, 2,
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
@@ -275,7 +275,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.map'", (2, 
+  ; "Map.map'", (false, 2, 
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
@@ -295,7 +295,7 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.fold"    , (3,
+  ; "Map.fold"    , (false, 3,
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -326,7 +326,7 @@ let primitives =
         ])
       
 
-  ; "Map.fold'"    , (3,
+  ; "Map.fold'"    , (false, 3,
 (*
   lam : map : acc : s                   SWAP DIP { SWAP }
   set : acc : lam : s                   ITER {
@@ -353,16 +353,16 @@ let primitives =
 
   (* big map *)
 
-  ; "BigMap.empty", (0, fun ~loc:_ typ xs ->
+  ; "BigMap.empty", (true,  0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
         | TyBigMap (ty1,ty2) -> [EMPTY_BIG_MAP (ty1, ty2)]
         | _ -> assert false)
-  ; "BigMap.get", (2, simple [ GET ] )
-  ; "BigMap.mem", (2, simple [MEM])
-  ; "BigMap.update", (3, simple [UPDATE])
+  ; "BigMap.get", (true,  2, simple [ GET ] )
+  ; "BigMap.mem", (true,  2, simple [MEM])
+  ; "BigMap.update", (true,  3, simple [UPDATE])
                
-  ; "Obj.pack", (1, fun ~loc ty pre ->
+  ; "Obj.pack", (true,  1, fun ~loc ty pre ->
         match args ty 1 with
         | [ aty ] ->
             if not & M.Type.is_packable ~legacy:true aty then
@@ -371,27 +371,27 @@ let primitives =
             pre @ [ PACK ]
         | _ -> assert false)
 
-  ; "Obj.unpack", (1, fun ~loc ty xs ->
+  ; "Obj.unpack", (true,  1, fun ~loc ty xs ->
       match ty.desc with
-      | TyLambda (_, { desc= TyOption ty }) ->
+      | TyLambda (_, { desc= TyOption (None, ty) }) ->
           if not & M.Type.is_packable ~legacy:false ty then
             errorf_primitive ~loc "Obj.unpack cannot unpack to a non packable type %a"
               M.Type.pp ty;
           xs @ [ UNPACK ty ]
       | _ -> assert false)
       
-  ; "String.slice", (3, simple [ SLICE ])
-  ; "Bytes.slice", (3, simple [ SLICE ]) (* XXX not tested *)
+  ; "String.slice", (true,  3, simple [ SLICE ])
+  ; "Bytes.slice", (true,  3, simple [ SLICE ]) (* XXX not tested *)
                    
-  ; "Contract.contract", (1, fun ~loc:_ ty xs ->
+  ; "Contract.contract", (false, 1, fun ~loc:_ ty xs ->
         match ty.desc with
-        | TyLambda (_, { desc= TyOption ({ desc= TyContract ty }) }) ->
+        | TyLambda (_, { desc= TyOption (None, { desc= TyContract ty }) }) ->
             xs @ [ CONTRACT ty ]
         | _ -> assert false)
       
-  ; "Contract.contract'", (2, fun ~loc:_ ty xs ->
+  ; "Contract.contract'", (false, 2, fun ~loc:_ ty xs ->
         match ty.desc with
-        | TyLambda (_, { desc= TyLambda (_, { desc= TyOption ({ desc= TyContract ty })})})  ->
+        | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->
             begin match xs with
               | [ M.Opcode.PUSH (_, M.Constant.String entry); address] ->
                   [address; CONTRACT' (ty, entry) ]
@@ -401,61 +401,61 @@ let primitives =
             end
         | _ -> assert false)
 
-  ; "Contract.implicit_account", (1, simple [ IMPLICIT_ACCOUNT ])
-  ; "Contract.address", (1, simple [ ADDRESS ])
-  ; "Contract.self",   (0, simple [SELF])
+  ; "Contract.implicit_account", (false, 1, simple [ IMPLICIT_ACCOUNT ])
+  ; "Contract.address", (true,  1, simple [ ADDRESS ])
+  ; "Contract.self",   (true,  0, simple [SELF])
 
-  ; "Operation.transfer_tokens", (3, simple [ TRANSFER_TOKENS ])
-  ; "Operation.set_delegate", (1, simple [ SET_DELEGATE ])
+  ; "Operation.transfer_tokens", (true,  3, simple [ TRANSFER_TOKENS ])
+  ; "Operation.set_delegate", (true,  1, simple [ SET_DELEGATE ])
 
-  ; "Global.get_now", (1, simple [ DROP 1; NOW ])
-  ; "Global.get_amount", (1, simple [ DROP 1; AMOUNT ])
-  ; "Global.get_balance", (1, simple [ DROP 1; BALANCE ])
-  ; "Global.get_source", (1, simple [ DROP 1; SOURCE ])
-  ; "Global.get_sender", (1, simple [ DROP 1; SENDER ])
-  ; "Global.get_steps_to_quota", (1, simple [ DROP 1; STEPS_TO_QUOTA ])
-  ; "Global.get_chain_id", (1, simple [ DROP 1; CHAIN_ID ])
+  ; "Global.get_now"            , (true,  1, simple [ DROP 1; NOW ])
+  ; "Global.get_amount"         , (true,  1, simple [ DROP 1; AMOUNT ])
+  ; "Global.get_balance"        , (true,  1, simple [ DROP 1; BALANCE ])
+  ; "Global.get_source"         , (true,  1, simple [ DROP 1; SOURCE ])
+  ; "Global.get_sender"         , (true,  1, simple [ DROP 1; SENDER ])
+  ; "Global.get_steps_to_quota" , (true,  1, simple [ DROP 1; STEPS_TO_QUOTA ])
+  ; "Global.get_chain_id"       , (true,  1, simple [ DROP 1; CHAIN_ID ])
 
-  ; "Crypto.check_signature", (3, simple [ CHECK_SIGNATURE ])
-  ; "Crypto.blake2b", (1, simple [ BLAKE2B ])
-  ; "Crypto.sha256", (1, simple [ SHA256 ])
-  ; "Crypto.sha512", (1, simple [ SHA512 ])
-  ; "Crypto.hash_key", (1, simple [ HASH_KEY ])
+  ; "Crypto.check_signature", (true,  3, simple [ CHECK_SIGNATURE ])
+  ; "Crypto.blake2b", (true,  1, simple [ BLAKE2B ])
+  ; "Crypto.sha256", (true,  1, simple [ SHA256 ])
+  ; "Crypto.sha512", (true,  1, simple [ SHA512 ])
+  ; "Crypto.hash_key", (true,  1, simple [ HASH_KEY ])
 
-  ; "Error.failwith", (1, simple [ FAILWITH ]) (* deprecated *)
-  ; "failwith", (1, simple [ FAILWITH ])
+  ; "Error.failwith", (false, 1, simple [ FAILWITH ]) (* deprecated *)
+  ; "failwith", (false, 1, simple [ FAILWITH ])
 
-  ; "raise", (1, simple [ FAILWITH ])
+  ; "raise", (false, 1, simple [ FAILWITH ])
 
-  ; "Timestamp.add", (2, simple [ADD])
-  ; "Timestamp.sub", (2, simple [SUB])
-  ; "Timestamp.diff", (2, simple [SUB])
+  ; "Timestamp.add",  (true,  2, simple [ADD])
+  ; "Timestamp.sub",  (true,  2, simple [SUB])
+  ; "Timestamp.diff", (true,  2, simple [SUB])
 
-  ; "ediv_int_int", (2, simple [EDIV])
-  ; "ediv_int_nat", (2, simple [EDIV])
-  ; "ediv_nat_int", (2, simple [EDIV])
-  ; "ediv_nat_nat", (2, simple [EDIV])
-  ; "ediv_tz_tz", (2, simple [EDIV])
-  ; "ediv_tz_nat", (2, simple [EDIV])
+  ; "ediv_int_int", (true,  2, simple [EDIV])
+  ; "ediv_int_nat", (true,  2, simple [EDIV])
+  ; "ediv_nat_int", (true,  2, simple [EDIV])
+  ; "ediv_nat_nat", (true,  2, simple [EDIV])
+  ; "ediv_tz_tz", (true,  2, simple [EDIV])
+  ; "ediv_tz_nat", (true,  2, simple [EDIV])
 
-  ; "/", (2, simple [EDIV; IF_NONE( [PUSH (tyInt, Int Z.zero); FAILWITH], 
+  ; "/", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyInt, Int Z.zero); FAILWITH], 
                                     [CAR])])
-  ; "/^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+  ; "/^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
                                      [CAR])])
-  ; "/$", (2, simple [EDIV; IF_NONE( [PUSH (tyMutez, Int Z.zero); FAILWITH], 
+  ; "/$", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyMutez, Int Z.zero); FAILWITH], 
                                      [CAR])])
-  ; "/$^", (2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+  ; "/$^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
                                       [CAR])])
            
-  ; "Option.value", (2, simple [IF_NONE ([], [DIP (1, [DROP 1])])])
-  ; "Option.get", (1, simple [IF_NONE ([PUSH (tyString, String "Option.get"); FAILWITH], [])])
+  ; "Option.value", (true,  2, simple [IF_NONE ([], [DIP (1, [DROP 1])])])
+  ; "Option.get", (false, 1, simple [IF_NONE ([PUSH (tyString, String "Option.get"); FAILWITH], [])])
 
-  ; "Sum.get_left", (1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
-  ; "Sum.get_right", (1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
+  ; "Sum.get_left", (false, 1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
+  ; "Sum.get_right", (false, 1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
   ]
     
 let contract' entry ~loc:_ ty xs =
   match ty.desc with
-  | TyLambda (_, { desc= TyLambda (_, { desc= TyOption ({ desc= TyContract ty })})})  ->
+  | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->
       xs @ [ CONTRACT' (ty, entry) ]
   | _ -> assert false

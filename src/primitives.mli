@@ -16,7 +16,8 @@ open Michelson
 
 val primitives : 
   (string * 
-   (int 
+   (bool (* pure or not *)
+    * int 
     * (loc:Location.t -> Type.t -> Opcode.t list -> Opcode.t list)))
     list
 
