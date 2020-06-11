@@ -227,14 +227,15 @@ module Type = struct
   and is_comparable ty = 
     (* See Script_ir_translator.parse_comparable_ty *)
     let rec f ty = match ty.desc with
-      | TyBigMap _ | TyChainID | TyContract _ | TyKey 
-      | TyLambda _ | TyList _ | TyMap _ | TyOperation
-      | TyOption _ | TyOr _ | TySet _ | TySignature | TyUnit -> false
-        
+      | TyChainID | TySignature | TyKey -> true (* since 007 *)
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyMutez 
       | TyKeyHash | TyTimestamp | TyAddress -> true
         
       | TyPair (_,ty1, _,ty2) -> f ty1 && f ty2 (* since 005_Babylon *)
+
+      | TyBigMap _ | TyContract _
+      | TyLambda _ | TyList _ | TyMap _ | TyOperation
+      | TyOption _ | TyOr _ | TySet _ | TyUnit -> false
     in
     f ty
       
