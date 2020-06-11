@@ -88,8 +88,8 @@ let rec knorm (t : IML.t) : (IML.PatVar.t * IML.t) list * IML.t =
       let defs3, v3 = k t3 in
       mk (defs1 @ defs2 @ defs3) & Contract_create (s, loc, v1, v2, v3)
   | Seq (t1, t2) -> 
-      let defs1, v1 = k t1 in
-      mk defs1 & Seq (v1, knormalize t2)
+      let defs1, _v1 = k t1 in
+      defs1, knormalize t2
   | _ -> [], t0
 
 and k t =
