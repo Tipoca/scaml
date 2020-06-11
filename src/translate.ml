@@ -138,7 +138,7 @@ let mkint ~loc n = mke ~loc tyInt (Const (M.Constant.Int (Z.of_int n)))
 let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
 let mkcons ~loc h t = mke ~loc t.typ (Cons (h, t))
 let mksome ~loc t = mke ~loc (tyOption (None, t.typ)) (IML_Some t)
-let mkunit ~loc () = mke ~loc tyUnit Unit
+let mkunit ~loc () = mke ~loc tyUnit (Const Unit)
 let mkassert ~loc t = mke ~loc tyUnit & Assert t
 let mkassertfalse ~loc ty = mke ~loc ty & AssertFalse
 let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
@@ -1207,7 +1207,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
 
   (* unit *)
   | Tconstr (p, _, _), TyUnit when p = Predef.path_unit ->
-      make tyUnit Unit
+      make tyUnit (Const Unit)
 
   (* int *)
   | Tconstr (p, [], _), TyInt when Path.is_scaml_dot "int" p ->

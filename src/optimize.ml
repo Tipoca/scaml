@@ -128,7 +128,7 @@ let beta modified exp =
           | _ -> t
         in
         seek id t0
-    | Const _ | Nil | IML_None | Unit | AssertFalse -> t0 
+    | Const _ | Nil | IML_None | AssertFalse -> t0 
     | Contract_create (s, l, t1, t2, t3) ->
         mk & Contract_create (s, l, g t1, g t2, g t3)
     | App (t, ts) -> mk & App (g t, List.map g ts)
@@ -184,7 +184,7 @@ let assoc modified exp =
         let t2 = f t2 in
         let lets, body = get_lets t1 in
         add_lets lets { t0 with desc= Let (pv, body, t2) }
-    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse -> t0
+    | Var _ | Const _ | Nil | IML_None | AssertFalse -> t0
     (* XXX many are already in K normal form therefore f t is likely t *)
     | Contract_create _ -> t0
     | App (t, ts) -> 
@@ -229,7 +229,7 @@ let alpha_conv env t =
           | None -> t
           | Some id' -> { t with desc= Var id' }
         end
-    | Const _ | Nil | IML_None | Unit | AssertFalse -> t
+    | Const _ | Nil | IML_None | AssertFalse -> t
     | Contract_create (cs, l, t1, t2, t3) ->
         mk & Contract_create (cs, l, g t1, g t2, g t3)
     | IML_Some t -> mk & IML_Some (g t)
@@ -330,7 +330,7 @@ let inline modified exp =
               g (mk & Let (pv, t', mk & App (body, ts')))
         end
     | App (t, ts) -> mk & App (g t, List.map g ts)
-    | Var _ | Const _ | Nil | IML_None | Unit | AssertFalse -> t0
+    | Var _ | Const _ | Nil | IML_None | AssertFalse -> t0
     | Contract_create (s, l, t1, t2, t3) -> mk & Contract_create (s, l, g t1, g t2, g t3)
     | IML_Some t -> mk & IML_Some (g t)
     | Left t -> mk & Left (g t)
@@ -354,7 +354,7 @@ let inline modified exp =
     
 let may_have_effect t =
   let rec f t = match t.desc with
-    | Const _ | Nil | IML_None | Unit | Var _ -> false
+    | Const _ | Nil | IML_None | Var _ -> false
     | Fun _ -> false
 
     (* args are variables or constants *)
@@ -402,7 +402,7 @@ let elim modified exp =
           S.remove pv.desc ids2, t2
         end
     | Var id -> S.singleton id, t0
-    | Const _ | Nil | IML_None | Unit | AssertFalse -> S.empty, t0
+    | Const _ | Nil | IML_None | AssertFalse -> S.empty, t0
     | Contract_create (a, b, t1, t2, t3) -> 
         let ids1, t1 = f t1 in
         let ids2, t2 = f t2 in
@@ -502,7 +502,7 @@ let count_variables only_free t =
   let rec f t st = match t.desc with
     | Var id -> incr id t.typ st
 
-    | Const _ | Nil | IML_None | Unit | AssertFalse -> st
+    | Const _ | Nil | IML_None | AssertFalse -> st
 
     | IML_Some t | Left t | Right t | Assert t -> f t st
     | Fun (pv, t) -> remove pv & f t st
@@ -553,6 +553,15 @@ let unknorm exp =
     let g = f depth env in
     let mk desc = { t0 with desc } in
     match t0.desc with
+    | Var _ when t0.typ = Michelson.Type.tyUnit -> (* (x : unit) => () *)
+        mkunit ~loc:t0.loc ()
+
+    | Let (pv, t1, t2) when pv.typ = Michelson.Type.tyUnit ->
+        begin match t1.desc with
+          | Const Unit -> g t2 (* let unit = () in t2 => t2 *)
+          | _ -> mk & Seq (g t1, g t2) (* let unit = e in t2 => e; t2 *)
+        end
+
     | Let (pv, ({ desc=Prim ("Contract.self", _, _)} as t1), t2) ->
         (* We cannot expand it *)
         mk & Let (pv, t1, g t2)
@@ -580,7 +589,7 @@ let unknorm exp =
           | None -> t0
         end
     | Fun (c, t) -> mk & Fun (c, f (depth + 1) env t)
-    | Const _ | Nil | IML_None | Unit | AssertFalse -> t0
+    | Const _ | Nil | IML_None | AssertFalse -> t0
     | IML_Some t -> mk & IML_Some (g t)
     | Left t -> mk & Left (g t)
     | Right t -> mk & Right (g t)

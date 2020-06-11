@@ -139,8 +139,8 @@ module Make(Config : Config) = struct
     | IML.Set _ -> errorf_constant ~loc "Set elements must be constants"
     | Map _ -> errorf_constant ~loc "Map bindings must be constants"
     | BigMap _ -> errorf_constant ~loc "BigMap bindings must be constants"
-    | Const c -> 
-        [ PUSH (t.typ, c) ]
+    | Const Unit -> [ UNIT ]
+    | Const c -> [ PUSH (t.typ, c) ]
     | Nil -> 
         let ty = match t.typ.desc with
           | TyList ty -> ty
@@ -174,7 +174,6 @@ module Make(Config : Config) = struct
         in
         let os = compile env t' in
         os @ [ RIGHT ty ]
-    | Unit -> [ UNIT ]
   
     | Var id -> var ~loc env id
   
@@ -382,8 +381,7 @@ module Make(Config : Config) = struct
       let module C = M.Constant in
       let (>>=) = Option.bind in
       match t.IML.desc with
-      | IML.Unit -> Some C.Unit
-      | Const c -> Some c
+      | IML.Const c -> Some c
       | IML_None -> Some (C.Option None)
       | IML_Some t -> f t >>= fun c -> Some (C.Option (Some c))
       | Left t -> f t >>= fun t -> Some (C.Left t)

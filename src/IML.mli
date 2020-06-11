@@ -57,7 +57,6 @@ and desc =
   | IML_Some of t
   | Left of t
   | Right of t
-  | Unit
   | Var of Ident.t
   | Pair of t * t
   | Assert of t
