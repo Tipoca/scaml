@@ -97,7 +97,7 @@ and k t =
   | Var _ -> [], t
   | _ ->
       let defs, t = knorm t in
-      let i = Ident.create_local "k" in
+      let i = Varname.create "k" t.typ in
       let def = { typ= t.typ; loc= t.loc; attrs= (); desc= i }, t in
       defs @ [def], mkvar ~loc:t.loc (i, t.typ)
 
@@ -284,7 +284,7 @@ let inline modified exp =
             | Var x -> i' <> x
             | _ -> false) (t::ts));
 
-        let j = Ident.create_local "j" in
+        let j = Varname.create "j" body.typ in
         let pvj = {desc=j; typ= body.typ; attrs=(); loc=body.loc} in
         let vj = mkvar ~loc:noloc (j,body.typ) in
           
@@ -323,7 +323,7 @@ let inline modified exp =
                 match body.desc with
                 | Var _ -> body
                 | _ ->
-                    let i = Ident.create_local "k" in
+                    let i = Varname.create "k" body.typ in
                     mklet ~loc:body.loc {desc=i; typ= body.typ; attrs=(); loc=body.loc} body 
                     & mkvar ~loc:body.loc (i, body.typ)
               in

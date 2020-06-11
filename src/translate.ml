@@ -32,8 +32,7 @@ let modname = ref None (* XXX HACK *)
 
 let repr_desc ty = (Ctype.repr ty).desc
 
-let create_ident n = Ident.create_local & "__" ^ n
-
+let create_ident s = Ident.create_local s
 let contract_self_id = create_ident "self"
 
 let noloc = Location.none
@@ -874,34 +873,34 @@ module Pmatch = struct
                                 | TyOr (_,ty, _,_) -> ty
                                 | _ -> assert false
                               in
-                              [ create_ident "l", ty ]
+                              [ Varname.create "l" ty, ty ]
                           | Right ->
                               let ty = match vty.desc with
                                 | TyOr (_,_, _,ty) -> ty
                                 | _ -> assert false
                               in
-                              [ create_ident "r", ty ]
+                              [ Varname.create "r" ty, ty ]
                           | Pair ->
                               let ty1,ty2 = match vty.desc with
                                 | TyPair (_,ty1, _,ty2) -> ty1, ty2
                                 | _ -> assert false
                               in
-                              [ create_ident "l", ty1 ;
-                                create_ident "r", ty2 ]
+                              [ Varname.create "l" ty1, ty1 ;
+                                Varname.create "r" ty2, ty2 ]
                           | Cons ->
                               let ty = match vty.desc with
                                 | TyList ty -> ty
                                 | _ -> assert false
                               in
-                              [ create_ident "hd", ty
-                              ; create_ident "tl", vty
+                              [ Varname.create "hd" ty, ty
+                              ; Varname.create "tl" vty, vty
                               ]
                           | Some ->
                               let ty = match vty.desc with
                                 | TyOption (_,ty) -> ty
                                 | _ -> assert false
                               in
-                              [ create_ident "x", ty ]
+                              [ Varname.create "x" ty, ty ]
 
                           | Nil | None | Bool _ | Constant _ (* int/nat/tz *)
                           | Unit -> []
@@ -1076,7 +1075,7 @@ module Pmatch = struct
                  XXX This is very inefficient!
               *)
               let vars' = List.map (fun (v,ty) ->
-                  (create_ident & Ident.name v, ty)) vars in
+                  (Varname.create (Ident.name v) ty, ty)) vars in
               (* We use alpha_conv, not subst, to keep the original code
                  locations *)
               let s = List.map2 (fun (v,_) (v',_) -> v, v') vars vars' in
@@ -1113,9 +1112,8 @@ module Pmatch = struct
             List.rev cases, List.rev guards
           in
 
-          let v = create_ident "v" in
-
           let typ = (match List.hd cases with (_,_,e) -> e).typ in
+          let v = Varname.create "v" e.typ in
 
           (* let casei = fun ... in let v = e in ... *)
           let make x =
@@ -1523,7 +1521,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               let { vb_pat; vb_expr } = vb in
               let vb_expr = expression lenv vb_expr in
               let typ = vb_expr.typ in
-              let i = create_ident "x" in
+              let i = Varname.create "x" typ in
               let x = { desc= i; typ; loc= Location.none; attrs= () } in
               let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
               { desc= Let (x, vb_expr,
@@ -1607,6 +1605,11 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
 
     | Texp_function { arg_label= Nolabel; param=_; cases; partial } ->
         if partial = Partial then errorf_pattern_match ~loc "Pattern match is not exhaustive";
+        let targ, _tret = match typ.desc with
+          | TyLambda (targ, tret) -> targ, tret
+          | _ -> assert false
+        in
+(*
         (* name the same name of the original if possible *)
         let i = create_ident & match cases with
           | [ { c_lhs = { pat_desc= (Tpat_var (id, _) |
@@ -1614,10 +1617,8 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
               Ident.name id
           | _ -> "arg"
         in
-        let targ, _tret = match typ.desc with
-          | TyLambda (targ, tret) -> targ, tret
-          | _ -> assert false
-        in
+*)
+        let i = Varname.create "arg" targ in
         let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
         let lenv = Lenv.add_locals [i] & Lenv.into_fun ~loc lenv in
         let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
@@ -1782,7 +1783,7 @@ and primitive ~loc fty n args =
               List.take (arity - List.length args)
               & List.drop (List.length args) tys
             in
-            let xtys = List.map (fun ty -> create_ident "x", ty) tys in
+            let xtys = List.map (fun ty -> Varname.create "x" ty, ty) tys in
             let e =
               List.fold_right (fun (x,ty) e -> mkfun ~loc (mkp ~loc ty x) e)
                 xtys
