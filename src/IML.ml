@@ -237,10 +237,25 @@ end
 let pp = P.pp
 
 let save path t = 
-  let oc = open_out path in
-  let ppf = Format.of_out_channel oc in
-  Format.fprintf ppf "%a@." P.pp t;
-  close_out oc
+  let default () =
+    (* default *)
+    prerr_endline "ocamlformat failed.  Using default printer";
+    let oc = open_out path in
+    let ppf = Format.of_out_channel oc in
+    Format.fprintf ppf "%a@." P.pp t;
+    close_out oc
+  in
+  match 
+    Unix.open_process_out 
+      (Printf.sprintf "ocamlformat --disable-conf-files --enable-outside-detected-project --impl --parens-tuple=multi-line-only --parens-tuple-patterns=multi-line-only - > %s" path)
+  with
+  | exception _ -> default ()
+  | oc ->
+      let ppf = Format.formatter_of_out_channel oc in
+      Format.fprintf ppf "%a@." P.pp t;
+      match Unix.close_process_out oc with
+      | WEXITED 0 -> ()
+      | _ -> default ()
 
 let rec freevars t = 
   let open IdTys in

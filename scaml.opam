@@ -31,4 +31,5 @@ depends: [
   "ppx_typerep_conv"
   "blake2" { = "0.3" }
   "hacl" { = "0.3" }
+  "ocamlformat"
 ]
