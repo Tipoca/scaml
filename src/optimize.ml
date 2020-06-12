@@ -565,6 +565,11 @@ let unknorm exp =
     | Let (pv, ({ desc=Prim ("Contract.self", _, _)} as t1), t2) ->
         (* We cannot expand it *)
         mk & Let (pv, t1, g t2)
+
+    | Let ({desc= v}, t1, { desc= Var v' }) when v = v' -> 
+        (* let x = e in x   =>   e *)
+        g t1
+
     | Let (pv, t1, t2) ->
         begin match VMap.find_opt pv.desc vmap with
           | _ when may_have_effect t1 -> mk & Let (pv, g t1, g t2) 
