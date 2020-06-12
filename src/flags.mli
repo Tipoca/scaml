@@ -29,14 +29,21 @@ and t =
   ; scaml_mode : mode option
   ; scaml_noscamlib : bool (** do not add -I `opam config var prefix`/scaml/lib *)
   ; dump_iml : bool
+  ; tezos_protocol : int * int (* 007, 000 *)
   } [@@deriving conv{ocaml}]
 
 val flags : t ref
 
 val pp : Format.t -> t -> unit
-val eval : t -> Ppxlib.Longident.t * [`Bool of bool | `Constant of Ppxlib.Parsetree.constant ] -> (t, string) Result.t
+val eval : 
+  t 
+  -> Ppxlib.Longident.t * [`Bool of bool 
+                          | `Constant of Ppxlib.Parsetree.constant ] 
+  -> (t, string) Result.t
 val update : (t -> t) -> unit
 val with_flags : (t -> t) -> (unit -> 'a) -> 'a
 val if_debug : (unit -> unit) -> unit
 val if_time : (unit -> unit) -> unit
 val set_mode : t -> mode -> t
+
+val get_protocol : unit -> int * int

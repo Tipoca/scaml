@@ -31,6 +31,7 @@ and t =
   ; scaml_mode : mode option
   ; scaml_noscamlib : bool
   ; dump_iml : bool
+  ; tezos_protocol : Protocol.t
   } [@@deriving conv{ocaml}]
 
 let pp = Camlon.Ocaml.format_with ocaml_of_t
@@ -41,26 +42,25 @@ let set_mode t m =
   | Some _ -> failwith "You cannot change SCaml running mode twice"
 
 let eval flags (k, v) =
-  let must_be_a_bool () = Error "attribute type error: must be a bool" in
+  let open Result.Infix in
+  let must_be_a_bool = Error "attribute type error: must be a bool" in
   match String.concat "." & Longident.flatten_exn k, v with
   | "iml_optimization", `Bool b -> Ok { flags with iml_optimization= b }
-  | "iml_optimization", _ -> must_be_a_bool ()
+  | "iml_optimization", _ -> must_be_a_bool
   | "iml_pattern_match", `Bool b -> Ok { flags with iml_pattern_match= b }
-  | "iml_pattern_match", _ -> must_be_a_bool ()
+  | "iml_pattern_match", _ -> must_be_a_bool
   | "scaml_debug", `Bool b -> Ok { flags with scaml_debug= b }
-  | "scaml_debug", _ -> must_be_a_bool ()
+  | "scaml_debug", _ -> must_be_a_bool
   | "scaml_time", `Bool b -> Ok { flags with scaml_time= b }
-  | "scaml_time", _ -> must_be_a_bool ()
-(*
-  | "scaml_convert", `Unit -> set_mode flags Convert
-  | "scaml_convert", _ -> must_be_a_unit ()
-  | "scaml_revert", `String s -> set_mode flags (Revert s)
-  | "scaml_revert", _ -> must_be_a_unit ()
-*)
+  | "scaml_time", _ -> must_be_a_bool
   | "scaml_noscamlib", `Bool b -> Ok { flags with scaml_noscamlib= b }
-  | "scaml_noscamlib", _ -> must_be_a_bool ()
+  | "scaml_noscamlib", _ -> must_be_a_bool
   | "dump_iml", `Bool b -> Ok { flags with dump_iml= b }
-  | "dump_iml", _ -> must_be_a_bool ()
+  | "dump_iml", _ -> must_be_a_bool
+  | "tezos_protocol", `Constant (Parsetree.Pconst_float (s, None)) -> 
+      Protocol.parse s >>| fun v -> { flags with tezos_protocol= v }
+  | "tezos_protocol", _ -> 
+      Protocol.parse "dummy" >>| fun _ -> flags (* let it fail *)
   | n, _ -> Error (Printf.sprintf "Unknown attribute %s" n)
 
 let flags = ref 
@@ -71,6 +71,7 @@ let flags = ref
     ; scaml_mode        = None
     ; scaml_noscamlib   = false
     ; dump_iml          = begin try ignore (Sys.getenv "SCAML_DUMP_IML"); true with _ -> false end 
+    ; tezos_protocol    = Protocol.default
     }
 
 let update f = flags := f !flags
@@ -85,3 +86,4 @@ let with_flags f g =
 let if_debug f = if !flags.scaml_debug then f ()
 let if_time f = if !flags.scaml_time then f ()
 
+let get_protocol () = !flags.tezos_protocol

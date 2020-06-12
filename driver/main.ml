@@ -349,6 +349,13 @@ let main () =
       "Dump the final IML code to .iml file"
     ; "--scaml-optimize", Arg.Bool (fun b -> Flags.(flags := { !flags with iml_optimization = b })),
       "Dump the final IML code to .iml file"
+    ; "--scaml-protocol", Arg.String (fun s -> 
+          match Protocol.parse s with
+          | Ok v -> Flags.(flags := { !flags with tezos_protocol = v })
+          | Error s -> failwith s
+        ),
+      (Printf.sprintf "Set Tezos protocol version (default: %s)"
+         Protocol.(to_string default))
     ];
   try
     readenv ppf Before_args;

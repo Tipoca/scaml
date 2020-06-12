@@ -227,7 +227,11 @@ module Type = struct
   and is_comparable ty = 
     (* See Script_ir_translator.parse_comparable_ty *)
     let rec f ty = match ty.desc with
-      | TyChainID | TySignature | TyKey -> true (* since 007 *)
+
+      | TyChainID | TySignature | TyKey when Flags.get_protocol () >= (7,0) ->
+          true (* since 007 *)
+      | TyChainID | TySignature | TyKey -> false
+
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyMutez 
       | TyKeyHash | TyTimestamp | TyAddress -> true
         
