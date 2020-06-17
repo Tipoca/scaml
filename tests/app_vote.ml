@@ -47,6 +47,7 @@ let main action storage = match action with
   | Init config -> ([], init config)
 
 (* Just for test.  For real voting dApp, this function is not required *)
+(* XXX optimized out! *)
 let [@entry] test () () =
   let conf = 
     { title="test"
