@@ -1,11 +1,13 @@
 # SCaml installation
 
+## From source
+
 Install `opam`, then:
 
 ```
 $ git clone https://gitlab.com/dailambda/scaml
 $ cd scaml
-$ git checkout 1.2.0pre
+$ git checkout master    # choose a branch you want to use
 $ opam switch create . ocaml-base-compiler.4.09.1 --no-install
 $ opam install -y ./scaml.opam
 ```
