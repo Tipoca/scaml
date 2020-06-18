@@ -19,7 +19,12 @@ open Michelson.Type
 let infer def t = 
   let rec infer t = 
     match t.tyannot with
-    | Some s -> Some s
+    | Some s -> 
+        (* type annotation may contain invalid chars for idents *)
+        Some (String.uncapitalize_ascii 
+              @@ String.map (function
+                  | ('a'..'z' | 'A'..'Z' | '0'..'9' as c) -> c
+                  | _ -> '_') s)
     | None ->
         match t.desc with
         | TyString -> Some "s"
