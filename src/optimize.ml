@@ -297,17 +297,29 @@ let inline modified exp =
         let t1 = g t1 in
         begin match t1.desc with
           | Fun (pv', body) ->
-              mk & Let (pv, t1, f ((pv.desc,(pv',body))::env) t2)
+              mk & Let (pv, t1, f ((pv.desc, `Fun (pv',body))::env) t2)
+          (* How about Const (List .. | Pair _ | Left _ | Right _ ) ? *)
+          | Pair (e1, e2) ->
+              mk & Let (pv, t1, f ((pv.desc, `Pair (e1, e2))::env) t2)
+          | Left e ->
+              mk & Let (pv, t1, f ((pv.desc, `Left e)::env) t2)
+          | Right e ->
+              mk & Let (pv, t1, f ((pv.desc, `Right e)::env) t2)
+          | Cons (e1,e2) ->
+              mk & Let (pv, t1, f ((pv.desc, `Cons (e1, e2))::env) t2)
+          | Nil ->
+              mk & Let (pv, t1, f ((pv.desc, `Nil)::env) t2)
+          | IML_Some e ->
+              mk & Let (pv, t1, f ((pv.desc, `Some e)::env) t2)
+          | IML_None ->
+              mk & Let (pv, t1, f ((pv.desc, `None)::env) t2)
           | _ ->
               mk & Let (pv, t1, g t2)
         end
     | App (t, []) -> g t
     | App (({desc= Var id} as tf), ((t'::ts') as ts)) ->
         begin match List.assoc_opt id env with
-          | None -> 
-              let ts = List.map g ts in
-              mk & App (tf, ts)
-          | Some (pv, body) ->
+          | Some (`Fun (pv, body)) ->
               modified := true;
               (* let f = fun pv -> body in ....  f t' ts'
               
@@ -328,9 +340,66 @@ let inline modified exp =
                     & mkvar ~loc:body.loc (i, body.typ)
               in
               g (mk & Let (pv, t', mk & App (body, ts')))
+          | _ -> 
+              let ts = List.map g ts in
+              mk & App (tf, ts)
         end
+
     | App (t, ts) -> mk & App (g t, List.map g ts)
+
+    | Prim ("fst", _, {desc= Var id}::ts') ->
+        begin match List.assoc_opt id env with
+          | Some (`Pair (e1, _)) ->
+              modified := true;
+              mk & App (e1, ts')
+          | _ -> t0
+        end
+    | Prim ("snd", _, {desc= Var id}::ts') ->
+        begin match List.assoc_opt id env with
+          | Some (`Pair (_, e2)) ->
+              modified := true;
+              mk & App (e2, ts')
+          | _ -> t0
+        end
+      
+    | Switch_or (({desc= Var id} as t1), pl, tl, pr, tr) -> 
+        begin match List.assoc_opt id env with
+          | Some (`Left e) ->
+              modified := true;
+              g & mk & Let (pl, e, g tl)
+          | Some (`Right e) ->
+              modified := true;
+              g & mk & Let (pr, e, g tr)
+          | _ -> 
+              mk & Switch_or (g t1, pl, g tl, pr, g tr)
+        end
+
+    | Switch_cons (({desc= Var id} as t1), p1, p2, t2, t3) -> 
+        begin match List.assoc_opt id env with
+          | Some (`Cons (e1,e2)) ->
+              modified := true;
+              g & mk & Let (p1, e1, mk & Let (p2, e2, g t2))
+          | Some `Nil ->
+              modified := true;
+              g t3
+          | _ -> mk & Switch_cons (g t1, p1, p2, g t2, g t3)
+        end
+
+    | Switch_none (({desc= Var id} as t1), t2, p, t3) ->
+        begin match List.assoc_opt id env with
+          | Some (`Some e) ->
+              modified := true;
+              g & mk & Let (p, e, g t3)
+          | Some `None ->
+              modified := true;
+              g t2
+          | _ -> mk & Switch_none (g t1, g t2, p, g t3)
+        end
+
+    | Switch_or _ | Switch_cons _ | Switch_none _ -> assert false
+
     | Var _ | Const _ | Nil | IML_None | AssertFalse -> t0
+
     | Contract_create (s, l, t1, t2, t3) -> mk & Contract_create (s, l, g t1, g t2, g t3)
     | IML_Some t -> mk & IML_Some (g t)
     | Left t -> mk & Left (g t)
@@ -341,9 +410,7 @@ let inline modified exp =
     | Pair (t1, t2) -> mk & Pair (g t1, g t2)
     | IfThenElse (t1, t2, Some t3) -> mk & IfThenElse (g t1, g t2, Some (g t3))
     | IfThenElse (t1, t2, None) -> mk & IfThenElse (g t1, g t2, None)
-    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (g t1, p1, g t2, p2, g t3)
-    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (g t1, p1, p2, g t2, g t3)
-    | Switch_none (t1, t2, p, t3) -> mk & Switch_none (g t1, g t2, p, g t3)
+        
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map g ts)
     | Seq (t1, t2) -> mk & Seq (g t1, g t2)
     | Set ts -> mk & Set (List.map g ts)
