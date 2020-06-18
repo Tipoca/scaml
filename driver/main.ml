@@ -339,7 +339,7 @@ let main () =
                                                                       (ConvertSingleType s))),
       "<ident> Convert a single type, instead of compling a smart contract"
     ; "--scaml-revert", Arg.String (fun s -> Flags.(flags := set_mode !flags (Revert s))),
-      "Revert values, instead of compling a smart contract"
+      "<string> Revert values, instead of compling a smart contract"
     ; "--scaml-noscamlib", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_noscamlib = true })),
       "Do not add default directory for SCamlib to the list of include directories"
     ; "--scaml-version", Arg.Unit (fun () -> 
@@ -348,13 +348,13 @@ let main () =
     ; "--scaml-dump-iml", Arg.Unit (fun () -> Flags.(flags := { !flags with dump_iml = true })),
       "Dump the final IML code to .iml file"
     ; "--scaml-optimize", Arg.Bool (fun b -> Flags.(flags := { !flags with iml_optimization = b })),
-      "Dump the final IML code to .iml file"
+      "<bool> Turn on/off the optimization.  Default is true.  False may break compilation."
     ; "--scaml-protocol", Arg.String (fun s -> 
           match Protocol.parse s with
           | Ok v -> Flags.(flags := { !flags with tezos_protocol = v })
           | Error s -> failwith s
         ),
-      (Printf.sprintf "Set Tezos protocol version (default: %s)"
+      (Printf.sprintf "<string> Set Tezos protocol version (default: %s)"
          Protocol.(to_string default))
     ];
   try
