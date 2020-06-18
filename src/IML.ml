@@ -114,7 +114,7 @@ module P = struct
     | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
 
   let _type = type_
-
+    
   let rec constant = 
     let open M.Constant in
     function
@@ -157,77 +157,92 @@ module P = struct
         ; pexp_attributes= [] 
         }
 
-  let rec iml { desc; typ=_ } = match desc with
-    | Const c -> constant c
-    | Nil -> [%expr []] (* type? *)
-    | Cons (t1, t2) -> 
-        let t1 = iml t1 in
-        let t2 = iml t2 in
-        [%expr [%e t1] :: [%e t2]]
-    | IML_None -> [%expr None]
-    | IML_Some t -> [%expr Some [%e iml t]]
-    | Left t -> [%expr Left [%e iml t]]
-    | Right t -> [%expr Right [%e iml t]]
-    | Var id -> evar (Ident.unique_name id)
-    | Pair (t1, t2) ->
-        from_Some & pexp_tuple_opt [ iml t1 ; iml t2 ]
-    | Assert t ->[%expr assert [%e iml t]]
-    | AssertFalse ->[%expr assert false]
-    | Fun (pv, t) -> 
-        let pv = pvar & Ident.unique_name pv.desc in
-        [%expr fun [%p pv] -> [%e iml t] ]
-    | IfThenElse (t1, t2, None) ->
-        [%expr if [%e iml t1] then [%e iml t2] ]
-    | IfThenElse (t1, t2, Some t3) ->
-        [%expr if [%e iml t1] then [%e iml t2] else [%e iml t3] ]
-    | App (t, ts) -> eapply (iml t) (List.map iml ts)
-    | Prim (s, _, ts) -> eapply (evar s) (List.map iml ts)
-    | Let (pv, t1, t2) ->
-        let ty = type_ pv.typ in
-        let pv = pvar & Ident.unique_name pv.desc in
-        [%expr let [%p pv] : [%t ty] = [%e iml t1] in [%e iml t2]]
-    | Switch_or (t, pv1, t1, pv2, t2) ->
-        let pv1 = pvar & Ident.unique_name pv1.desc in
-        let pv2 = pvar & Ident.unique_name pv2.desc in
-        [%expr match [%e iml t] with
-          | Left [%p pv1] -> [%e iml t1]
-          | Right [%p pv2] -> [%e iml t2] ]
-    | Switch_cons (t, pv1, pv2, t1, t2) ->
-        let pv1 = pvar & Ident.unique_name pv1.desc in
-        let pv2 = pvar & Ident.unique_name pv2.desc in
-        [%expr match [%e iml t] with
-          | [%p pv1] :: [%p pv2] -> [%e iml t1]
-          | [] -> [%e iml t2] ]
-    | Switch_none (t, t1, pv2, t2) ->
-        let pv2 = pvar & Ident.unique_name pv2.desc in
-        [%expr match [%e iml t] with
-          | None -> [%e iml t1]
-          | Some [%p pv2] -> [%e iml t2] ]
-    | Contract_create (Tz_code code, _, t1, t2, t3) ->
-        let code = 
-          { pexp_desc= Pexp_constant (Pconst_string (code, Some ""))
-          ; pexp_loc= Location.none
-          ; pexp_loc_stack= []
-          ; pexp_attributes= [] 
-          }
-        in
-        [%expr Contract.create_from_tz_code [%e code] 
-            [%e iml t1]
-            [%e iml t2]
-            [%e iml t3]]
-    | Contract_create (Tz_file file, _, t1, t2,t3) ->
-        [%expr Contract.create_from_tz_file [%e estring file] 
-            [%e iml t1]
-            [%e iml t2]
-            [%e iml t3]]
-    | Seq (t1, t2) -> [%expr [%e iml t1]; [%e iml t2]]
-    | Set ts -> [%expr Set [%e elist & List.map iml ts]]
-    | Map kvs -> 
-        [%expr Map [%e elist & List.map (fun (k,v) -> 
-            from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
-    | BigMap kvs -> 
-        [%expr BigMap [%e elist & List.map (fun (k,v) -> 
-            from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
+  let attr a e = 
+    let open Parsetree in
+    match a with
+    | Attr.Comment _ -> e
+    | Annot a ->
+        { e with 
+          pexp_attributes = { attr_name={txt=a ;loc=Location.none}
+                            ; attr_payload= PStr []
+                            ; attr_loc=Location.none } :: e.pexp_attributes
+        }
+
+  let rec iml { desc; typ=_; attrs } = 
+    let e = 
+      match desc with
+      | Const c -> constant c
+      | Nil -> [%expr []] (* type? *)
+      | Cons (t1, t2) -> 
+          let t1 = iml t1 in
+          let t2 = iml t2 in
+          [%expr [%e t1] :: [%e t2]]
+      | IML_None -> [%expr None]
+      | IML_Some t -> [%expr Some [%e iml t]]
+      | Left t -> [%expr Left [%e iml t]]
+      | Right t -> [%expr Right [%e iml t]]
+      | Var id -> evar (Ident.unique_name id)
+      | Pair (t1, t2) ->
+          from_Some & pexp_tuple_opt [ iml t1 ; iml t2 ]
+      | Assert t ->[%expr assert [%e iml t]]
+      | AssertFalse ->[%expr assert false]
+      | Fun (pv, t) -> 
+          let pv = pvar & Ident.unique_name pv.desc in
+          [%expr fun [%p pv] -> [%e iml t] ]
+      | IfThenElse (t1, t2, None) ->
+          [%expr if [%e iml t1] then [%e iml t2] ]
+      | IfThenElse (t1, t2, Some t3) ->
+          [%expr if [%e iml t1] then [%e iml t2] else [%e iml t3] ]
+      | App (t, ts) -> eapply (iml t) (List.map iml ts)
+      | Prim (s, _, ts) -> eapply (evar s) (List.map iml ts)
+      | Let (pv, t1, t2) ->
+          let ty = type_ pv.typ in
+          let pv = pvar & Ident.unique_name pv.desc in
+          [%expr let [%p pv] : [%t ty] = [%e iml t1] in [%e iml t2]]
+      | Switch_or (t, pv1, t1, pv2, t2) ->
+          let pv1 = pvar & Ident.unique_name pv1.desc in
+          let pv2 = pvar & Ident.unique_name pv2.desc in
+          [%expr match [%e iml t] with
+            | Left [%p pv1] -> [%e iml t1]
+            | Right [%p pv2] -> [%e iml t2] ]
+      | Switch_cons (t, pv1, pv2, t1, t2) ->
+          let pv1 = pvar & Ident.unique_name pv1.desc in
+          let pv2 = pvar & Ident.unique_name pv2.desc in
+          [%expr match [%e iml t] with
+            | [%p pv1] :: [%p pv2] -> [%e iml t1]
+            | [] -> [%e iml t2] ]
+      | Switch_none (t, t1, pv2, t2) ->
+          let pv2 = pvar & Ident.unique_name pv2.desc in
+          [%expr match [%e iml t] with
+            | None -> [%e iml t1]
+            | Some [%p pv2] -> [%e iml t2] ]
+      | Contract_create (Tz_code code, _, t1, t2, t3) ->
+          let code = 
+            { pexp_desc= Pexp_constant (Pconst_string (code, Some ""))
+            ; pexp_loc= Location.none
+            ; pexp_loc_stack= []
+            ; pexp_attributes= [] 
+            }
+          in
+          [%expr Contract.create_from_tz_code [%e code] 
+              [%e iml t1]
+              [%e iml t2]
+              [%e iml t3]]
+      | Contract_create (Tz_file file, _, t1, t2,t3) ->
+          [%expr Contract.create_from_tz_file [%e estring file] 
+              [%e iml t1]
+              [%e iml t2]
+              [%e iml t3]]
+      | Seq (t1, t2) -> [%expr [%e iml t1]; [%e iml t2]]
+      | Set ts -> [%expr Set [%e elist & List.map iml ts]]
+      | Map kvs -> 
+          [%expr Map [%e elist & List.map (fun (k,v) -> 
+              from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
+      | BigMap kvs -> 
+          [%expr BigMap [%e elist & List.map (fun (k,v) -> 
+              from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
+    in
+    List.fold_left (fun e a -> attr a e) e attrs
         
   let pp ppf t = Pprintast.expression ppf (iml t)
 end
@@ -400,6 +415,8 @@ let mkvar ~loc (id, typ) = mke ~loc typ & Var id
 let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
 let mkunit ~loc () = mke ~loc tyUnit (Const Unit)
 let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
+let mkfun_tmp ~loc pvar e = 
+  Attr.add (Attr.Annot "fun_tmp") & mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
 let mkpair ~loc e1 e2 = mke ~loc (tyPair (None,e1.typ, None,e2.typ)) (Pair (e1, e2))
 
 let mkprim ~loc ty name ty' args =

@@ -108,42 +108,6 @@ module Lenv = struct
       (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.non_local_variables));
 end
 
-
-let mke ~loc typ desc = { typ; desc; loc; attrs= [] }
-
-let mkfst ~loc e =
-  let ty = match e.typ.desc with
-    | TyPair (_, ty, _, _) -> ty
-    | _ -> assert false
-  in
-  mke ~loc ty (Prim ("fst", tyLambda (e.typ, ty), [e]))
-
-let mksnd ~loc e =
-  let ty = match e.typ.desc with
-    | TyPair (_, _, _, ty) -> ty
-    | _ -> assert false
-  in
-  mke ~loc ty (Prim ("snd", tyLambda (e.typ, ty), [e]))
-
-let mkleft ~loc ty e = mke ~loc (tyOr (None, e.typ, None, ty)) (Left e)
-let mkright ~loc ty e = mke ~loc (tyOr (None, ty, None, e.typ)) (Right e)
-
-let mkeq ~loc e1 e2 =
-  mke ~loc tyBool (Prim ("=", tyLambda (e1.typ, tyLambda (e2.typ, tyBool)), [e1; e2]))
-
-let mkpair ~loc e1 e2 = mke ~loc (tyPair (None, e1.typ, None, e2.typ)) (Pair (e1, e2))
-
-let mkint ~loc n = mke ~loc tyInt (Const (M.Constant.Int (Z.of_int n)))
-
-let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
-let mkcons ~loc h t = mke ~loc t.typ (Cons (h, t))
-let mksome ~loc t = mke ~loc (tyOption (None, t.typ)) (IML_Some t)
-let mkunit ~loc () = mke ~loc tyUnit (Const Unit)
-let mkassert ~loc t = mke ~loc tyUnit & Assert t
-let mkassertfalse ~loc ty = mke ~loc ty & AssertFalse
-let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
-let mkvar ~loc (id, typ) = mke ~loc typ & Var id
-
 let mkp ~loc typ desc =  { loc; desc; typ; attrs= () }
 let mkppair ~loc p1 p2 = mkp ~loc (tyPair (None, p1.typ, None, p2.typ)) (P.Constr (Cnstr.Pair, [p1; p2]))
 let mkpint ~loc n = mkp ~loc tyInt (P.Constr (Cnstr.Constant (Michelson.Constant.Int (Z.of_int n)), []))
@@ -1053,8 +1017,8 @@ module Pmatch = struct
               (* if [vars = []], we need a [fun () ->].
                  Think about the case of [| _ -> assert false].
               *)
-              let pvar = mkp ~loc:gloc Type.tyUnit & create_ident "unit" in
-              let f = mkfun ~loc:gloc pvar action in
+              let pvar = mkp ~loc:gloc Type.tyUnit & create_ident "unitx" in
+              let f = mkfun_tmp ~loc:gloc pvar action in
               let e = mke ~loc:gloc action.typ (App (mkvar ~loc:gloc (case, f.typ), [mkunit ~loc:gloc ()])) in
               if must_expand then
                 (case, None, IML.subst [(case, f)] e)
@@ -1087,7 +1051,7 @@ module Pmatch = struct
                  to avoid unstorable free vars
               *)
               let f = List.fold_right (fun (v',ty) st ->
-                  mkfun ~loc:gloc (mkp ~loc:gloc ty v') st) vars' action
+                  mkfun_tmp ~loc:gloc (mkp ~loc:gloc ty v') st) vars' action
               in
               (* e = f v1 v2 .. vn *)
               let e =

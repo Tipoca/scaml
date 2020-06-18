@@ -94,6 +94,10 @@ let compile_only sourcefile outputprefix modulename (str, _coercion) =
     (* To make iml0 and iml, we must connect these definitions *)
     let t = Translate.connect defs in
     if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "_iml_0000.ml") t;
+
+    let t = Optimize.inline_pmatch t in
+    if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "_iml_0000inline_pmatch.ml") t;
+
     let t = 
       let optimize = Flags.(!flags.iml_optimization) in
       if not optimize then t
@@ -192,6 +196,9 @@ let link outputprefix_opt modules =
       let storage = Compile.clean_field_annot storage in
 *)
       if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "_link_iml_0000.ml") t;
+
+      let t = Optimize.inline_pmatch t in
+      if Flags.(!flags.dump_iml) then IML.save (outputprefix ^ "_link_iml_0000inline_pmatch.ml") t;
 
       let t = 
         let optimize = 

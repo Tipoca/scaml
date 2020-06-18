@@ -95,6 +95,10 @@ val mkvar         : loc:Location.t -> Ident.t * Michelson.Type.t -> t
 val mklet         : loc:Location.t -> PatVar.t -> t -> t -> t
 val mkunit        : loc:Location.t -> unit -> t
 val mkfun         : loc:Location.t -> PatVar.t -> t -> t
+
+val mkfun_tmp     : loc:Location.t -> PatVar.t -> t -> t
+(** With [fun_tmp] attribute.  Must be inlined *)
+
 val mkpair        : loc:Location.t -> t -> t -> t
 val mkprim        : loc:Location.t -> Michelson.Type.t -> string -> Michelson.Type.t -> t list -> t
 val mkfst         : loc:Location.t -> t -> t
@@ -107,3 +111,4 @@ val mksome        : loc:Location.t -> t -> t
 val mkassert      : loc:Location.t -> t -> t
 val mkassertfalse : loc:Location.t -> Michelson.Type.t -> t
 val mkeq          : loc:Location.t -> t -> t -> t
+
