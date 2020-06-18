@@ -237,7 +237,7 @@ let pp = P.pp
 let save path t = 
   let default () =
     (* default *)
-    prerr_endline "ocamlformat failed.  Using default printer";
+    Format.eprintf "%s: ocamlformat failed.  Using default printer@." path;
     let oc = open_out path in
     let ppf = Format.of_out_channel oc in
     Format.fprintf ppf "%a@." P.pp t;
