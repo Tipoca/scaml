@@ -23,21 +23,21 @@ type 'a const = 'a [@@deriving typerep]
 (** To emphasize SCaml only accepts constants *)
 
 type nat = Nat of ocaml_int const [@@deriving typerep]
-(** Arbitrary length nat. 
-    
-    [Nat] only takes a constant.  
+(** Arbitrary length nat.
+
+    [Nat] only takes a constant.
     Currently there is no way to write a literal beyond the range of OCaml's [int].
 *)
 
 type int = Int of ocaml_int const [@@deriving typerep]
-(** Arbitrary length int 
+(** Arbitrary length int
 
     [Int] only takes a constant.
     Currently there is no way to write a literal beyond the range of OCaml's [int].
 *)
 
 type tz = Tz of float const [@@deriving typerep]
-(** Tezzies.  The smallest unit is micro tz, [Tz 0.000001]. 
+(** Tezzies.  The smallest unit is micro tz, [Tz 0.000001].
 
     [Tz] only takes a constant.
 *)
@@ -104,7 +104,7 @@ val (/) : int -> int -> int
 val (/^) : nat -> nat -> nat
 (** Fail with [Nat 0] if the divisor is [Nat 0] *)
 
-val (/$) : tz -> tz -> nat  
+val (/$) : tz -> tz -> nat
 (** Fail with [Tz 0.] if the divisor is [Tz 0.] *)
 
 val (/$^) : tz -> nat -> tz
@@ -114,7 +114,7 @@ val (lsl) : nat -> nat -> nat
 val (lsr) : nat -> nat -> nat
 val (lor) : nat -> nat -> nat
 val (land) : nat -> nat -> nat
-val land_int_nat : int -> nat -> nat (* not a binop *) 
+val land_int_nat : int -> nat -> nat (* not a binop *)
 val (lxor) : nat -> nat -> nat
 val lnot_nat : nat -> int (* not a binop *)
 val lnot : int -> int (* not a binop *)
@@ -122,9 +122,9 @@ val lnot : int -> int (* not a binop *)
 val abs : int -> nat
 val isnat : int -> nat option
 
-(** Comparisons 
+(** Comparisons
 
-    They are fully polymorphic but only work for limited set  
+    They are fully polymorphic but only work for limited set
     of Michelson types.
 *)
 
@@ -137,14 +137,14 @@ val (>)  : 'a -> 'a -> bool
 val (>=) : 'a -> 'a -> bool
 
 (** Logical operators *)
-           
+
 val (&&) : bool -> bool -> bool
 val (||) : bool -> bool -> bool
 val xor : bool -> bool -> bool
 val not : bool -> bool
 
 (** Tuples *)
-  
+
 val fst : ('a * 'b) -> 'a
 val snd : ('a * 'b) -> 'b
 
@@ -165,11 +165,11 @@ module Loop : sig
   val left : ('a -> ('a, 'b) sum) -> 'a -> 'b
   (** Keep calling the given function over values of type ['a]
       while the function returns [Left a].
-      
+
       The loop stops when the function returns [Right b] and returns [b].
   *)
 end
-  
+
 (** Data types *)
 
 (** Lists *)
@@ -189,7 +189,7 @@ module List : sig
   val rev_append : 'a t -> 'a t -> 'a t
 end
 
-(** Sets 
+(** Sets
 
     Set literal can be written using [Set [ x; .. ; x ]] expression.
 *)
@@ -204,7 +204,7 @@ module Set : sig
   val update : 'a -> bool -> 'a t -> 'a t
   (** [update x b set] adds [x] when [b = true]
       and removes [x] when [b = false].
-      
+
       Adding an element already exists in the set
       and removing an element  non existent in the set
       do not change the set.
@@ -221,7 +221,7 @@ end
 
 
 (** Maps
-    
+
     Map literal can be writen using [Map [ (k, v); .. ; (k, v) ]] expression.
 *)
 
@@ -238,10 +238,10 @@ module Map : sig
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
   (** [update k vopt map] adds [k=v] when [vopt = Some v]
       and removes [k] when [vopt = None].
-      
+
       Adding a binding already exists in the set overrides
       the existing binding.
-      
+
       Removing a binding non existent in the map does not change
       the map.
   *)
@@ -275,10 +275,10 @@ module BigMap : sig
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
   (** [update k vopt map] adds [k=v] when [vopt = Some v]
       and removes [k] when [vopt = None].
-      
+
       Adding a binding already exists in the set overrides
       the existing binding.
-      
+
       Removing a binding non existent in the map does not change
       the big map.
   *)
@@ -291,8 +291,8 @@ module String : sig
   val concat : string -> string -> string
   val slice : nat -> nat -> string -> string option
   (** Substring. [slice n1 n2 s] returns a substring of length [n2]
-      from the position [n1] (zero based). 
-  
+      from the position [n1] (zero based).
+
       If the specified region by [n1] and [n2] exceeds the string [s],
       it returns [None].
   *)
@@ -300,7 +300,7 @@ end
 
 val (^) : string -> string -> string
 
-(** Bytes 
+(** Bytes
 
     Bytes literals are written like [Bytes "0123456789abcdef"].
     The string must be even number of hex characters.
@@ -314,8 +314,8 @@ module Bytes : sig
   val concat : t -> t -> t
   val slice : nat -> nat -> t -> t option
   (** Subbytes. [slice n1 n2 s] returns a subbytes of length [n2]
-      from the position [n1] (zero based). 
-  
+      from the position [n1] (zero based).
+
       If the specified region by [n1] and [n2] exceeds the bytes [s],
       it returns [None].
   *)
@@ -342,7 +342,7 @@ type operation
 type operations = operation list
 
 type ('param, 'storage) entry = 'param -> 'storage -> operations * 'storage
-  
+
 (** Contracts *)
 module Contract : sig
   type 'a t = 'a contract
@@ -351,7 +351,7 @@ module Contract : sig
   val self : 'a t
   (** The contract of the code itself.  The type parameter of [self]
       must agree with the actual contract parameter.
-      
+
       Unlike Michelson's [SELF] operator, [self] can appear inside a function.
       Even if the function value is sent to another contract, [self] still
       points to the original contract which uses [self] in its code.
@@ -364,16 +364,16 @@ module Contract : sig
 
   val implicit_account : key_hash -> unit t
   (** [tz1], [tz2], [tz3] accounts *)
-      
+
   val address : 'a t -> address
 
   val create_from_tz_code : string -> key_hash option -> tz -> 'storage -> operation * address
   (** Raw interface for CREATE_CONTRACT.
-  
+
       Michelson code must be given as a string LITERAL.
       In Tezos you cannot generate contract code programically in a contract.
 
-      The types of the contract and the initial storage are NOT checked 
+      The types of the contract and the initial storage are NOT checked
       by SCaml.
   *)
 
@@ -382,11 +382,11 @@ module Contract : sig
 
   val create_from_tz_file : string -> key_hash option -> tz -> 'storage -> operation * address
   (** CREATE_CONTRACT from a michelson source file.
-  
+
       Michelson file name must be given as a string literal.
       In Tezos you cannot generate contract code programically in a contract.
 
-      The types of the contract and the initial storage are NOT checked 
+      The types of the contract and the initial storage are NOT checked
       by SCaml.
   *)
 end
@@ -398,7 +398,7 @@ module Operation : sig
   val set_delegate : key_hash option -> t
 end
 
-(** Timestamps 
+(** Timestamps
 
     Timestamp literals are [Timestamp s] where [s] is a valid
     RFC3339 string. ex. [Timestamp "2019-09-11T08:30:23Z"].
@@ -419,7 +419,7 @@ module Chain_id : sig
   type t = chain_id [@@deriving typerep]
 end
 
-(** Global values 
+(** Global values
 
     They are consts but have functional types in order to provide
     semantics in the native OCaml compilation in future.
@@ -431,6 +431,7 @@ module Global : sig
   val get_source   : unit -> address
   val get_sender   : unit -> address
   val get_chain_id : unit -> chain_id
+  val get_level    : unit -> nat
 end
 
 module Env : sig
@@ -467,7 +468,7 @@ module Crypto : sig
   val sha256 : bytes -> bytes
   val sha512 : bytes -> bytes
   val hash_key  : key -> key_hash
-    
+
   module Internal : sig
     val test : unit -> unit
   end
@@ -488,7 +489,7 @@ module Obj : sig
       val pack' : 'a Typerep.t -> 'a -> string
       val unpack' : 'a Typerep.t -> string -> 'a option
     end
-  
+
     val type_safe_pack : (module TypeSafePack) option ref
   end
 end

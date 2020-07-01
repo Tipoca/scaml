@@ -306,7 +306,7 @@ module Options = Main_args.Make_bytecomp_options (struct
 end)
 
 let scaml_print_version_and_library compiler =
-  Printf.printf "The SCaml %s, version %s for Tezos protocol version %s" 
+  Printf.printf "The SCaml %s, version %s for Tezos protocol version %s"
     compiler Version.scaml Version.protocol; print_newline();
   Printf.printf "SCaml library directory: ";
   print_string begin match !SCamlc.SCamlComp.scamlib with None -> "none" | Some d -> d end; print_newline ();
@@ -320,38 +320,37 @@ let scaml_print_version_string () =
   print_string Config.version; print_newline(); exit 0
 
 let main () =
+  let opt = ref Conf.none in
   Clflags.add_arguments __LOC__ Options.list;
   Clflags.add_arguments __LOC__
     ["-depend", Arg.Unit Makedepend.main_from_option,
      "<options> Compute dependencies (use 'ocamlc -depend -help' for details)"
-    
+
     (* SCaml *)
-    ; "--scaml-debug", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_debug = true })),
+    ; "--scaml-debug", Arg.Unit (fun () -> Conf.(opt := { !opt with op_debug = Some true })),
       "Print SCaml debug messages"
-    ; "--scaml-time", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_time = true })),
+    ; "--scaml-time", Arg.Unit (fun () -> Conf.(opt := { !opt with op_time = Some true })),
       "Time SCaml compilation phases"
-    ; "--scaml-convert", Arg.Unit (fun () -> Flags.(flags := set_mode !flags ConvertAll)),
+    ; "--scaml-convert", Arg.Unit (fun () -> Conf.(opt := { !opt with op_mode= Some ConvertAll })),
       "Convert types and values, instead of compling a smart contract"
-    ; "--scaml-convert-value", Arg.String (fun s -> Flags.(flags := set_mode !flags
-                                                                      (ConvertSingleValue s))),
+    ; "--scaml-convert-value", Arg.String (fun s -> Conf.(opt := { !opt with op_mode= Some (ConvertSingleValue s) })),
       "<ident> Convert a single value, instead of compling a smart contract"
-    ; "--scaml-convert-type", Arg.String (fun s -> Flags.(flags := set_mode !flags
-                                                                      (ConvertSingleType s))),
+    ; "--scaml-convert-type", Arg.String (fun s -> Conf.(opt := { !opt with op_mode= Some (ConvertSingleType s)})),
       "<ident> Convert a single type, instead of compling a smart contract"
-    ; "--scaml-revert", Arg.String (fun s -> Flags.(flags := set_mode !flags (Revert s))),
+    ; "--scaml-revert", Arg.String (fun s -> Conf.(opt := { !opt with op_mode= Some (Revert s)})),
       "<string> Revert values, instead of compling a smart contract"
-    ; "--scaml-noscamlib", Arg.Unit (fun () -> Flags.(flags := { !flags with scaml_noscamlib = true })),
+    ; "--scaml-noscamlib", Arg.Unit (fun () -> Conf.(opt := { !opt with op_noscamlib = Some true })),
       "Do not add default directory for SCamlib to the list of include directories"
-    ; "--scaml-version", Arg.Unit (fun () -> 
+    ; "--scaml-version", Arg.Unit (fun () ->
           print_string Version.scaml; print_newline(); exit 0),
       "Print SCaml version and exit"
-    ; "--scaml-dump-iml", Arg.Unit (fun () -> Flags.(flags := { !flags with dump_iml = true })),
+    ; "--scaml-dump-iml", Arg.Unit (fun () -> Conf.(opt := { !opt with op_dump_iml = Some true })),
       "Dump the final IML code to .iml file"
-    ; "--scaml-optimize", Arg.Bool (fun b -> Flags.(flags := { !flags with iml_optimization = b })),
+    ; "--scaml-optimize", Arg.Bool (fun b -> Conf.(opt := { !opt with op_iml_optimization = Some b })),
       "<bool> Turn on/off the optimization.  Default is true.  False may break compilation."
-    ; "--scaml-protocol", Arg.String (fun s -> 
+    ; "--scaml-protocol", Arg.String (fun s ->
           match Protocol.parse s with
-          | Ok v -> Flags.(flags := { !flags with tezos_protocol = v })
+          | Ok v -> Conf.(opt := { !opt with op_protocol = Some v })
           | Error s -> failwith s
         ),
       (Printf.sprintf "<string> Set Tezos protocol version (default: %s)"
@@ -360,6 +359,7 @@ let main () =
   try
     readenv ppf Before_args;
     Clflags.parse_arguments anonymous usage;
+    Conf.with_opt !opt @@ fun () ->
     SCamlc.SCamlComp.init ();
     Compmisc.read_clflags_from_env ();
     if !Clflags.plugin then

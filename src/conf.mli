@@ -21,29 +21,46 @@ type mode =
   | ConvertSingleType of string
   | Revert of string
 
-and t = 
+and t =
   { iml_optimization : bool
-  ; iml_pattern_match : bool
-  ; scaml_debug : bool
-  ; scaml_time : bool
-  ; scaml_mode : mode option
-  ; scaml_noscamlib : bool (** do not add -I `opam config var prefix`/scaml/lib *)
-  ; dump_iml : bool
-  ; tezos_protocol : int * int (* 007, 000 *)
+  ; debug     : bool
+  ; time      : bool
+  ; mode      : mode
+  ; noscamlib : bool (** do not add -I `opam config var prefix`/scaml/lib *)
+  ; dump_iml  : bool
+  ; protocol  : int * int (* 007, 000 *)
   } [@@deriving conv{ocaml}]
 
-val flags : t ref
 
 val pp : Format.t -> t -> unit
-val eval : 
-  t 
-  -> Ppxlib.Longident.t * [`Bool of bool 
-                          | `Constant of Ppxlib.Parsetree.constant ] 
-  -> (t, string) Result.t
-val update : (t -> t) -> unit
-val with_flags : (t -> t) -> (unit -> 'a) -> 'a
+
+val get_conf : unit -> t
 val if_debug : (unit -> unit) -> unit
 val if_time : (unit -> unit) -> unit
-val set_mode : t -> mode -> t
-
 val get_protocol : unit -> int * int
+
+type opt =
+  { op_iml_optimization : bool option
+  ; op_debug     : bool option
+  ; op_time      : bool option
+  ; op_mode      : mode option
+  ; op_noscamlib : bool option
+  ; op_dump_iml  : bool option
+  ; op_protocol  : Protocol.t option
+  } [@@deriving conv{ocaml}]
+
+val pp_opt : Format.t -> opt -> unit
+
+val none : opt
+val merge : opt -> opt -> opt (* may fail *)
+val unopt : opt -> t
+val eval
+  : Untyped.Longident.t
+    * [> `Bool of bool | `Constant of Untyped.Parsetree.constant ]
+  -> (opt, string) result
+val with_scaml_attrs
+  : (Untyped.Longident.t Location.loc
+     * [> `Bool of bool | `Constant of Untyped.Parsetree.constant ]) list
+   -> (unit -> 'a) -> 'a
+val get_opt : unit -> opt
+val with_opt : opt -> (unit -> 'a) -> 'a

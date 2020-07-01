@@ -14,14 +14,21 @@
 
 (* We can omit the types here, since they are coded in SCaml.ml *)
 (* XXX We should consider to merge SCaml.ml and primitives.ml into one *)
-                                                
+
 module M = Michelson
 open M.Opcode
 open M.Type
 open Tools
 open Spotlib.Spot
 
-let simple ~loc:_ os = fun _ty pre -> pre @ os
+let simple ~loc:(_ : Location.t) (os : Michelson.Opcode.t list) =
+  fun (_ty : Michelson.Type.t) (pre : Michelson.Opcode.t list) -> pre @ os
+
+let protocol pred f ~loc ty pre =
+  let proto = Conf.get_protocol () in
+  if pred proto then f ~loc ty pre
+  else
+    errorf_primitive ~loc "This primitive is not supported in the current protocol version %s" (Protocol.to_string proto)
 
 let rec args ty = function
   | 0 -> []
@@ -29,7 +36,7 @@ let rec args ty = function
       match ty.desc with
       | TyLambda (ty1, ty2) -> ty1 :: args ty2 (n-1)
       | _ -> assert false
-let comparison ~loc os ty pre = 
+let comparison ~loc os ty pre =
   match args ty 2 with
   | [ty1; _ty2] -> (* ty1 == ty2 *)
       if not & M.Type.is_comparable ty1 then
@@ -38,7 +45,7 @@ let comparison ~loc os ty pre =
       pre @ os
   | _ -> assert false
 
-let primitives = 
+let primitives =
   [ "fst"     , (true,  1, simple [CAR])
   ; "snd"     , (true,  1, simple [CDR])
 
@@ -84,15 +91,15 @@ let primitives =
      hd : lambda : S              DIP DUP
      hd : lambda : lambda : S     EXECx
      hd' : lambda : S
-   
+
    {} : lambda : S               MAP {..}
 
    list' : lambda : S             DIP DROP
-   list' : S 
+   list' : S
 *)
              simple
-             [ SWAP ; 
-               MAP ( 
+             [ SWAP ;
+               MAP (
                  [ DIP (1, [ DUP ]) ]
                  @ [ EXEC ]
                ) ;
@@ -112,11 +119,11 @@ let primitives =
   [] : acc : lam : s                    ITER {..}
   acc : lam : s                         DIP { DROP }
   acc : s
-*)           
-        simple                           
+*)
+        simple
         [ SWAP ; DIP (1, [ SWAP ]); SWAP;
-          ITER [ DIP (2, [ DUP ]); DUG 2; 
-                 EXEC; 
+          ITER [ DIP (2, [ DUP ]); DUG 2;
+                 EXEC;
                  SWAP; EXEC ];
           DIP (1, [ DROP 1])
         ])
@@ -126,28 +133,28 @@ let primitives =
   lam : acc : list : s                  SWAP; DIP { SWAP } SWAP
   list : acc : lam : s                  ITER {
   hd : acc : lam : s                       SWAP PAIR
-  (acc, hd) : lam : s                      DIP { DUP }  
+  (acc, hd) : lam : s                      DIP { DUP }
   (acc, hd) : lam : lam : s                EXEC
   acc : lam : s                         }
 
   [] : acc : lam : s                    ITER {..}
   acc : lam : s                         DIP { DROP }
   acc : s
-*)           
+*)
         simple
         [ SWAP ; DIP (1, [ SWAP ]); SWAP;
           ITER [ SWAP ; PAIR ; DIP (1, [ DUP ]); EXEC ];
           DIP (1, [ DROP 1])
         ])
 
-  ; "List.rev", (true,  1, fun ~loc:_ ty xs -> 
+  ; "List.rev", (true,  1, fun ~loc:_ ty xs ->
         match ty.desc with
         | TyLambda ({ desc= TyList ty }, { desc= TyList _ty' }) ->
             (* ty = _ty' *)
             xs @ [DIP (1, [NIL ty]); ITER [CONS]]
         | _ -> assert false)
   ; "List.rev_append", (true,  2, simple [ITER [CONS]])
-    
+
   ; "Set.empty", (true,  0, fun ~loc:_ typ xs ->
         assert (xs = []);
         match typ.desc with
@@ -173,7 +180,7 @@ let primitives =
   empty : acc : lam : s                 ITER {
   acc : lam : s                         DIP { DROP }
   acc : s
-*)           
+*)
 
         simple
         [ SWAP ; DIP (1, [ SWAP ]);
@@ -183,7 +190,7 @@ let primitives =
                 @ [ EXEC ]);
           DIP (1, [ DROP 1 ])
         ])
-      
+
   ; "Set.fold'"    , (false, 3,
 (*
   lam : set : acc : s                   SWAP DIP { SWAP }
@@ -196,19 +203,19 @@ let primitives =
   empty : acc : lam : s                 ITER {..}
   acc : lam : s                         DIP { DROP }
   acc : s
-*)           
+*)
 
         simple
         [ SWAP ; DIP (1, [ SWAP ]);
           ITER [ PAIR; DIP (1, [ DUP ]); EXEC ];
           DIP (1, [ DROP 1 ])
         ])
-      
-  ; "Loop.left"    , (false, 2, fun ~loc:_ typ xs -> 
+
+  ; "Loop.left"    , (false, 2, fun ~loc:_ typ xs ->
         let rty =
           match typ.desc with
           | TyLambda (_, { desc= TyLambda(_, rty) }) -> rty
-          | _ -> 
+          | _ ->
               Format.eprintf "Loop.left %a@." M.Type.pp typ;
               assert false
         in
@@ -217,9 +224,9 @@ let primitives =
    acc : lambda : S                   DUP DIP
    acc : lambda : lambda : S          EXECx
    LorR : lambda : S
-   
+
    Left acc : lambda : S            LOOP_LEFT { ..
-   
+
    Right res : lambda : S           LOOP_LEFT { .. }
    res : lambda : S                 DIP DROP
 
@@ -228,12 +235,12 @@ let primitives =
         [ SWAP ; LEFT rty;
           LOOP_LEFT (  DIP (1, [ DUP ]) :: [ EXEC ] );
           DIP (1, [ DROP 1 ]) ])
-      
+
   ; "String.concat",   (true,  2, simple [CONCAT])
   ; "^",               (true,  2, simple [CONCAT])
   ; "String.length",   (true,  1, simple [SIZE])
   ; "Bytes.concat",    (true,  2, simple [CONCAT])
-  ; "Bytes.length",    (true,  1, simple [SIZE]) 
+  ; "Bytes.length",    (true,  1, simple [SIZE])
 
   ; "Map.empty", (true,  0, fun ~loc:_ typ xs ->
         assert (xs = []);
@@ -254,18 +261,18 @@ let primitives =
      k : lambda : v : lambda : S      EXECx
      lambda' : v : lambda : S         SWAP EXECx
      w : : lambda : S
-   
+
    { <tl> } : lambda : S            MAP { ..
-   
+
    {} : lambda : S                  Map {
 
    map' : lambda : S                  DIP DROP
-   map' : S 
-   
+   map' : S
+
 *)
         simple
-        [ SWAP ; 
-          MAP ( 
+        [ SWAP ;
+          MAP (
             [ DIP (1, [ DUP ]);
               DUP; CAR; DIP (1, [ CDR; SWAP ]) ]
             @ [ EXEC ]
@@ -275,21 +282,21 @@ let primitives =
           DIP (1, [ DROP 1 ])
         ])
 
-  ; "Map.map'", (false, 2, 
+  ; "Map.map'", (false, 2,
 (* lambda : map : S                 SWAP ;
    { (k,v); <tl> } : lambda : S     MAP {
      (k, v) : lambda : S              DIP DUP
      (k, v) : lambda : lambda : S     EXEC
      w : : lambda : S
-   
+
    {} : lambda : S                  Map {..}
 
    map' : lambda : S                  DIP DROP
-   map' : S 
-   
+   map' : S
+
 *)
         simple
-        [ SWAP ; 
+        [ SWAP ;
           MAP [ DIP (1, [ DUP ]);
                 EXEC ];
           DIP (1, [ DROP 1 ])
@@ -311,7 +318,7 @@ let primitives =
   empty : acc : lam : s                 ITER {..}
   acc : lam : s                         DIP { DROP }
   acc : s
-*)           
+*)
 
         simple
         [ SWAP ; DIP (1, [ SWAP ]);
@@ -324,7 +331,7 @@ let primitives =
                 @ [ EXEC ]);
           DIP (1, [ DROP 1 ])
         ])
-      
+
 
   ; "Map.fold'"    , (false, 3,
 (*
@@ -334,12 +341,12 @@ let primitives =
   k : v : acc : lam : s                   DIP { PAIR } PAIR
   (k, (v, acc)) : lam : s                 DIP DUP
   (k, (v, acc)) : lam : lam : s           EXEC
-  acc : lam : s                         } 
+  acc : lam : s                         }
 
   empty : acc : lam : s                 ITER {..}
   acc : lam : s                         DIP { DROP }
   acc : s
-*)           
+*)
 
         simple
         [ SWAP ; DIP (1, [ SWAP ]);
@@ -349,7 +356,7 @@ let primitives =
                  EXEC ];
           DIP (1, [ DROP 1 ])
         ])
-      
+
 
   (* big map *)
 
@@ -361,7 +368,7 @@ let primitives =
   ; "BigMap.get", (true,  2, simple [ GET ] )
   ; "BigMap.mem", (true,  2, simple [MEM])
   ; "BigMap.update", (true,  3, simple [UPDATE])
-               
+
   ; "Obj.pack", (true,  1, fun ~loc ty pre ->
         match args ty 1 with
         | [ aty ] ->
@@ -379,23 +386,23 @@ let primitives =
               M.Type.pp ty;
           xs @ [ UNPACK ty ]
       | _ -> assert false)
-      
+
   ; "String.slice", (true,  3, simple [ SLICE ])
   ; "Bytes.slice", (true,  3, simple [ SLICE ]) (* XXX not tested *)
-                   
+
   ; "Contract.contract", (false, 1, fun ~loc:_ ty xs ->
         match ty.desc with
         | TyLambda (_, { desc= TyOption (None, { desc= TyContract ty }) }) ->
             xs @ [ CONTRACT ty ]
         | _ -> assert false)
-      
+
   ; "Contract.contract'", (false, 2, fun ~loc:_ ty xs ->
         match ty.desc with
         | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->
             begin match xs with
               | [ M.Opcode.PUSH (_, M.Constant.String entry); address] ->
                   [address; CONTRACT' (ty, entry) ]
-              | _ -> 
+              | _ ->
                   Format.eprintf "bug %a@." (Format.list "; " Michelson.Opcode.pp) xs;
                   assert false
             end
@@ -415,6 +422,9 @@ let primitives =
   ; "Global.get_sender"         , (true,  1, simple [ DROP 1; SENDER ])
   ; "Global.get_steps_to_quota" , (true,  1, simple [ DROP 1; STEPS_TO_QUOTA ])
   ; "Global.get_chain_id"       , (true,  1, simple [ DROP 1; CHAIN_ID ])
+
+  ; "Global.get_level"          , (true,  1, protocol (fun x -> x >= (7,0))
+                                             @@ simple [ DROP 1; LEVEL ])
 
   ; "Crypto.check_signature", (true,  3, simple [ CHECK_SIGNATURE ])
   ; "Crypto.blake2b", (true,  1, simple [ BLAKE2B ])
@@ -438,22 +448,22 @@ let primitives =
   ; "ediv_tz_tz", (true,  2, simple [EDIV])
   ; "ediv_tz_nat", (true,  2, simple [EDIV])
 
-  ; "/", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyInt, Int Z.zero); FAILWITH], 
+  ; "/", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyInt, Int Z.zero); FAILWITH],
                                     [CAR])])
-  ; "/^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+  ; "/^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH],
                                      [CAR])])
-  ; "/$", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyMutez, Int Z.zero); FAILWITH], 
+  ; "/$", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyMutez, Int Z.zero); FAILWITH],
                                      [CAR])])
-  ; "/$^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH], 
+  ; "/$^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH],
                                       [CAR])])
-           
+
   ; "Option.value", (true,  2, simple [IF_NONE ([], [DIP (1, [DROP 1])])])
   ; "Option.get", (false, 1, simple [IF_NONE ([PUSH (tyString, String "Option.get"); FAILWITH], [])])
 
   ; "Sum.get_left", (false, 1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
   ; "Sum.get_right", (false, 1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
   ]
-    
+
 let contract' entry ~loc:_ ty xs =
   match ty.desc with
   | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->

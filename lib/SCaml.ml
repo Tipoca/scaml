@@ -21,7 +21,7 @@ open Typerep_lib.Std_internal
 type 'a const = 'a [@@deriving typerep]
 
 type ocaml_int = int [@@deriving typerep]
-type ocaml_string = string 
+type ocaml_string = string
 
 type nat = Nat of ocaml_int const [@@deriving typerep]
 type int = Int of ocaml_int const [@@deriving typerep]
@@ -72,7 +72,7 @@ let (!!) = check_overflow
 let z_of_int (Int a) = Z.of_int a
 let int_of_z z = Int (check_overflow z)
 
-let z_of_nat (Nat a) = Z.of_int a    
+let z_of_nat (Nat a) = Z.of_int a
 let nat_of_z z = Nat (check_overflow (check_non_negative z))
 
 let bin_int op a b = int_of_z (op (z_of_int a) (z_of_int b))
@@ -110,56 +110,56 @@ exception Division_by_zero
 
 let ediv_int_int a b =
   if b = Int 0 then None
-  else 
+  else
     let z1, z2 = Z.ediv_rem (z_of_int a) (z_of_int b) in
     Some (int_of_z z1, nat_of_z z2)
 
 let ediv_int_nat a b =
   if b = Nat 0 then None
-  else 
+  else
     let z1, z2 = Z.ediv_rem (z_of_int a) (z_of_nat b) in
     Some (int_of_z z1, nat_of_z z2)
 
 let ediv_nat_int a b =
   if b = Int 0 then None
-  else 
+  else
     let z1, z2 = Z.ediv_rem (z_of_nat a) (z_of_int b) in
     Some (int_of_z z1, nat_of_z z2)
 
 let ediv_nat_nat a b =
   if b = Nat 0 then None
-  else 
+  else
     let z1, z2 = Z.ediv_rem (z_of_nat a) (z_of_nat b) in
     Some (nat_of_z z1, nat_of_z z2)
 
 let ediv_tz_tz a b =
   if b = Tz 0. then None
-  else 
+  else
     let z1, z2 = Z.ediv_rem (mutez_of_tz a) (mutez_of_tz b) in
     Some (nat_of_z z1, tz_of_mutez z2)
 
 let ediv_tz_nat a b =
   if b = Nat 0 then None
-  else 
+  else
     let z1, z2 = Z.ediv_rem (mutez_of_tz a) (z_of_nat b) in
     Some (tz_of_mutez z1, tz_of_mutez z2)
 
 let (/) a b = match ediv_int_int a b with
   | None -> raise Division_by_zero
   | Some (a, _) -> a
-    
+
 let (/^) a b = match ediv_nat_nat a b with
   | None -> raise Division_by_zero
   | Some (a, _) -> a
-    
+
 let (/$) a b = match ediv_tz_tz a b with
   | None -> raise Division_by_zero
   | Some (a, _) -> a
-    
+
 let (/$^) a b = match ediv_tz_nat a b with
   | None -> raise Division_by_zero
   | Some (a, _) -> a
-    
+
 let (lsl) n1 (Nat i2) = nat_of_z Z.(z_of_nat n1 lsl i2)
 let (lsr) n1 (Nat i2) = nat_of_z Z.(z_of_nat n1 asr i2) (* XXX correct? *)
 let (lor) n1 n2 = nat_of_z Z.(z_of_nat n1 lor z_of_nat n2)
@@ -173,7 +173,7 @@ let abs a = nat_of_z (Z.abs (z_of_int a))
 let isnat (Int i as a) = if i < 0 then None else Some (abs a)
 
 let fst = fst
-let snd = snd  
+let snd = snd
 let compare x y = Int (compare x y)
 let (=) = (=)
 let (<>) = (<>)
@@ -187,7 +187,7 @@ let xor b1 b2 = not b1 = b2
 let not = not
 
 exception Fail (* XXX We cannot carry the argument of failwith... *)
-  
+
 module Error = struct
   let failwith : 'a -> 'b = fun _ -> raise Fail
 end
@@ -247,9 +247,9 @@ module Map = struct
   let map' f (Map xs) = Map (List.map (fun (k,v) -> (k, f (k, v))) xs)
   let get k (Map xs) = Stdlib.List.assoc_opt k xs
   let mem k (Map xs) = Stdlib.List.mem_assoc k xs
-  let update k vo (Map kvs) = 
+  let update k vo (Map kvs) =
     Map (match vo with
-        | None -> 
+        | None ->
             let rec remove st = function
               | [] -> kvs
               | (k',_)::_ when k < k' -> kvs
@@ -260,7 +260,7 @@ module Map = struct
         | Some v ->
             let rec add st = function
               | [] -> List.rev ((k,v)::st)
-              | ((k',_)::_ as kvs) when k < k' -> 
+              | ((k',_)::_ as kvs) when k < k' ->
                   List.rev_append kvs ((k,v)::st)
               | (k',_)::kvs when k = k' -> List.rev_append kvs ((k,v)::st)
               | kv::kvs -> add (kv::st) kvs
@@ -283,9 +283,9 @@ end = struct
   let empty : ('k, 'v) t = BigMap []
   let get k (BigMap kvs) = Stdlib.List.assoc_opt k kvs
   let mem k (BigMap kvs) = Stdlib.List.mem_assoc k kvs
-  let update k vo (BigMap kvs) = 
+  let update k vo (BigMap kvs) =
     BigMap (match vo with
-        | None -> 
+        | None ->
             let rec remove st = function
               | [] -> kvs
               | (k',_)::_ when k < k' -> kvs
@@ -296,7 +296,7 @@ end = struct
         | Some v ->
             let rec add st = function
               | [] -> List.rev ((k,v)::st)
-              | ((k',_)::_ as kvs) when k < k' -> 
+              | ((k',_)::_ as kvs) when k < k' ->
                   List.rev_append kvs ((k,v)::st)
               | (k',_)::kvs when k = k' -> List.rev_append kvs ((k,v)::st)
               | kv::kvs -> add (kv::st) kvs
@@ -309,7 +309,7 @@ module Loop = struct
     | Left a -> left f a
     | Right b -> b
 end
-  
+
 module String = struct
   let concat = (^)
   let slice (Nat a) (Nat b) s =
@@ -327,8 +327,8 @@ module Bytes = struct
   let slice (Nat a) (Nat b) (Bytes s) =
     try Some (Bytes (Stdlib.String.sub s (Stdlib.( * ) a 2) (Stdlib.( * ) b 2))) with _ -> None
   let length (Bytes a) = Nat (Stdlib.(/) (Stdlib.String.length a) 2)
-      
-  let of_ocaml_string s = 
+
+  let of_ocaml_string s =
     let `Hex hs = Hex.of_string s in
     Bytes hs
 
@@ -373,11 +373,11 @@ module Contract : sig
 
   val create_from_tz_code : string const -> key_hash option -> tz -> 'storage -> operation * address
   (** Raw interface for CREATE_CONTRACT.
-  
+
       Michelson code must be given as a string LITERAL.
       In Tezos you cannot generate contract code programically in a contract.
 
-      The types of the contract and the initial storage are NOT checked 
+      The types of the contract and the initial storage are NOT checked
       by SCaml.
   *)
 
@@ -386,11 +386,11 @@ module Contract : sig
 
   val create_from_tz_file : string const -> key_hash option -> tz -> 'storage -> operation * address
   (** CREATE_CONTRACT from a michelson source file.
-  
+
       Michelson file name must be given as a string literal.
       In Tezos you cannot generate contract code programically in a contract.
 
-      The types of the contract and the initial storage are NOT checked 
+      The types of the contract and the initial storage are NOT checked
       by SCaml.
   *)
 end = struct
@@ -426,27 +426,27 @@ module Timestamp = struct
   let add (Timestamp t) (Int i) =
     match Ptime.of_rfc3339 t with
     | Error _ -> assert false
-    | Ok (utc, _, _) -> 
+    | Ok (utc, _, _) ->
         match Ptime.add_span utc (Ptime.Span.of_int_s i) with
         | None -> assert false
         | Some pt -> Timestamp (Ptime.to_rfc3339 pt)
-      
+
   let sub (Timestamp t) (Int i) =
     match Ptime.of_rfc3339 t with
     | Error _ -> assert false
-    | Ok (utc, _, _) -> 
+    | Ok (utc, _, _) ->
         match Ptime.sub_span utc (Ptime.Span.of_int_s i) with
         | None -> assert false
         | Some pt -> Timestamp (Ptime.to_rfc3339 pt)
-      
+
   let diff (Timestamp t1) (Timestamp t2) =
     let t1 = match Ptime.of_rfc3339 t1 with
       | Error _ -> assert false
-      | Ok (utc, _, _) -> utc 
+      | Ok (utc, _, _) -> utc
     in
     let t2 = match Ptime.of_rfc3339 t2 with
       | Error _ -> assert false
-      | Ok (utc, _, _) -> utc 
+      | Ok (utc, _, _) -> utc
     in
     Int (int_of_float (Ptime.Span.to_float_s (Ptime.diff t1 t2)))
 end
@@ -458,15 +458,16 @@ module Chain_id = struct
 end
 
 module Env = struct
-  type t = 
+  type t =
     { now : timestamp
     ; amount : tz
     ; balance : tz
     ; source : address
     ; sender : address
     ; chain_id : chain_id
+    ; level : nat
     }
-    
+
   let env = ref (None : t option)
   let get () = Option.get !env
 
@@ -476,6 +477,7 @@ module Env = struct
   let source   env = env.source
   let sender   env = env.sender
   let chain_id env = env.chain_id
+  let level    env = env.level
 end
 
 (* maybe the place is not good *)
@@ -486,6 +488,8 @@ module Global : sig
   val get_source   : unit -> address
   val get_sender   : unit -> address
   val get_chain_id : unit -> chain_id
+
+  val get_level    : unit -> nat
 end = struct
   open Env
   let get_now      () = (get ()).now
@@ -494,6 +498,8 @@ end = struct
   let get_source   () = (get ()).source
   let get_sender   () = (get ()).sender
   let get_chain_id () = (get ()).chain_id
+
+  let get_level    () = (get ()).level
 end
 
 type key = Key of string const [@@deriving typerep]
@@ -520,7 +526,7 @@ module Obj = struct
     match Data_encoding.(Binary.to_bytes expr_encoding s) with
     | Error _ -> assert false
     | Ok bs -> Bytes.of_ocaml_string ("\005" ^ Stdlib.Bytes.to_string bs)
-    
+
   let pack : 'a -> bytes = fun _ -> assert false
   let unpack : bytes -> 'a option = fun _ -> assert false
 
@@ -529,14 +535,14 @@ module Obj = struct
       val pack' : 'a Typerep.t -> 'a -> ocaml_string
       val unpack' : 'a Typerep.t -> ocaml_string -> 'a option
     end
-  
+
     let type_safe_pack = ref (None : (module TypeSafePack) option)
   end
 
   let pack' rep a =
     let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
     Bytes.of_ocaml_string (M.pack' rep a)
-    
+
   let unpack' rep b =
     let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
     M.unpack' rep (Bytes.to_ocaml_string b)
@@ -548,8 +554,8 @@ module Crypto = struct
   let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
   (* XXX Signature.check key signature message of tezos-crypto *)
 
-  let blake2b bs = 
-    let Hash bs = Blake2.Blake2b.direct (Stdlib.Bytes.of_string @@ Bytes.to_ocaml_string bs) 32 in 
+  let blake2b bs =
+    let Hash bs = Blake2.Blake2b.direct (Stdlib.Bytes.of_string @@ Bytes.to_ocaml_string bs) 32 in
     Bytes.of_ocaml_string @@ Stdlib.Bytes.to_string bs
 
   (* test *)
@@ -557,11 +563,11 @@ module Crypto = struct
     let Bytes s = blake2b (Obj.pack_string "foobar") in
     assert (s = "c5b7e76c15ce98128a840b54c38f462125766d2ed3a6bff0e76f7f3eb415df04")
 
-  let sha256 bs = 
+  let sha256 bs =
     Bytes.of_ocaml_string
-    @@ Bigstring.to_string 
-    @@ Hacl.Hash.SHA256.digest 
-    @@ Bigstring.of_string 
+    @@ Bigstring.to_string
+    @@ Hacl.Hash.SHA256.digest
+    @@ Bigstring.of_string
     @@ Bytes.to_ocaml_string bs
 
   (* test *)
@@ -569,11 +575,11 @@ module Crypto = struct
     assert (sha256 (Bytes "0123456789ABCDEF") =
             Bytes "55c53f5d490297900cefa825d0c8e8e9532ee8a118abe7d8570762cd38be9818")
 
-  let sha512 bs = 
+  let sha512 bs =
     Bytes.of_ocaml_string
-    @@ Bigstring.to_string 
-    @@ Hacl.Hash.SHA512.digest 
-    @@ Bigstring.of_string 
+    @@ Bigstring.to_string
+    @@ Hacl.Hash.SHA512.digest
+    @@ Bigstring.of_string
     @@ Bytes.to_ocaml_string bs
 
   (* test *)
@@ -582,8 +588,8 @@ module Crypto = struct
             Bytes "650161856da7d9f818e6047cf6b2092bc7aa3767d3495cfbefe2b710ed684a43ba933ea8286ef67d975e64e0482e5ebe0701788989396545b6badb3b0a136f19")
 
   let hash_key  : key -> key_hash = fun _ -> assert false
-  (* XXX we need Signagure.Public_key.hash 
-         of tezos-crypto but it requires 
+  (* XXX we need Signagure.Public_key.hash
+         of tezos-crypto but it requires
          the current OPAM package of hacl which required dune < 2.0 for now *)
 
   module Internal = struct

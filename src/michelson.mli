@@ -23,21 +23,21 @@ module Micheline : sig
   val pp : Format.t -> t -> unit
 
   type parsed = (canonical_location, string) node
-  (** parsed result *)      
-      
-  val parse_expression_string 
+  (** parsed result *)
+
+  val parse_expression_string
     : string -> (parsed, Tezos_error_monad.Error_monad.trace) result
-      
+
   val to_parsed : t -> parsed
 end
 
 module Mline : module type of struct include Micheline end
 
 module Type : sig
-  type t = { desc : desc 
+  type t = { desc : desc
            ; tyannot : string option
            }
-  and desc = 
+  and desc =
     | TyString
     | TyNat
     | TyInt
@@ -90,7 +90,7 @@ module Type : sig
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
-                            
+
   val validate : t -> (unit, (t * string)) Result.t
   val is_comparable : t -> bool
   val is_packable : legacy: bool -> t -> bool
@@ -126,7 +126,7 @@ module rec Constant : sig
 end
 
 and Opcode : sig
-  type module_ = 
+  type module_ =
     | Raw of Tezos_micheline.Micheline_printer.node list
 
   type t =
@@ -157,7 +157,7 @@ and Opcode : sig
     | GE
     | NEQ
     | IF of t list * t list
-    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
+    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
     | AND | OR | XOR | NOT
     | EXEC
     | IF_NONE of t list * t list
@@ -175,7 +175,7 @@ and Opcode : sig
     | ITER of t list
     | MAP of t list
     | LOOP of t list (* It is not really useful for SCaml *)
-    | LOOP_LEFT of t list 
+    | LOOP_LEFT of t list
     | CONCAT
     | SELF
     | GET
@@ -204,6 +204,11 @@ and Opcode : sig
     | SENDER
     | ADDRESS
     | CHAIN_ID
+
+    (* 007 *)
+    | LEVEL
+    | SELF_ADDRESS
+    | UNPAIR
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t list

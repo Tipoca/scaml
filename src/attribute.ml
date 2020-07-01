@@ -29,6 +29,7 @@ let parse_options_in_payload ~loc name payload =match payload with
         | Pstr_eval (e, []) ->
             let rec parse { pexp_desc; pexp_loc=loc } = match pexp_desc with
               | Pexp_sequence (e1, e2) -> parse e1 @ parse e2
+              | Pexp_tuple es -> List.concat_map parse es
               | Pexp_apply ({ pexp_desc= Pexp_ident {txt=Longident.Lident "="} },
                             [ Nolabel, e1; Nolabel, e2 ]) ->
                   let key = match e1.pexp_desc with
@@ -42,7 +43,7 @@ let parse_options_in_payload ~loc name payload =match payload with
                     | _ -> errorf_attribute ~loc: e2.pexp_loc "%s attribute item value must be a constant or a bool" name
                   in
                   [(key, value)]
-              | _ -> 
+              | _ ->
                   errorf_attribute ~loc "%s attribute item must have a form key=value" name
             in
             parse e
@@ -54,19 +55,19 @@ let parse_options_in_payload ~loc name payload =match payload with
 let get_scaml_toplevel_attributes str =
   let structure_item (st, nomore) { str_desc; _ } =
     match str_desc with
-      | Tstr_attribute { attr_name= {txt=s; loc}; attr_payload= payload }
-        when match String.lowercase_ascii s with "scaml" | "scam" -> true | _ -> false ->
-          (* We use OCaml 4.09.1 but Ppxlib uses 4.08.1 *)
-          let payload = Migrate.copy_payload payload in
-          begin match s with
-            | "Scaml" -> errorf_attribute ~loc "SCaml, not Scaml."
-            | "scaml" -> errorf_attribute ~loc "SCaml, not scaml."
-            | "scam" ->  errorf_attribute ~loc "SCaml: it's not a scam."
-            | _ -> ()
-          end;
-          if nomore then errorf_attribute ~loc "SCaml attributes must appear at the head of the source file.";
-          (loc, parse_options_in_payload ~loc "SCaml" payload) :: st, false
-      | _ -> st, true (* we cannot have SCaml attributes later *)
+    | Tstr_attribute { attr_name= {txt=s; loc}; attr_payload= payload }
+      when match String.lowercase_ascii s with "scaml" | "scam" -> true | _ -> false ->
+        (* We use OCaml 4.09.1 but Ppxlib uses 4.08.1 *)
+        let payload = Migrate.copy_payload payload in
+        begin match s with
+          | "Scaml" -> errorf_attribute ~loc "SCaml, not Scaml."
+          | "scaml" -> errorf_attribute ~loc "SCaml, not scaml."
+          | "scam" ->  errorf_attribute ~loc "SCaml: it's not a scam."
+          | _ -> ()
+        end;
+        if nomore then errorf_attribute ~loc "SCaml attributes must appear at the head of the source file.";
+        (loc, parse_options_in_payload ~loc "SCaml" payload) :: st, false
+    | _ -> st, true (* we cannot have SCaml attributes later *)
   in
   let structure { str_items= sitems } =
     List.rev & fst & List.fold_left (fun st sitem -> structure_item st sitem) ([],false) sitems

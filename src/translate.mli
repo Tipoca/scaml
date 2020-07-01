@@ -13,26 +13,25 @@
 (**************************************************************************)
 
 val contract_self_id : Ident.t
-  
-val implementation 
-  : bool (* compile only *)
-  -> string (* source file name *)
+
+val implementation
+  : string (* source file name *)
   -> string (* output prefix *)
-  -> Typedtree.structure 
+  -> Typedtree.structure
   -> (Michelson.Type.t * Michelson.Type.t * IML.t) option (* global entry *)
      * (IML.PatVar.t * IML.t * bool (* defined at the top *)) list (* definitions *)
 
-val link 
+val link
   : (Michelson.Type.t * Michelson.Type.t * IML.t) (* global entry *)
   -> (IML.PatVar.t * IML.t) list (* definitions *)
   -> Michelson.Type.t * Michelson.Type.t * IML.t
 
-val connect 
+val connect
   : (IML.PatVar.t * IML.t) list (* definitions *)
   -> IML.t
 
 val convert
-  : Typedtree.structure 
+  : Typedtree.structure
   -> [> `Type of Ident.t * Michelson.Type.t | `Value of Ident.t option * IML.t ] list
 
 val with_flags_in_code : Typedtree.structure -> (unit -> 'a) -> 'a

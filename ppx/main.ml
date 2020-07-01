@@ -17,7 +17,7 @@ open Ocaml_common
 
 let log fmt = Format.eprintf fmt
 
-(* XXX Maybe not precise, but I do not know the proper way to get the source 
+(* XXX Maybe not precise, but I do not know the proper way to get the source
    code name *)
 let get_source_of_str = function
   | [] -> None
@@ -26,7 +26,7 @@ let get_source_of_str = function
 (* modified version of Compile_common.with_info *)
 let with_info str k =
   Compmisc.init_path ();
-  let source_file = 
+  let source_file =
     match get_source_of_str str with
     | Some fn -> fn
     | None -> "noname"
@@ -80,16 +80,16 @@ open Spotlib.Spot
 *)
 let preprocess str info =
   Clflags.dont_write_files := true;
-  
+
   (* We need OCaml's str, not one for Ppxlib *)
   let str' = Ppxlib_ast.Selected_ast.to_ocaml Structure str in
   let typed = Compile_common.typecheck_impl info str' in
-  let typed = 
-    let str, coe = typed in 
+  let typed =
+    let str, coe = typed in
     let str = SCamlc.Translate.filter_by_SCaml_attribute str in
     str, coe
   in
-  let module_ = 
+  let module_ =
     (* Exceptions must be raised as are, to be handled nicely by
        ocamlc and merlin *)
     SCamlc.SCamlComp.compile_only
@@ -102,15 +102,15 @@ let preprocess str info =
   [ let open Ast_builder.Default in
     pstr_value ~loc:Location.none
       Nonrecursive
-      [ value_binding ~loc:Location.none 
+      [ value_binding ~loc:Location.none
           ~pat:(punit ~loc:Location.none)
           ~expr:(eapply ~loc:Location.none
                    (evar ~loc:Location.none "SCamlc.Ppx.register")
-                   [estring ~loc:Location.none 
+                   [estring ~loc:Location.none
                       (Marshal.to_string module_ [])])
       ]
     ]
-  @ str 
+  @ str
 
 let impl str =
   let tool_name = Ast_mapper.tool_name () in
@@ -118,11 +118,11 @@ let impl str =
   | "ocamldep" -> str
   | _ when not @@ is_with_scaml str -> str
   | "merlin" | "ocamlc" | "ocamlopt" ->
-      SCamlc.Flags.if_debug (fun () -> 
-          log "scaml.ppx: %s %s@." tool_name 
+      SCamlc.Conf.if_debug (fun () ->
+          log "scaml.ppx: %s %s@." tool_name
             (Stdlib.Option.value (get_source_of_str str) ~default:"???"));
       with_info str @@ preprocess str
-  | _ -> 
+  | _ ->
       Format.eprintf "scaml.ppx: called from unknown tool %s.  Skip processing" tool_name;
       str
 

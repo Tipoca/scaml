@@ -37,7 +37,7 @@ module Micheline = struct
     | Some _, Bytes ({comment=None}, x) -> Bytes ({comment= c}, x)
     | Some _, Prim ({comment=None}, x, y, z) -> Prim ({comment= c}, x, y, z)
     | Some _, Seq ({comment=None}, x) -> Seq ({comment= c}, x)
-    | Some s1, Int ({comment=Some s2}, x) -> 
+    | Some s1, Int ({comment=Some s2}, x) ->
         Int ({comment= Some (s1 ^ ", " ^ s2)}, x)
     | Some s1, String ({comment=Some s2}, x) ->
         String ({comment= Some (s1 ^ ", " ^ s2)}, x)
@@ -45,19 +45,19 @@ module Micheline = struct
         Bytes ({comment= Some (s1 ^ ", " ^ s2)}, x)
     | Some s1, Prim ({comment=Some s2}, x, y, z) ->
         Prim ({comment= Some (s1 ^ ", " ^ s2)}, x, y, z)
-    | Some s1, Seq ({comment=Some s2}, x) -> 
+    | Some s1, Seq ({comment=Some s2}, x) ->
         Seq ({comment= Some (s1 ^ ", " ^ s2)}, x)
 
   let string s = String (no_comment, s)
-  let bytes s = 
+  let bytes s =
     Bytes (no_comment, Tezos_stdlib.MBytes.of_string & Hex.to_string (`Hex s))
   let int n = Int (no_comment, n)
   let prim s ts annots = Prim (no_comment, s, ts, annots)
   let seq ts = Seq (no_comment, ts)
-      
+
   let pp = print_expr_unwrapped
-    
-  let parse_expression_string s = 
+
+  let parse_expression_string s =
     let open Tezos_micheline.Micheline_parser in
     let open Result.Infix in
     no_parsing_error (tokenize s) >>= fun tokens ->
@@ -70,11 +70,11 @@ module Mline = Micheline
 module Type = struct
 
   (* Michelson type.  This is shamelessly used as types for IML, too. *)
-  type t = { desc : desc 
+  type t = { desc : desc
            ; tyannot : string option
-           } 
+           }
 
-  and desc = 
+  and desc =
     | TyString
     | TyNat
     | TyInt
@@ -88,13 +88,13 @@ module Type = struct
     | TySet of t (* comparable *)
     | TyMap of t (* comparable *) * t
     | TyBigMap of t (* comparable *) * t
-  
+
     | TyMutez
     | TyKeyHash
     | TyTimestamp
     | TyAddress
     | TyChainID
-  
+
     | TyKey
     | TySignature
     | TyOperation
@@ -130,22 +130,22 @@ module Type = struct
   let tyLambda (t1, t2)     = mk & TyLambda (t1, t2)
 
   let rec args t = match t.desc with
-    | TyLambda (t1, t2) -> 
+    | TyLambda (t1, t2) ->
         let ts, t = args t2 in
         t1::ts, t
     | _ -> [], t
 
-  let rec to_micheline t = 
-    let prim n args = 
-      let attrs = 
+  let rec to_micheline t =
+    let prim n args =
+      let attrs =
         (match t.tyannot with Some s -> [":"^s] | None -> [])
       in
-      Mline.prim n args attrs 
+      Mline.prim n args attrs
     in
     (* XXX should not use Tezos_micheline *)
     let add_field f t = match f, t with
       | None, _ -> t
-      | Some f, Tezos_micheline.Micheline.Prim (c,s,ts,annots) -> 
+      | Some f, Tezos_micheline.Micheline.Prim (c,s,ts,annots) ->
           Tezos_micheline.Micheline.Prim (c,s,ts,("%"^f)::annots)
       | _ -> t
     in
@@ -161,18 +161,18 @@ module Type = struct
     | TyPair (f1,t1, f2,t2)   -> prim "pair" [add_field f1 & to_micheline t1
                                              ;add_field f2 & to_micheline t2]
     | TyOption (f,t)        -> prim "option" [add_field f & to_micheline t]
-    | TyOr (f1,t1, f2,t2)     -> prim "or" [add_field f1 & to_micheline t1; 
+    | TyOr (f1,t1, f2,t2)     -> prim "or" [add_field f1 & to_micheline t1;
                                             add_field f2 & to_micheline t2]
     | TySet t           -> prim "set" [to_micheline t]
     | TyMap (t1, t2)    -> prim "map" [to_micheline t1; to_micheline t2]
     | TyBigMap (t1, t2) -> prim "big_map" [to_micheline t1; to_micheline t2]
-  
+
     | TyMutez     -> !"mutez"
     | TyKeyHash   -> !"key_hash"
     | TyTimestamp -> !"timestamp"
     | TyAddress   -> !"address"
     | TyChainID   -> !"chain_id"
-  
+
     | TyKey       -> !"key"
     | TySignature -> !"signature"
     | TyOperation -> !"operation"
@@ -181,7 +181,7 @@ module Type = struct
 
   and pp fmt t = Mline.pp fmt & to_micheline t
 
-  let rec validate ty = 
+  let rec validate ty =
     let open Result.Infix in
     let rec f ty = match ty.desc with
       | TyBigMap (k, v) ->
@@ -190,12 +190,12 @@ module Type = struct
             Error (ty, "big_map's key type must be comparable")
           else if not (is_packable ~legacy:false v) then
             Error (ty, "big_map's value type must be packable")
-          else 
+          else
             Ok ()
-            
+
       | TySet e ->
           f e >>= fun () ->
-          if not (is_comparable e) then 
+          if not (is_comparable e) then
             Error (ty, "set's element type must be comparable")
           else
             Ok ()
@@ -204,18 +204,18 @@ module Type = struct
           f k >>= fun () -> f v >>= fun () ->
           if not (is_comparable k) then
             Error (ty, "map's key type must be comparable")
-          else 
+          else
             Ok ()
-         
+
       | TyContract p ->
           f p >>= fun () ->
           if not (is_parameterable p) then
             Error (ty, "contract's parameter type cannot contain operation")
           else
             Ok ()
-          
+
       | (TyList ty | TyOption (_,ty)) -> f ty
-      | (TyPair (_,ty1, _,ty2) | TyOr (_,ty1, _,ty2) | TyLambda (ty1, ty2)) -> 
+      | (TyPair (_,ty1, _,ty2) | TyOr (_,ty1, _,ty2) | TyLambda (ty1, ty2)) ->
           f ty1 >>= fun () -> f ty2
 
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit | TyMutez
@@ -223,28 +223,32 @@ module Type = struct
       | TyOperation -> Ok ()
     in
     f ty
-      
-  and is_comparable ty = 
+
+  and is_comparable ty =
     (* See Script_ir_translator.parse_comparable_ty *)
     let rec f ty = match ty.desc with
 
-      | TyChainID | TySignature | TyKey when Flags.get_protocol () >= (7,0) ->
+      | TyChainID | TySignature | TyKey | TyUnit
+        when Conf.get_protocol () >= (7,0) ->
           true (* since 007 *)
+
+      | TyOption (_,ty) when Conf.get_protocol () >= (7,0) -> is_comparable ty
+
       | TyChainID | TySignature | TyKey -> false
 
-      | TyString | TyNat | TyInt | TyBytes | TyBool | TyMutez 
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyMutez
       | TyKeyHash | TyTimestamp | TyAddress -> true
-        
+
       | TyPair (_,ty1, _,ty2) -> f ty1 && f ty2 (* since 005_Babylon *)
 
       | TyBigMap _ | TyContract _
-      | TyLambda _ | TyList _ | TyMap _ | TyOperation
-      | TyOption _ | TyOr _ | TySet _ | TyUnit -> false
+      | TyOption _ | TyLambda _ | TyList _ | TyMap _ | TyOperation
+      | TyOr _ | TySet _ | TyUnit -> false
     in
     f ty
-      
+
   and is_packable ~legacy ty =
-    (* leagcy: allow to pack contracts for hash/signature checks 
+    (* leagcy: allow to pack contracts for hash/signature checks
        See Script_ir_translator.I_PACK case.
     *)
     let rec f ty = match ty.desc with
@@ -259,8 +263,8 @@ module Type = struct
       | TyKey | TySignature -> true
     in
     f ty
-      
-  and is_parameterable ty = 
+
+  and is_parameterable ty =
       (* ~allow_big_map:true
          ~allow_operation:false
          ~allow_contract:true
@@ -279,7 +283,7 @@ module Type = struct
     in
     f ty
 
-  and is_storable ty = 
+  and is_storable ty =
       (* ~allow_big_map:true
          ~allow_operation:false
          ~allow_contract:legacy -> false
@@ -335,7 +339,7 @@ end = struct
     | Timestamp of Z.t
     | Code of Opcode.t list
 
-  let to_micheline ?block_comment = 
+  let to_micheline ?block_comment =
     let open Mline in
     let rec f = function
       | Bool true  -> prim "True" [] []
@@ -351,24 +355,24 @@ end = struct
       | Right t -> prim "Right" [f t] []
       | List ts -> seq (List.map f ts)
       | Set ts -> seq (List.map f & List.sort compare ts)
-      | Map xs -> 
+      | Map xs ->
           seq (List.map (fun (k,v) ->
               prim "Elt" [f k; f v] []) xs)
-      | Timestamp z -> 
+      | Timestamp z ->
           begin match Ptime.of_float_s @@ Z.to_float z with
             | None -> assert false
             | Some t -> string (Ptime.to_rfc3339 ~space:false ~frac_s:0 t)
           end
-      | Code os -> 
+      | Code os ->
           seq (List.concat_map (Opcode.to_micheline ?block_comment) os)
     in
     f
-  
+
   let pp fmt t = Mline.pp fmt & to_micheline t
 end
 
 and Opcode : sig
-  type module_ = 
+  type module_ =
     | Raw of Tezos_micheline.Micheline_printer.node list
 
   type t =
@@ -399,7 +403,7 @@ and Opcode : sig
     | GE
     | NEQ
     | IF of t list * t list
-    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
+    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
     | AND | OR | XOR | NOT
     | EXEC
     | IF_NONE of t list * t list
@@ -417,7 +421,7 @@ and Opcode : sig
     | ITER of t list
     | MAP of t list
     | LOOP of t list (* It is not really useful for SCaml *)
-    | LOOP_LEFT of t list 
+    | LOOP_LEFT of t list
     | CONCAT
     | SELF
     | GET
@@ -447,16 +451,21 @@ and Opcode : sig
     | ADDRESS
     | CHAIN_ID
 
+    (* 007 *)
+    | LEVEL
+    | SELF_ADDRESS
+    | UNPAIR
+
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t list
   val clean_failwith : t list -> t list * bool
   val dip_1_drop_n_compaction : t list -> t list
 end = struct
 
-  type module_ = 
+  type module_ =
     | Raw of Tezos_micheline.Micheline_printer.node list
     (* | { parameter : Type.t ; storage : Type.t ; code : t list } *)
-    
+
   type t =
     | DUP
     | DIP of int * t list
@@ -479,7 +488,7 @@ end = struct
     | COMPARE
     | EQ | LT | LE | GT | GE | NEQ
     | IF of t list * t list
-    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
+    | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
     | AND | OR | XOR | NOT
     | EXEC
     | IF_NONE of t list * t list
@@ -497,7 +506,7 @@ end = struct
     | ITER of t list
     | MAP of t list
     | LOOP of t list (* It is not really useful for SCaml *)
-    | LOOP_LEFT of t list 
+    | LOOP_LEFT of t list
     | CONCAT
     | SELF
     | GET
@@ -526,16 +535,21 @@ end = struct
     | SENDER
     | ADDRESS
     | CHAIN_ID
-  
+
+    (* 007 *)
+    | LEVEL
+    | SELF_ADDRESS
+    | UNPAIR
+
   let to_micheline ?(block_comment=false) t =
     let open Mline in
     let prim x args = Mline.prim x args [] in
     let (!) x = prim x [] in
     let rec fs ts = seq (List.concat_map f' ts)
     and f' = function
-      | COMMENT (s, ts) when block_comment -> 
+      | COMMENT (s, ts) when block_comment ->
           [ add_comment (Some s) @@ fs ts ]
-      | COMMENT (s, ts) -> 
+      | COMMENT (s, ts) ->
           begin match List.concat_map f' ts with
             | [] -> [] (* comment against empty seq is gone *)
             | t::ts -> add_comment (Some s) t :: ts
@@ -553,10 +567,10 @@ end = struct
       | PUSH (ty, const) -> prim "PUSH" [Type.to_micheline ty; Constant.to_micheline const]
       | ASSERT -> !"ASSERT"
       | CAR -> !"CAR"
-      | CDR -> !"CDR" 
+      | CDR -> !"CDR"
       | LEFT ty -> prim "LEFT" [Type.to_micheline ty]
       | RIGHT ty -> prim "RIGHT" [Type.to_micheline ty]
-      | LAMBDA (ty1, ty2, code) -> 
+      | LAMBDA (ty1, ty2, code) ->
           prim "LAMBDA" [Type.to_micheline ty1;
                          Type.to_micheline ty2;
                          fs code]
@@ -586,10 +600,10 @@ end = struct
       | LSL   -> !"LSL"
       | LSR   -> !"LSR"
       | AND   -> !"AND"
-      | OR    -> !"OR" 
+      | OR    -> !"OR"
       | XOR   -> !"XOR"
       | NOT   -> !"NOT"
-  
+
       | EXEC -> !"EXEC"
       | FAILWITH -> !"FAILWITH"
       | IF_LEFT (t1, t2) -> prim "IF_LEFT" [ fs t1; fs t2 ]
@@ -622,19 +636,23 @@ end = struct
       | NOW              -> !"NOW"
       | AMOUNT           -> !"AMOUNT"
       | BALANCE          -> !"BALANCE"
-  
+
       | CHECK_SIGNATURE -> !"CHECK_SIGNATURE"
       | BLAKE2B         -> !"BLAKE2B"
       | SHA256          -> !"SHA256"
       | SHA512          -> !"SHA512"
       | HASH_KEY        -> !"HASH_KEY"
-  
+
       | STEPS_TO_QUOTA  -> !"STEPS_TO_QUOTA"
       | SOURCE          -> !"SOURCE"
       | SENDER          -> !"SENDER"
       | ADDRESS         -> !"ADDRESS"
       | CHAIN_ID        -> !"CHAIN_ID"
       | CREATE_CONTRACT (Raw nodes) -> prim "CREATE_CONTRACT" [ seq nodes ]
+
+      | LEVEL           -> !"LEVEL"
+      | SELF_ADDRESS    -> !"SELF_ADDRESS"
+      | UNPAIR          -> !"UNPAIR"
     in
     f' t
 
@@ -642,7 +660,7 @@ end = struct
 
   let rec clean_failwith = function
     | [] -> [], false
-    | x::xs -> 
+    | x::xs ->
         let x, end_with_failwith = aux x in
         if end_with_failwith then [x], true
         else begin
@@ -653,17 +671,17 @@ end = struct
   and clean_failwith' xs = fst @@ clean_failwith xs
   and aux = function
     | FAILWITH -> FAILWITH, true
-    | DIP (n, ts) -> 
+    | DIP (n, ts) ->
         let ts, b = clean_failwith ts in
         DIP (n, ts), b
     | ITER ts -> ITER (clean_failwith' ts), false
     | MAP ts -> MAP (clean_failwith' ts), false
     | LAMBDA (ty1, ty2, ts) -> LAMBDA (ty1, ty2, clean_failwith' ts), false
-    | IF (t1, t2) -> 
+    | IF (t1, t2) ->
         let t1, b1 = clean_failwith t1 in
         let t2, b2 = clean_failwith t2 in
         IF (t1, t2), b1 && b2
-    | IF_NONE (t1, t2) -> 
+    | IF_NONE (t1, t2) ->
         let t1, b1 = clean_failwith t1 in
         let t2, b2 = clean_failwith t2 in
         IF_NONE (t1, t2), b1 && b2
@@ -675,7 +693,7 @@ end = struct
         let t1, b1 = clean_failwith t1 in
         let t2, b2 = clean_failwith t2 in
         IF_CONS (t1, t2), b1 && b2
-    | COMMENT (s, t) -> 
+    | COMMENT (s, t) ->
         let t, b = clean_failwith t in
         COMMENT (s, t), b
     | LOOP ts -> LOOP (clean_failwith' ts), false
@@ -696,9 +714,9 @@ end = struct
       | COMPARE
       | EQ | LT | LE | GT | GE | NEQ
       | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
-      | AND | OR | XOR | NOT 
+      | AND | OR | XOR | NOT
       | EXEC
-      | UNIT 
+      | UNIT
       | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
       | SIZE
       | MEM
@@ -731,9 +749,12 @@ end = struct
       | ADDRESS
       | APPLY
       | CHAIN_ID
+      | UNPAIR
+      | SELF_ADDRESS
+      | LEVEL
       as t) -> t, false
-      
-  and constant = 
+
+  and constant =
     let open Constant in
     function
     | Code ops -> Code (clean_failwith' ops)
@@ -750,14 +771,14 @@ end = struct
     let rec loop n comments = function
       | DIP (1, [DROP m]) :: ts -> loop (n + m) comments ts
       | COMMENT (c, [DIP (1, [DROP m])]) :: ts -> loop (n + m) (c :: comments) ts
-      | ts when n > 0 -> 
+      | ts when n > 0 ->
           if comments <> [] then
             COMMENT (String.concat ", " (List.rev comments),
                      [ DIP (1, [DROP n]) ]) :: loop 0 [] ts
           else
             DIP (1, [DROP n]) :: loop 0 [] ts
       | [] -> []
-      | t :: ts -> 
+      | t :: ts ->
           let t' = match t with
             | DIP (n, ts) -> DIP (n, loop 0 [] ts)
             | LAMBDA (t1, t2, ts) -> LAMBDA (t1, t2, loop 0 [] ts)
@@ -775,18 +796,19 @@ end = struct
             | DUP | DIG _ | DUG _ | DROP _ | SWAP | PAIR | ASSERT | CAR | CDR
             | LEFT _ | RIGHT _ | APPLY | NIL _ | CONS | NONE _
             | SOME | COMPARE | EQ | LT | LE | GT | GE | NEQ
-            | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR 
+            | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
             | AND | OR | XOR | NOT | EXEC | FAILWITH | UNIT
             | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
             | SIZE | MEM | UPDATE | CONCAT | SELF | GET
-            | RENAME _ | PACK | UNPACK _ | SLICE | CAST 
+            | RENAME _ | PACK | UNPACK _ | SLICE | CAST
             | CONTRACT _ | CONTRACT' _ | TRANSFER_TOKENS | SET_DELEGATE | CREATE_ACCOUNT
             | CREATE_CONTRACT _ | IMPLICIT_ACCOUNT | NOW | AMOUNT | BALANCE
             | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
-            | SOURCE | SENDER | ADDRESS | CHAIN_ID -> t
+            | SOURCE | SENDER | ADDRESS | CHAIN_ID
+            | UNPAIR | SELF_ADDRESS | LEVEL -> t
           in
           t' :: loop 0 [] ts
-    and constant = 
+    and constant =
       let open Constant in
       function
       | Code ops -> Code (loop 0 [] ops)
@@ -806,7 +828,7 @@ end
 module Module = struct
   type t = { parameter : Type.t ; storage : Type.t ; code : Opcode.t list }
 
-  let pp ?block_comment ppf { parameter ; storage ; code } = 
+  let pp ?block_comment ppf { parameter ; storage ; code } =
     let open Mline in
     Format.fprintf ppf "%a ;@." Mline.pp & prim "parameter" [ Type.to_micheline parameter ] [];
     Format.fprintf ppf "%a ;@." Mline.pp & prim "storage" [ Type.to_micheline storage ] [];

@@ -20,7 +20,7 @@ open Typedtree
 open Tools
 open Result.Infix
 
-let if_debug = Flags.if_debug
+let if_debug = Conf.if_debug
 
 module M = Michelson
 open M.Type
@@ -184,7 +184,7 @@ let rec type_expr tyenv ty =
         in
         f [] tys >>= fun tys ->
         begin match Path.is_scaml p, tys with
-          | Some "sum", [t1; t2] -> 
+          | Some "sum", [t1; t2] ->
               Ok (type_annotate (fun _ -> Some "sum") & tyOr (None, t1, None, t2))
           | Some "int", [] -> Ok (tyInt)
           | Some "nat", [] -> Ok (tyNat)
@@ -257,7 +257,7 @@ and variant_type tyenv ty p constrs =
       ((match consts with
           | None -> []
           | Some names -> [String.concat "_" names, tyInt])
-       @ non_consts) 
+       @ non_consts)
   )
 
 (* Literals *)
@@ -1424,7 +1424,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
           | None ->
               match Path.is_stdlib p with
               | None ->
-                  (* XXX If we see Dune__exe, it is highly likely that 
+                  (* XXX If we see Dune__exe, it is highly likely that
                      scaml.ppx is used without (wrapped_executables false)
                      in dune-project.  Should be warned.
                   *)
@@ -1462,40 +1462,25 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_let (Recursive, _, _) -> unsupported ~loc "recursion"
     | Texp_let (Nonrecursive, vbs, e) ->
         let lenv' = Lenv.add_locals (Typedtree.let_bound_idents vbs) lenv in
-        if not Flags.(!flags.iml_pattern_match) then begin
-          (* simple let x = e in e' *)
-          let rev_vbs =
-            List.fold_left (fun rev_vbs vb ->
-                let _, v, e = value_binding lenv vb in
-                (v, e) :: rev_vbs) [] vbs
-          in
-          let e = expression lenv' e in
-          List.fold_left (fun e (v,def) ->
-              { loc; (* XXX inaccurate *)
-                typ= e.typ;
-                desc= Let (v, def, e);
-                attrs= [] } ) e rev_vbs
-        end else begin
-          (* let p = e and p' = e' in e''
-             =>
-             let xnew = e in match xnew with p ->
-             let xnew' = e' in match xnew' with p' -> e''
-          *)
-          List.fold_right (fun vb e' ->
-              let { vb_pat; vb_expr } = vb in
-              let vb_expr = expression lenv vb_expr in
-              let typ = vb_expr.typ in
-              let i = Varname.create "x" typ in
-              let x = { desc= i; typ; loc= Location.none; attrs= () } in
-              let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
-              { desc= Let (x, vb_expr,
-                           Pmatch.compile ~loc ex [(pattern vb_pat, None, e')])
-              ; typ= e'.typ
-              ; loc
-              ; attrs= []
-              }
-            ) vbs & expression lenv' e
-        end
+        (* let p = e and p' = e' in e''
+           =>
+           let xnew = e in match xnew with p ->
+           let xnew' = e' in match xnew' with p' -> e''
+        *)
+        List.fold_right (fun vb e' ->
+            let { vb_pat; vb_expr } = vb in
+            let vb_expr = expression lenv vb_expr in
+            let typ = vb_expr.typ in
+            let i = Varname.create "x" typ in
+            let x = { desc= i; typ; loc= Location.none; attrs= () } in
+            let ex = { desc= Var i; typ; loc= Location.none; attrs= [] } in
+            { desc= Let (x, vb_expr,
+                         Pmatch.compile ~loc ex [(pattern vb_pat, None, e')])
+            ; typ= e'.typ
+            ; loc
+            ; attrs= []
+            }
+          ) vbs & expression lenv' e
 
     | Texp_apply (_, []) -> assert false
 
@@ -1586,21 +1571,17 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
         let var = { desc= i; typ= targ; loc= Location.none; attrs= () } in
         let lenv = Lenv.add_locals [i] & Lenv.into_fun ~loc lenv in
         let evar = { desc= Var i; typ= targ; loc= Location.none; attrs= [] } in
-        if not Flags.(!flags.iml_pattern_match) then begin
-          mkfun ~loc var & switch lenv ~loc evar cases
-        end else begin
-          (* function case1 | .. | casen
-             =>
-             fun xnew -> match xnew with case1 | .. | casen
-          *)
-          let compile_case case =
-            let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
-            let guard = Option.fmap (expression lenv) case.c_guard in
-            (pattern case.c_lhs, guard, expression lenv case.c_rhs)
-          in
-          let t = Pmatch.compile ~loc evar & List.map compile_case cases in
-          mkfun ~loc var t
-        end
+        (* function case1 | .. | casen
+           =>
+           fun xnew -> match xnew with case1 | .. | casen
+        *)
+        let compile_case case =
+          let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
+          let guard = Option.fmap (expression lenv) case.c_guard in
+          (pattern case.c_lhs, guard, expression lenv case.c_rhs)
+        in
+        let t = Pmatch.compile ~loc evar & List.map compile_case cases in
+        mkfun ~loc var t
 
     | Texp_ifthenelse (cond, then_, Some else_) ->
         let econd = expression lenv cond in
@@ -1621,16 +1602,12 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
 
     | Texp_match (e , cases, Total) ->
         let e = expression lenv e in
-        if not Flags.(!flags.iml_pattern_match) then begin
-          switch lenv ~loc e cases
-        end else begin
-          let compile_case case =
-            let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
-            let guard = Option.fmap (expression lenv) case.c_guard in
-            (pattern case.c_lhs, guard, expression lenv case.c_rhs)
-          in
-          Pmatch.compile ~loc e (List.map compile_case cases)
-        end
+        let compile_case case =
+          let lenv = Lenv.add_locals (Typedtree.pat_bound_idents case.c_lhs) lenv in
+          let guard = Option.fmap (expression lenv) case.c_guard in
+          (pattern case.c_lhs, guard, expression lenv case.c_rhs)
+        in
+        Pmatch.compile ~loc e (List.map compile_case cases)
     | Texp_try _ -> unsupported ~loc "try-with"
     | Texp_variant _ -> unsupported ~loc "polymorphic variant"
 
@@ -1757,43 +1734,6 @@ and primitive ~loc fty n args =
           else
             let args, left = List.split_at arity args in
             apply_left (Prim (n, fty, args)) left
-
-and switch lenv ~loc:loc0 e cases =
-  let ty = e.typ in
-  let compile_case case = match case.c_guard with
-    | Some e -> unsupported ~loc:e.exp_loc "guard"
-    | None ->
-        match case.c_lhs.pat_desc with
-        | Tpat_construct (_, { cstr_name }, xs) -> cstr_name, xs, expression lenv case.c_rhs
-        | _ -> unsupported ~loc:case.c_lhs.pat_loc "non variant pattern"
-  in
-  let cases =
-    List.sort (fun (n1,_,_) (n2,_,_) -> compare n1 n2) (List.map compile_case cases)
-  in
-  let mk desc = { desc; loc=loc0; typ= (let _, _, e = List.hd cases in e.typ); attrs= [] } in
-  match ty.desc, cases with
-  | TyOr (_,_ty1, _,_ty2), [("Left",[l],le); ("Right",[r],re)] ->
-      let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
-      let lv = get_var l in
-      let rv = get_var r in
-      mk & Switch_or (e,
-                      lv, le,
-                      rv, re)
-  | TyOr _, _ -> internal_error ~loc:loc0 "sum pattern match"
-  | TyList _ty1, [("::",[l1;l2],le); ("[]",[],re)] ->
-      let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
-      let lv1 = get_var l1 in
-      let lv2 = get_var l2 in
-      mk & Switch_cons (e,
-                        lv1, lv2, le,
-                        re)
-  | TyOption (_,_ty1), [("None",[],le); ("Some",[r],re)] ->
-      let get_var p = match pattern_simple p with [v] -> v | _ -> assert false in
-      let rv = get_var r in
-      mk & Switch_none (e,
-                        le,
-                        rv, re)
-  | _, _ -> unsupported ~loc:loc0 "pattern match other than SCaml.sum, list, and option"
 
 and value_binding lenv { vb_pat; vb_expr; vb_attributes=_; vb_loc=_loc } =
   (* currently we only handle very simple sole variable pattern *)
@@ -1969,23 +1909,11 @@ let toplevel_value_bindings str =
   in
   structure str
 
-let get_explicit_entries vbs =
+let get_entries vbs =
   List.filter_map (fun vb ->
       match attr_has_entry_point & Migrate_parsetree__.Migrate_parsetree_409_408_migrate.copy_attributes vb.vb_attributes with
       | None -> None
       | Some (_, name) -> Some (vb, name)) vbs
-
-let get_entries compile_only vbs =
-  match get_explicit_entries vbs with
-  | [] ->
-      if compile_only then []
-      else begin
-        (* XXX This is obsolete *)
-        match List.last vbs with
-        | None -> []
-        | Some vb -> [vb, None]
-      end
-  | ents -> ents
 
 let type_check_entry templ vb =
   let unify ty ty' =
@@ -2191,25 +2119,19 @@ let compile_global_entry ty_storage ty_return node =
   & e
 
 let with_flags_in_code str f =
-  let attrs = List.concat @@ List.map snd @@ Attribute.get_scaml_toplevel_attributes str in
-  Flags.with_flags
-    (fun t -> List.fold_left (fun t ({txt; loc}, v) ->
-         Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
-         t attrs) f
+  Conf.with_scaml_attrs
+    (List.concat @@ List.map snd @@ Attribute.get_scaml_toplevel_attributes str)
+    f
 
 let compile_structure sourcefile str =
   let _loc_file = Location.in_file sourcefile in
   let loc = { local_variables= []; non_local_variables= []; fun_loc= Location.none; fun_level= -2} in
   snd & structure loc str
 
-let compile_entry_points compile_only sourcefile str =
+let compile_entry_points sourcefile str =
   let vbs = toplevel_value_bindings str in
-  match get_entries compile_only vbs with
-  | [] ->
-    if compile_only then None
-    else
-      errorf_entry ~loc:(Location.in_file sourcefile)
-        "SCaml requires at least one value definition for an entry point"
+  match get_entries vbs with
+  | [] -> None
   | entry_vbns ->
       let _entry_ids =
         List.map (fun (vb, _) ->
@@ -2283,7 +2205,7 @@ let compile_entry_points compile_only sourcefile str =
               pp_type_expr_error e)
           & type_expr tyenv ocaml_ty_param
       in
-      let ty_param = 
+      let ty_param =
         let get_field = function
           | Binplace.Leaf (_,vb,name) ->
               (* XXX dup *)
@@ -2307,12 +2229,12 @@ let compile_entry_points compile_only sourcefile str =
       in
       Some (ty_param, ty_storage, global_entry)
 
-let implementation compile_only sourcefile outputprefix str =
-    modname := Some (String.capitalize_ascii (Filename.basename outputprefix));
-    let entry_points = compile_entry_points compile_only sourcefile str in
-    let vbs = compile_structure sourcefile str in
-    modname := None;
-    entry_points, vbs
+let implementation sourcefile outputprefix str =
+  modname := Some (String.capitalize_ascii (Filename.basename outputprefix));
+  let entry_points = compile_entry_points sourcefile str in
+  let vbs = compile_structure sourcefile str in
+  modname := None;
+  entry_points, vbs
 
 let link (ty_param, ty_storage, global_entry) vbs =
   ty_param,
@@ -2341,9 +2263,7 @@ let connect vbs =
 (* convert mode *)
 let convert str =
   let attrs = List.concat @@ List.map snd @@ Attribute.get_scaml_toplevel_attributes str in
-  Flags.update (fun t -> List.fold_left (fun t ({txt; loc}, v) ->
-      Result.at_Error (errorf_flags ~loc "%s") & Flags.eval t (txt, v))
-      t attrs);
+  Conf.with_scaml_attrs attrs & fun () ->
 
   let structure_item lenv str_final_env { str_desc; str_loc= loc } =
     match str_desc with
@@ -2395,13 +2315,13 @@ let reject_SCaml_attribute_in_complex_structure str =
   let bad loc = errorf_attribute ~loc "SCaml attributes cannot appear in let module, functors, functor applications and packed modules" in
 
   let module Reject = struct
-    let structure iter str = 
+    let structure iter str =
       match Attribute.get_scaml_toplevel_attributes str with
       | [] -> default_iterator.structure iter str
       | (loc,_)::_ -> bad loc
     let iter = { default_iterator with structure }
   end in
-  
+
   let module Check = struct
     let expr iter expr = match expr.exp_desc with
       | Texp_letmodule (_, _, _, me, e) ->
@@ -2429,9 +2349,9 @@ let filter_by_SCaml_attribute str =
     | _::_ -> str
     | [] ->
         let str_items =
-          let do_mb mb = match mb.mb_expr.mod_desc with 
+          let do_mb mb = match mb.mb_expr.mod_desc with
             | Tmod_structure str ->
-                Some { mb with mb_expr= 
+                Some { mb with mb_expr=
                                  { mb.mb_expr with mod_desc= Tmod_structure (mapper.structure mapper str) } }
             | _ -> None
           in

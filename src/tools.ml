@@ -21,11 +21,21 @@ module List = struct
     | [] -> []
     | [x] -> [x,true]
     | x::xs -> (x,false)::mark_last xs
-                 
+
   let rec last = function
     | [] -> None
     | [x] -> Some x
     | _::xs -> last xs
+end
+
+module Result = struct
+  include Result
+
+  let rec fold_leftM f acc = function
+    | [] -> return acc
+    | x::xs ->
+        f acc x >>= fun acc' ->
+        fold_leftM f acc' xs
 end
 
 module Longident = struct
@@ -53,14 +63,14 @@ module Path = struct
     | Pident id -> Ident.unique_name id
     | Pdot (t, s) -> Printf.sprintf "%s.%s" (xname t) s
     | Papply (t1,t2) -> xname t1 ^ "(" ^ xname t2 ^ ")"
-                        
+
   let is_stdlib = function
     | Pdot (Pident id, s) when Ident.is_stdlib id -> Some s
     | _ -> None
-      
+
   let rec is_scaml = function
     | Pdot (Pident id, s) when Ident.is_scaml id -> Some s
-    | Pdot (p, s) -> 
+    | Pdot (p, s) ->
         begin match is_scaml p with
           | None -> None
           | Some m -> Some (m ^ "." ^ s)
@@ -74,10 +84,10 @@ end
 
 module Location = struct
   include Location
-  let ghost t = { t with loc_ghost= true } 
+  let ghost t = { t with loc_ghost= true }
 end
-    
-let errorf n ~loc fmt = 
+
+let errorf n ~loc fmt =
   Location.raise_errorf ~loc ("[ESCaml%03d] " ^^ fmt) n
 
 let errorf_var_not_found fmt = errorf 010 fmt
@@ -97,25 +107,25 @@ let errorf_flags         fmt = errorf 900 fmt
 let errorf_attribute     fmt = errorf 910 fmt
 let errorf_convert_ident fmt = errorf 920 fmt
 
-let unsupported ~loc fmt = 
-  Printf.ksprintf (fun s -> 
+let unsupported ~loc fmt =
+  Printf.ksprintf (fun s ->
       errorf 0 ~loc "SCaml does not support %s" s) fmt
 
-let internal_error ~loc fmt = 
-  Printf.ksprintf (fun s -> 
+let internal_error ~loc fmt =
+  Printf.ksprintf (fun s ->
       errorf 999 ~loc "SCaml internal error: %s\n%s" s
         Printexc.(raw_backtrace_to_string (get_callstack 20))
     ) fmt
 
 exception Wrapped_OCaml_error of Location.t * string * exn
 
-let () = 
+let () =
   let rec f = function
     | Wrapped_OCaml_error (_, _, (Wrapped_OCaml_error _ as exn)) -> f exn
     | Wrapped_OCaml_error (loc, msg, exn) ->
         Some (
           match Location.error_of_exn exn with
-          | Some (`Ok ocaml) -> 
+          | Some (`Ok ocaml) ->
               { ocaml with
                 main = { loc; txt= (fun ppf -> Format.fprintf ppf "%s" msg) }
               ; sub = ocaml.Location.main :: ocaml.Location.sub
