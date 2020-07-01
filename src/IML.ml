@@ -31,17 +31,17 @@ module IdTys = Set.Make(struct type t = Ident.t * Type.t let compare (id1,_) (id
 
 module PatVar = struct
   type t = (Ident.t, unit) with_loc_and_type
-  
+
   let pp ppf var = Format.fprintf ppf "%s" (Ident.unique_name var.desc)
 end
 
 module Attr = struct
-  type t = 
+  type t =
     | Comment of string
     | Annot of string
-  
+
   type ts = t list
-  
+
   let add a t = { t with attrs= a :: t.attrs }
   let adds attrs t = { t with attrs= attrs @ t.attrs }
 end
@@ -85,7 +85,7 @@ module P = struct
 
   let loc = Location.none
 
-  let rec type_ (ty : M.Type.t) = 
+  let rec type_ (ty : M.Type.t) =
     let open M.Type in
     match ty.desc with
     | TyString -> [%type: string]
@@ -106,7 +106,7 @@ module P = struct
     | TyTimestamp -> [%type: timestamp]
     | TyAddress   -> [%type: address]
     | TyChainID   -> [%type: chain_id]
-  
+
     | TyKey -> [%type: key]
     | TySignature -> [%type: signature]
     | TyOperation -> [%type: operation]
@@ -114,18 +114,18 @@ module P = struct
     | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
 
   let _type = type_
-    
-  let rec constant = 
+
+  let rec constant =
     let open M.Constant in
     function
     | Unit -> [%expr ()]
     | Bool true -> [%expr true]
-    | Bool false -> [%expr false] 
+    | Bool false -> [%expr false]
     | Int z ->
         { pexp_desc= Pexp_constant (Pconst_integer (Z.to_string z, None))
         ; pexp_loc= Location.none
         ; pexp_loc_stack= []
-        ; pexp_attributes= [] 
+        ; pexp_attributes= []
         }
     | String s -> estring s
     | Bytes b ->
@@ -135,45 +135,45 @@ module P = struct
     | Option (Some e) -> [%expr Some [%e constant e]]
     | List ts -> elist & List.map constant ts
     | Set ts -> [%expr Set [%e elist & List.map constant ts]]
-    | Map kvs -> 
-        [%expr Map [%e elist & List.map (fun (k,v) -> 
+    | Map kvs ->
+        [%expr Map [%e elist & List.map (fun (k,v) ->
             from_Some & pexp_tuple_opt [ constant k ; constant v ]) kvs]]
     | Pair (t1, t2) ->
         from_Some & pexp_tuple_opt [ constant t1 ; constant t2 ]
     | Left t -> [%expr Left [%e constant t]]
     | Right t -> [%expr Right [%e constant t]]
-    | Timestamp z -> 
+    | Timestamp z ->
         begin match Ptime.of_float_s (Z.to_float z) with
-        | Some t -> 
+        | Some t ->
             [%expr Timestamp [%e estring (Ptime.to_rfc3339 t)]]
         | None ->
             [%expr Timestamp [%e eint (Z.to_int z)]]
         end
-    | Code ops -> 
+    | Code ops ->
         let s = Format.sprintf "@[<2>{ %a }@]" (Format.list ";@ " M.Opcode.pp) ops in
         { pexp_desc= Pexp_constant (Pconst_string (s, Some "michelson"))
         ; pexp_loc= Location.none
         ; pexp_loc_stack= []
-        ; pexp_attributes= [] 
+        ; pexp_attributes= []
         }
 
-  let attr a e = 
+  let attr a e =
     let open Parsetree in
     match a with
     | Attr.Comment _ -> e
     | Annot a ->
-        { e with 
+        { e with
           pexp_attributes = { attr_name={txt=a ;loc=Location.none}
                             ; attr_payload= PStr []
                             ; attr_loc=Location.none } :: e.pexp_attributes
         }
 
-  let rec iml { desc; typ=_; attrs } = 
-    let e = 
+  let rec iml { desc; typ=_; attrs } =
+    let e =
       match desc with
       | Const c -> constant c
       | Nil -> [%expr []] (* type? *)
-      | Cons (t1, t2) -> 
+      | Cons (t1, t2) ->
           let t1 = iml t1 in
           let t2 = iml t2 in
           [%expr [%e t1] :: [%e t2]]
@@ -186,7 +186,7 @@ module P = struct
           from_Some & pexp_tuple_opt [ iml t1 ; iml t2 ]
       | Assert t ->[%expr assert [%e iml t]]
       | AssertFalse ->[%expr assert false]
-      | Fun (pv, t) -> 
+      | Fun (pv, t) ->
           let pv = pvar & Ident.unique_name pv.desc in
           [%expr fun [%p pv] -> [%e iml t] ]
       | IfThenElse (t1, t2, None) ->
@@ -217,39 +217,40 @@ module P = struct
             | None -> [%e iml t1]
             | Some [%p pv2] -> [%e iml t2] ]
       | Contract_create (Tz_code code, _, t1, t2, t3) ->
-          let code = 
+          let code =
             { pexp_desc= Pexp_constant (Pconst_string (code, Some ""))
             ; pexp_loc= Location.none
             ; pexp_loc_stack= []
-            ; pexp_attributes= [] 
+            ; pexp_attributes= []
             }
           in
-          [%expr Contract.create_from_tz_code [%e code] 
+          [%expr Contract.create_from_tz_code [%e code]
               [%e iml t1]
               [%e iml t2]
               [%e iml t3]]
       | Contract_create (Tz_file file, _, t1, t2,t3) ->
-          [%expr Contract.create_from_tz_file [%e estring file] 
+          [%expr Contract.create_from_tz_file [%e estring file]
               [%e iml t1]
               [%e iml t2]
               [%e iml t3]]
       | Seq (t1, t2) -> [%expr [%e iml t1]; [%e iml t2]]
       | Set ts -> [%expr Set [%e elist & List.map iml ts]]
-      | Map kvs -> 
-          [%expr Map [%e elist & List.map (fun (k,v) -> 
+      | Map kvs ->
+          [%expr Map [%e elist & List.map (fun (k,v) ->
               from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
-      | BigMap kvs -> 
-          [%expr BigMap [%e elist & List.map (fun (k,v) -> 
+      | BigMap kvs ->
+          [%expr BigMap [%e elist & List.map (fun (k,v) ->
               from_Some & pexp_tuple_opt [ iml k ; iml v ]) kvs]]
     in
     List.fold_left (fun e a -> attr a e) e attrs
-        
+
   let pp ppf t = Pprintast.expression ppf (iml t)
 end
 
 let pp = P.pp
 
-let save path t = 
+let save path t =
+  Format.eprintf "Saving to %s@." path;
   let default () =
     (* default *)
     Format.eprintf "%s: ocamlformat failed.  Using default printer@." path;
@@ -258,8 +259,8 @@ let save path t =
     Format.fprintf ppf "%a@." P.pp t;
     close_out oc
   in
-  match 
-    Unix.open_process_out 
+  match
+    Unix.open_process_out
       (Printf.sprintf "ocamlformat --disable-conf-files --enable-outside-detected-project --impl --parens-tuple=multi-line-only --parens-tuple-patterns=multi-line-only - > %s" path)
   with
   | exception _ -> default ()
@@ -270,13 +271,13 @@ let save path t =
       | WEXITED 0 -> ()
       | _ -> default ()
 
-let rec freevars t = 
+let rec freevars t =
   let open IdTys in
   let psingleton p = singleton (p.desc, p.typ) in
   let (+) = union in
   match t.desc with
   | Const _ | Nil | IML_None -> empty
-  | Contract_create (_, _,  t1, t2, t3) -> 
+  | Contract_create (_, _,  t1, t2, t3) ->
       freevars t1 + freevars t2 + freevars t3
   | Cons (t1,t2) | Pair (t1,t2) | Seq (t1,t2) -> union (freevars t1) (freevars t2)
   | Left t | Right t | IML_Some t | Assert t -> freevars t
@@ -288,34 +289,34 @@ let rec freevars t =
       List.fold_left (fun acc t -> union acc (freevars t)) empty (t::ts)
   | Prim (_,_,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty ts
-  | Fun (pat,t) -> 
+  | Fun (pat,t) ->
       diff (freevars t) (psingleton pat)
   | Let (pat, t1, t2) ->
       diff (union (freevars t1) (freevars t2)) (psingleton pat)
   | Switch_or (t, p1, t1, p2, t2) ->
       union (freevars t)
-        (union 
+        (union
            (diff (freevars t1) (psingleton p1))
            (diff (freevars t2) (psingleton p2)))
   | Switch_cons (t, p1, p2, t1, t2) ->
       union (freevars t)
-        (union 
+        (union
            (diff (diff (freevars t1) (psingleton p1)) (psingleton p2))
            (freevars t2))
   | Switch_none (t, t1, p2, t2) ->
       union (freevars t)
-        (union 
+        (union
            (freevars t1)
            (diff (freevars t2) (psingleton p2)))
   | Set ts -> unions (List.map freevars ts)
   | Map tts -> unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
   | BigMap tts -> unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
 
-(* t2[t_i/id_i] 
+(* t2[t_i/id_i]
    XXX very inefficient.  should be removed somehow.
 *)
 let subst id_t_list t2 =
-  let rec f t = 
+  let rec f t =
     let mk desc = { t with desc } in
     match t.desc with
     | Var id ->
@@ -349,13 +350,13 @@ let subst id_t_list t2 =
   in
   f t2
 
-(* t2[id'_i/id_i] 
+(* t2[id'_i/id_i]
    Same as subst, but variables are renamed to variables.
    It keeps the original locations.
    XXX very inefficient.  should be removed somehow.
 *)
 let alpha_conv id_t_list t2 =
-  let rec f t = 
+  let rec f t =
     let mk desc = { t with desc } in
     match t.desc with
     | Var id ->
@@ -388,10 +389,10 @@ let alpha_conv id_t_list t2 =
   in
   f t2
 
-(* Variables with contract, big_map and operations cannot appear freely 
+(* Variables with contract, big_map and operations cannot appear freely
    inside [fun]'s body.
 *)
-let check_unstorable t = 
+let check_unstorable t =
   let module E = struct
     exception Found of Ident.t * Michelson.Type.t
   end in
@@ -415,7 +416,7 @@ let mkvar ~loc (id, typ) = mke ~loc typ & Var id
 let mklet ~loc p t1 t2 = mke ~loc t2.typ & Let (p, t1, t2)
 let mkunit ~loc () = mke ~loc tyUnit (Const Unit)
 let mkfun ~loc pvar e = mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
-let mkfun_tmp ~loc pvar e = 
+let mkfun_tmp ~loc pvar e =
   Attr.add (Attr.Annot "fun_tmp") & mke ~loc (tyLambda (pvar.typ, e.typ)) & Fun (pvar, e)
 let mkpair ~loc e1 e2 = mke ~loc (tyPair (None,e1.typ, None,e2.typ)) (Pair (e1, e2))
 
