@@ -1863,15 +1863,20 @@ and translate_raise lenv ~loc typ args = match args with
             begin match cdesc.cstr_tag with
               | Cstr_extension (p, _) ->
                   let name =
-                    let rec make_name = function
+                    (* It seems TZIPs assume errors without any module
+                       name quantification. *)
+                    let (* rec *) make_name = function
                       | Path.Pident id ->
                           if Ident.persistent id || Ident.is_predef id then Ident.name id
                           else begin
-                            match !modname with
-                            | None -> assert false
-                            | Some n -> n ^ "." ^ Ident.name id
+                            (* match !modname with
+                               | None -> assert false
+                               | Some n -> n ^ "." ^ Ident.name id
+                            *)
+                            Ident.name id
                           end
-                      | Pdot (p, s) -> make_name p ^ "." ^ s
+                      (* | Pdot (p, s) -> make_name p ^ "." ^ s *)
+                      | Pdot (_p, s) -> s
                       | Papply _ -> assert false
                     in
                     make_name p
