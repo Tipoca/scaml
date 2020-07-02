@@ -1,7 +1,6 @@
-open SCaml
-
 module FA12 = struct
-  [@@@SCaml]
+  [@@@SCaml] (* smart contract *)
+  open SCaml
 
   type allowance_key =
     { owner: address
