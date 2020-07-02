@@ -48,11 +48,11 @@ let pp_opt = Camlon.Ocaml.format_with ocaml_of_opt
 
 let default =
   { iml_optimization  = true
-  ; debug     = begin try ignore (Sys.getenv "SCAML_DEBUG"); true with _ -> false end
+  ; debug     = false
   ; time      = false
   ; mode      = Compile
   ; noscamlib = false
-  ; dump_iml  = begin try ignore (Sys.getenv "SCAML_DUMP_IML"); true with _ -> false end
+  ; dump_iml  = false
   ; protocol  = Protocol.default
   }
 
@@ -70,6 +70,9 @@ let default_debug =
 let default_dump_iml =
   try ignore (Sys.getenv "SCAML_DUMP_IML"); true with _ -> false
 
+let default_time =
+  try ignore (Sys.getenv "SCAML_TIME"); true with _ -> false
+
 let unopt o =
   let f def = function
     | None -> def
@@ -77,7 +80,7 @@ let unopt o =
   in
   { iml_optimization = f true o.op_iml_optimization
   ; debug     = f default_debug o.op_debug
-  ; time      = f false o.op_time
+  ; time      = f default_time o.op_time
   ; mode      = f Compile o.op_mode
   ; noscamlib = f false o.op_noscamlib
   ; dump_iml  = f default_dump_iml o.op_dump_iml
@@ -154,7 +157,7 @@ let of_attrs attrs =
       & eval (txt, v))
     none attrs
 
-let set_to_conf op = conf := unopt op; Format.eprintf "conf=%a@." pp !conf
+let set_to_conf op = conf := unopt op
 
 let opt = ref none
 
