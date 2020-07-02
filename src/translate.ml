@@ -1410,6 +1410,8 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
     | Texp_ident (p, {loc}, _vd) ->
         begin match Path.is_scaml p with
           | Some "Contract.self" ->
+              (* self is defined outside of everything so that SELF
+                 is never called inside closures *)
               if lenv.fun_level > 0 then
                 errorf_self ~loc:lenv.fun_loc "Contract.self cannot freely occur in a function body except the entrypoints."
               else
