@@ -22,9 +22,9 @@ val implementation
      * (IML.PatVar.t * IML.t * bool (* defined at the top *)) list (* definitions *)
 
 val link
-  : (Michelson.Type.t * Michelson.Type.t * IML.t) (* global entry *)
+  : IML.t (* global entry *)
   -> (IML.PatVar.t * IML.t) list (* definitions *)
-  -> Michelson.Type.t * Michelson.Type.t * IML.t
+  -> IML.t
 
 val connect
   : (IML.PatVar.t * IML.t) list (* definitions *)

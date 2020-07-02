@@ -159,7 +159,7 @@ let link outputprefix_opt modules =
         | Some op -> op
         | None -> last.Module.outputprefix
       in
-      let global_entry =
+      let (parameter, storage, global_entry_iml) =
         List.iter (fun m ->
             if m.Module.global_entry <> None then
               errorf_link ~loc:(Location.in_file m.sourcefile)
@@ -180,7 +180,7 @@ let link outputprefix_opt modules =
                     { t with IML.desc= IML.Var pv.desc } ) ]
               ) m.defs) modules
       in
-      let (parameter, storage, t), secs = with_time & fun () -> Translate.link global_entry defs in
+      let t, secs = with_time & fun () -> Translate.link global_entry_iml defs in
       Conf.if_time (fun () -> Format.eprintf "Linked in %f secs@." secs);
       (*
          Storage

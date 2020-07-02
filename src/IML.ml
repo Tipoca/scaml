@@ -27,7 +27,10 @@ type ('desc, 'attrs) with_loc_and_type =
   ; attrs : 'attrs
   }
 
-module IdTys = Set.Make(struct type t = Ident.t * Type.t let compare (id1,_) (id2,_) = compare id1 id2 end)
+module IdTys =
+  Set.Make (struct
+    type t = Ident.t * Type.t let compare (id1,_) (id2,_) = compare id1 id2
+  end)
 
 module PatVar = struct
   type t = (Ident.t, unit) with_loc_and_type
@@ -96,24 +99,25 @@ module P = struct
     | TyUnit   -> [%type: unit]
     | TyList t -> [%type: [%t type_ t] list]
     | TyPair (_,t1, _,t2) -> [%type: [%t type_ t1] * [%t type_ t2]]
-    | TyOption (_,t) -> [%type: [%t type_ t] option]
-    | TyOr (_,t1, _,t2) -> [%type: ([%t type_ t1], [%t type_ t2]) sum]
-    | TySet t -> [%type: [%t type_ t] set]
-    | TyMap (k,v) -> [%type: ([%t type_ k], [%t type_ v]) map]
-    | TyBigMap (k,v) -> [%type: ([%t type_ k], [%t type_ v]) big_map]
+    | TyOption (_,t) ->      [%type: [%t type_ t] option]
+    | TyOr (_,t1, _,t2) ->   [%type: ([%t type_ t1], [%t type_ t2]) sum]
+    | TySet t ->             [%type: [%t type_ t] set]
+    | TyMap (k,v) ->         [%type: ([%t type_ k], [%t type_ v]) map]
+    | TyBigMap (k,v) ->      [%type: ([%t type_ k], [%t type_ v]) big_map]
     | TyMutez     -> [%type: tz]
     | TyKeyHash   -> [%type: key_hash]
     | TyTimestamp -> [%type: timestamp]
     | TyAddress   -> [%type: address]
     | TyChainID   -> [%type: chain_id]
 
-    | TyKey -> [%type: key]
-    | TySignature -> [%type: signature]
-    | TyOperation -> [%type: operation]
+    | TyKey ->        [%type: key]
+    | TySignature ->  [%type: signature]
+    | TyOperation ->  [%type: operation]
     | TyContract t -> [%type: [%t type_ t] contract]
     | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
 
   let _type = type_
+  (* well we do not use it for now, the types are too lousy to read *)
 
   let rec constant =
     let open M.Constant in
@@ -169,8 +173,7 @@ module P = struct
         }
 
   let rec iml { desc; typ=_; attrs } =
-    let e =
-      match desc with
+    let e = match desc with
       | Const c -> constant c
       | Nil -> [%expr []] (* type? *)
       | Cons (t1, t2) ->
@@ -279,11 +282,13 @@ let rec freevars t =
   | Const _ | Nil | IML_None -> empty
   | Contract_create (_, _,  t1, t2, t3) ->
       freevars t1 + freevars t2 + freevars t3
-  | Cons (t1,t2) | Pair (t1,t2) | Seq (t1,t2) -> union (freevars t1) (freevars t2)
+  | Cons (t1,t2) | Pair (t1,t2) | Seq (t1,t2) ->
+      union (freevars t1) (freevars t2)
   | Left t | Right t | IML_Some t | Assert t -> freevars t
   | AssertFalse -> empty
   | Var id -> singleton (id, t.typ)
-  | IfThenElse (t1,t2,Some t3) -> union (freevars t1) (union (freevars t2) (freevars t3))
+  | IfThenElse (t1,t2,Some t3) ->
+      union (freevars t1) (union (freevars t2) (freevars t3))
   | IfThenElse (t1,t2,None) -> union (freevars t1) (freevars t2)
   | App (t,ts) ->
       List.fold_left (fun acc t -> union acc (freevars t)) empty (t::ts)
@@ -309,8 +314,10 @@ let rec freevars t =
            (freevars t1)
            (diff (freevars t2) (psingleton p2)))
   | Set ts -> unions (List.map freevars ts)
-  | Map tts -> unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
-  | BigMap tts -> unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
+  | Map tts ->
+      unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
+  | BigMap tts ->
+      unions (List.map (fun (t1,t2) -> union (freevars t1) (freevars t2)) tts)
 
 (* t2[t_i/id_i]
    XXX very inefficient.  should be removed somehow.
@@ -326,7 +333,8 @@ let subst id_t_list t2 =
         end
     | Const _ | Nil | IML_None | AssertFalse -> t
 
-    | Contract_create (s, l, t1, t2, t3) -> mk & Contract_create (s, l, f t1, f t2, f t3)
+    | Contract_create (s, l, t1, t2, t3) ->
+        mk & Contract_create (s, l, f t1, f t2, f t3)
 
     | IML_Some t -> mk & IML_Some (f t)
     | Left t -> mk & Left (f t)
@@ -336,10 +344,13 @@ let subst id_t_list t2 =
     | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
     | Cons (t1, t2) -> mk & Cons (f t1, f t2)
     | Pair (t1, t2) -> mk & Pair (f t1, f t2)
-    | IfThenElse (t1, t2, Some t3) -> mk & IfThenElse (f t1, f t2, Some (f t3))
+    | IfThenElse (t1, t2, Some t3) ->
+        mk & IfThenElse (f t1, f t2, Some (f t3))
     | IfThenElse (t1, t2, None) -> mk & IfThenElse (f t1, f t2, None)
-    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
-    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
+    | Switch_or (t1, p1, t2, p2, t3) ->
+        mk & Switch_or (f t1, p1, f t2, p2, f t3)
+    | Switch_cons (t1, p1, p2, t2, t3) ->
+        mk & Switch_cons (f t1, p1, p2, f t2, f t3)
     | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
     | App (t, ts) -> mk & App (f t, List.map f ts)
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)
@@ -375,10 +386,14 @@ let alpha_conv id_t_list t2 =
     | Let (p, t1, t2) -> mk & Let (p, f t1, f t2)
     | Cons (t1, t2) -> mk & Cons (f t1, f t2)
     | Pair (t1, t2) -> mk & Pair (f t1, f t2)
-    | IfThenElse (t1, t2, Some t3) -> mk & IfThenElse (f t1, f t2, Some (f t3))
-    | IfThenElse (t1, t2, None) -> mk & IfThenElse (f t1, f t2, None)
-    | Switch_or (t1, p1, t2, p2, t3) -> mk & Switch_or (f t1, p1, f t2, p2, f t3)
-    | Switch_cons (t1, p1, p2, t2, t3) -> mk & Switch_cons (f t1, p1, p2, f t2, f t3)
+    | IfThenElse (t1, t2, Some t3) ->
+        mk & IfThenElse (f t1, f t2, Some (f t3))
+    | IfThenElse (t1, t2, None) ->
+        mk & IfThenElse (f t1, f t2, None)
+    | Switch_or (t1, p1, t2, p2, t3) ->
+        mk & Switch_or (f t1, p1, f t2, p2, f t3)
+    | Switch_cons (t1, p1, p2, t2, t3) ->
+        mk & Switch_cons (f t1, p1, p2, f t2, f t3)
     | Switch_none (t1, t2, p, t3) -> mk & Switch_none (f t1, f t2, p, f t3)
     | App (t, ts) -> mk & App (f t, List.map f ts)
     | Prim (a, b, ts) -> mk & Prim (a, b, List.map f ts)

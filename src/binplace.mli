@@ -24,7 +24,7 @@ type 'a tree =
 
 val place : 'a list -> 'a tree
 (** Layout the list of elements in a binary tree *)
-    
+
 val path : int -> int -> side list
 (** [path i n] finds out how to access the [i]-th element of [n]
     in the layout by [place].
