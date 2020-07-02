@@ -97,7 +97,7 @@ and k t =
   | Var _ -> [], t
   | _ ->
       let defs, t = knorm t in
-      let i = Varname.create "k" t.typ in
+      let i = Ident.create_local "k" in
       let def = { typ= t.typ; loc= t.loc; attrs= (); desc= i }, t in
       defs @ [def], mkvar ~loc:t.loc (i, t.typ)
 
@@ -116,6 +116,7 @@ let beta modified exp =
     match t0.desc with
     | Let (pv, ({ desc= Var _} as t1), t2) ->
         modified := true;
+        let t1 = g t1 in
         f ((pv.desc,t1)::env) t2
     | Let (pv, t1, t2) -> mk & Let (pv, g t1, g t2)
     | Var id ->

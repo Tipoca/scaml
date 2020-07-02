@@ -19,3 +19,5 @@ val inline     : bool ref -> IML.t -> IML.t
 val elim       : bool ref -> IML.t -> IML.t
 val unknormalize : IML.t -> IML.t
 val inline_pmatch : IML.t -> IML.t
+
+val alpha_conv : (Ident.t * Ident.t) list -> IML.t -> IML.t

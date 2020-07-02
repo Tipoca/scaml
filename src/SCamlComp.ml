@@ -207,6 +207,9 @@ let link outputprefix_opt modules =
         if not optimize then t
         else begin
           let res, secs = with_time & fun () ->
+              (* Varable name may crash in the linked modules.  We need to alpha-conv for safety. *)
+              let t, sec = with_time & fun () -> Optimize.alpha_conv [] t in
+              Conf.if_time (fun () -> Format.eprintf "aconv %f@." sec);
               let t, sec = with_time & fun () -> Optimize.knormalize t in
               Conf.if_time (fun () -> Format.eprintf "knorm %f@." sec);
               if (Conf.get_conf ()).dump_iml then IML.save (outputprefix ^ "_link_iml_0001knorm.ml") t;
