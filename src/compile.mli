@@ -14,9 +14,9 @@
 
 module Make(Config : sig
     val allow_big_map : bool
+    (** Big maps are possible to be compiled for the initial storage *)
   end) : sig
-  val structure : IML.t -> Michelson.Opcode.t list
 
+  val structure : IML.t -> Michelson.Opcode.t list
   val constant : IML.t -> Michelson.Constant.t option
 end
-

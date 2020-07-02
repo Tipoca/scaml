@@ -28,24 +28,24 @@ module IdTys : Set.S with type elt = Ident.t * Michelson.Type.t
 module PatVar : sig
   type t = (Ident.t, unit) with_loc_and_type
   (** Pattern variable *)
-  
+
   val pp : Format.t -> t -> unit
 end
 
 module Attr : sig
-  type t = 
+  type t =
     | Comment of string
     | Annot of string
 
   type ts = t list
-      
+
   val add : t -> ('a, ts) with_loc_and_type -> ('a, ts) with_loc_and_type
   val adds : ts -> ('a, ts) with_loc_and_type -> ('a, ts) with_loc_and_type
 end
 
 type contract_source =
-  | Tz_code of string (* String literal of Michelson code *)
-  | Tz_file of string (* String literal of Michelson file *)
+  | Tz_code of string (** String literal of Michelson code *)
+  | Tz_file of string (** String literal of Michelson file *)
 
 type t = (desc, Attr.ts) with_loc_and_type
 
@@ -77,10 +77,6 @@ and desc =
 
 val pp : Format.t -> t -> unit
 
-module P : sig
-  val pp : Format.t -> t -> unit
-end
-  
 val save : string -> t -> unit
 (** Print out IML AST to a file.  For debugging. *)
 
@@ -111,4 +107,3 @@ val mksome        : loc:Location.t -> t -> t
 val mkassert      : loc:Location.t -> t -> t
 val mkassertfalse : loc:Location.t -> Michelson.Type.t -> t
 val mkeq          : loc:Location.t -> t -> t -> t
-

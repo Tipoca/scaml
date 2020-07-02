@@ -12,12 +12,17 @@
 (*                                                                        *)
 (**************************************************************************)
 
-val parse_options_in_payload : 
-  loc:Tools.Location.t 
-  -> string 
-  -> Ppxlib.Parsetree.payload 
-  -> (Ppxlib.Longident.t Asttypes.loc * [> `Bool of bool | `Constant of Ppxlib.Parsetree.constant ]) list
+(** Handles OCaml atttributes *)
 
-val get_scaml_toplevel_attributes 
-  : Typedtree.structure 
-  -> (Location.t * (Ppxlib.Longident.t Asttypes.loc * [`Bool of bool | `Constant of Ppxlib.Parsetree.constant ]) list) list
+val parse_options_in_payload :
+  loc:Tools.Location.t
+  -> string
+  -> Ppxlib.Parsetree.payload
+  -> (Ppxlib.Longident.t Asttypes.loc
+      * [> `Bool of bool | `Constant of Ppxlib.Parsetree.constant ]) list
+
+val get_scaml_toplevel_attributes
+  : Typedtree.structure
+  -> (Location.t
+      * (Ppxlib.Longident.t Asttypes.loc
+         * [`Bool of bool | `Constant of Ppxlib.Parsetree.constant ]) list) list
