@@ -22,7 +22,7 @@ module FA12 = struct
     ; value : nat
     }
 
-  exception NotEnoughBalance of nat * nat
+  exception NotEnoughBalance of { required : nat ; present : nat }
 
   let do_transfer (from : address) to_ value accounts =
     let v_from = match BigMap.get from accounts with
@@ -31,7 +31,7 @@ module FA12 = struct
     in
     let v_from'_int = v_from -^ value in
     let v_from' = match isnat v_from'_int with
-      | None -> raise (NotEnoughBalance (value, v_from))
+      | None -> raise (NotEnoughBalance { required= value; present= v_from })
       | Some (Nat 0) -> None
       | Some v_from' -> Some v_from'
     in
@@ -42,7 +42,7 @@ module FA12 = struct
     in
     BigMap.update from v_from' @@ BigMap.update to_ v_to' accounts
 
-  exception NotEnoughAllowance of nat * nat
+  exception NotEnoughAllowance of { required : nat ; present : nat }
 
   let [@entry] transfer { from; to_; value } s =
     let sender = Global.get_sender () in
@@ -65,7 +65,7 @@ module FA12 = struct
         | Some n -> n
       in
       if value > allowed then
-        raise (NotEnoughAllowance (value, allowed));
+        raise (NotEnoughAllowance { required= value ; present= allowed });
       let allowance =
         if value = allowed then
           BigMap.update k None s.allowance
@@ -84,7 +84,7 @@ module FA12 = struct
     ; value : nat
     }
 
-  exception UnsafeAllowanceChange of nat
+  exception UnsafeAllowanceChange of { previous : nat }
 
   let get_allowance k s = match BigMap.get k s.allowance with
     | None -> Nat 0
@@ -108,7 +108,7 @@ module FA12 = struct
            forbidden to prevent the corresponding attack vector.
            See https://docs.google.com/document/d/1YLPtQxZu1UAvO9cZ1O2RPXBbT0mooh4DYKjA_jp-RLM/edit
         *)
-        raise (UnsafeAllowanceChange value)
+        raise (UnsafeAllowanceChange { previous= value })
 
   (* XXX We want Operation.call, which sends Tz 0 *)
 
