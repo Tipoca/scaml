@@ -10,7 +10,7 @@ module Convert = struct
   let required = []
 
   type 'a t = 'a -> C.t
-      
+
   include Typerep_lib.Variant_and_record_intf.M(struct
       type nonrec 'a t = 'a t
     end)
@@ -36,10 +36,10 @@ module Convert = struct
   let lazy_t _ _ = unsupported "lazy_t"
   let ref_ _ _ = unsupported "ref"
   let function_ _ _ _ = unsupported "function"
-      
+
   let tuple xs =
     Binplace.fold (Binplace.place xs)
-      ~leaf: (fun x -> x) 
+      ~leaf: (fun x -> x)
       ~branch: (fun x y -> Pair (x,y))
 
   let tuple2 f1 f2 (x1, x2) = tuple [f1 x1; f2 x2]
@@ -59,11 +59,11 @@ module Convert = struct
     | [_k, m] -> m
     | _ ->
         Binplace.fold (Binplace.place xs)
-          ~leaf: (fun (_k,x) -> x) 
+          ~leaf: (fun (_k,x) -> x)
           ~branch: (fun x y -> Pair (x,y))
 
   let variant : 'a Variant.t -> 'a t = fun v value ->
-    let nulls, nonnulls = 
+    let nulls, nonnulls =
       Variant.fold v ~init:(0,0) ~f:(fun (nulls, nonnulls) (Tag tag) ->
           let arity = Tag.arity tag in
           if arity = 0 then (nulls + 1, nonnulls) else (nulls, nonnulls+1))
@@ -87,8 +87,8 @@ module Convert = struct
     | _, _ ->
         let Value (tag, args) = Variant.value v value in
         let arity = Tag.arity tag in
-        if arity = 0 then 
-          embed (Int (Z.of_int (Tag.ocaml_repr tag))) 
+        if arity = 0 then
+          embed (Int (Z.of_int (Tag.ocaml_repr tag)))
             (Binplace.path 0 (nonnulls + 1))
         else
           let args = Tag.traverse tag args in
@@ -136,7 +136,7 @@ module ConvertType = struct
   let unit () = Ty.tyUnit
   let option f () = Ty.tyOption (None, f ())
   let list f () = Ty.tyList (f ())
-      
+
   let encode_by branch xs =
     Binplace.fold
         ~leaf:(fun x -> x)
@@ -159,17 +159,17 @@ module ConvertType = struct
     @@ List.map (fun (l,ty) -> (Some l, ty)) xs
 
   let variant : 'a Variant.t -> 'a t = fun v () ->
-    let nulls, nonnulls = 
+    let nulls, nonnulls =
       Variant.fold v ~init:(0,0) ~f:(fun (nulls, nonnulls) (Tag tag) ->
           let arity = Tag.arity tag in
           if arity = 0 then (nulls + 1, nonnulls) else (nulls, nonnulls+1))
     in
-    let n_nulls = 
+    let n_nulls =
       Variant.fold v ~init:[] ~f:(fun revs (Tag tag) ->
           let arity = Tag.arity tag in
           if arity = 0 then Tag.label tag :: revs else revs)
     in
-    let c_nonnulls = 
+    let c_nonnulls =
       Variant.fold v ~init:[] ~f:(fun revs (Tag tag) ->
           let arity = Tag.arity tag in
           if arity = 0 then revs
@@ -204,7 +204,7 @@ module Revert = struct
   let required = []
 
   type 'a t = C.t -> 'a option
-      
+
   include Typerep_lib.Variant_and_record_intf.M(struct
       type nonrec 'a t = 'a t
     end)
@@ -248,7 +248,7 @@ module Revert = struct
     | Pair (_, v), Right::sides -> access v sides
     | _ -> None
 
-  let tuple n v = 
+  let tuple n v =
     Option.mapM (fun sides -> access v sides)
     & List.init n & fun i -> Binplace.path i n
 
@@ -268,7 +268,7 @@ module Revert = struct
   let record : 'a Record.t -> 'a t = fun r m ->
     let len = Record.length r in
     tuple len m >>= fun ms ->
-    let get f = 
+    let get f =
       let i = Field.index f in
       match Field.traverse f (List.nth ms i) with
       | Some x -> x
@@ -280,7 +280,7 @@ module Revert = struct
     | v -> Some v
 
   let variant : 'a Variant.t -> 'a t = fun v m ->
-    let _, rev_nulls, rev_nonnulls = 
+    let _, rev_nulls, rev_nonnulls =
       Variant.fold v ~init:(0,[],[]) ~f:(fun (i, nulls, nonnulls) (Tag tag) ->
           let arity = Tag.arity tag in
           if arity = 0 then (i+1, i::nulls, nonnulls) else (i+1, nulls, i::nonnulls))
@@ -360,12 +360,12 @@ end
 module Revert' = struct
   module M = Tezos_micheline.Micheline
   module C = C
-               
+
   let name = "Revert'"
   let required = []
 
   type 'a t = (int, string) M.node -> C.t option
-      
+
   include Typerep_lib.Variant_and_record_intf.M(struct
       type nonrec 'a t = 'a t
     end)
@@ -421,7 +421,7 @@ module Revert' = struct
     | M.Prim (_, "Pair", [_; v], []), Right::sides -> access v sides
     | _ -> None
 
-  let tuple n v = 
+  let tuple n v =
     Option.mapM (fun sides -> access v sides)
     & List.init n & fun i -> Binplace.path i n
 
@@ -437,18 +437,18 @@ module Revert' = struct
     tuple len m >>= fun ms ->
     let fields = List.init len & fun i -> Record.field r i in
     let mfs = List.combine ms fields in
-    Option.mapM (fun (m, Record.Field f) -> Field.traverse f m) mfs 
+    Option.mapM (fun (m, Record.Field f) -> Field.traverse f m) mfs
     >>| build
 
 (*
   let pp_ml ppf ml =
     Tezos_micheline.Micheline_printer.print_expr ppf
-      (Tezos_micheline.Micheline_printer.printable (fun _ -> "") 
+      (Tezos_micheline.Micheline_printer.printable (fun _ -> "")
          (Tezos_micheline.Micheline.strip_locations ml))
 *)
 
   let variant : 'a Variant.t -> 'a t = fun v m ->
-    let _, rev_nulls, rev_nonnulls = 
+    let _, rev_nulls, rev_nonnulls =
       Variant.fold v ~init:(0,[],[]) ~f:(fun (i, nulls, nonnulls) (Tag tag) ->
           let arity = Tag.arity tag in
           if arity = 0 then (i+1, i::nulls, nonnulls) else (i+1, nulls, i::nonnulls))
@@ -482,7 +482,7 @@ module Revert' = struct
         let Tag tag = Variant.tag v pos in
         Tag.traverse tag ma >>= fun ca ->
         Some (embed m tree ca)
-        
+
     | _, _ ->
         let tree = Binplace.place (-1 :: List.init n_nonnulls (fun x -> x)) in
         let rec find m tree = match m, tree with
@@ -512,23 +512,23 @@ module Revert' = struct
     end)
 end
 
-let to_michelson typerep v = 
+let to_michelson typerep v =
   let open SCaml in
   let module M = Type_generic.Make(Convert) in
   M.register typerep_of_int (fun (Int n) -> Int (Z.of_int n));
   M.register typerep_of_nat (fun (Nat n) -> Int (Z.of_int n));
   M.register typerep_of_tz (fun (Tz f) -> Int (Z.of_float (f *. 1000000.)));
-  M.register1 (module struct 
+  M.register1 (module struct
     type 'a t = 'a set
     let typename_of_t = typename_of_set
     let typerep_of_t = typerep_of_set
     let compute fa = fun (SCaml.Set xs) -> C.Set (List.map fa xs)
   end);
-  M.register2 (module struct 
+  M.register2 (module struct
     type ('a,'b) t = ('a,'b) map
     let typename_of_t = typename_of_map
     let typerep_of_t = typerep_of_map
-    let compute fk fv = fun (SCaml.Map kvs) -> 
+    let compute fk fv = fun (SCaml.Map kvs) ->
       C.Map (List.map (fun (k,v) -> (fk k, fv v)) kvs)
   end);
   M.register typerep_of_bytes (fun (Bytes bs) -> Bytes bs);
@@ -543,28 +543,28 @@ let to_michelson typerep v =
 exception Overflow
 exception Rounded
 
-let of_michelson typerep v = 
+let of_michelson typerep v =
   let open SCaml in
   let open Spotlib.Spot.Option.Infix in
   let module M = Type_generic.Make(Revert) in
   M.register typerep_of_int (function
-      | Int z -> 
+      | Int z ->
           let i = Z.to_int z in
           if Z.of_int i <> z then raise Overflow
           else Some (Int i)
       | _ -> None);
   M.register typerep_of_nat (function
-      | Int z -> 
+      | Int z ->
           let i = Z.to_int z in
           if Z.of_int i <> z then raise Overflow
           else if i < 0 then None
           else Some (Nat i)
       | _ -> None);
   M.register typerep_of_tz (function
-      | Int z -> 
+      | Int z ->
           let i = Z.to_int z in
           if Z.of_int i <> z then raise Overflow
-          else 
+          else
             let f = float i /. 1000000. in
             if int_of_float (f *. 1000000.) <> i then raise Rounded
             else Some (Tz f)
@@ -573,7 +573,7 @@ let of_michelson typerep v =
     type 'a t = 'a set
     let typename_of_t = typename_of_set
     let typerep_of_t = typerep_of_set
-    let compute fa = function 
+    let compute fa = function
       | C.Set xs -> Spotlib.Spot.Option.mapM fa xs >>| fun xs -> SCaml.Set xs
       | _ -> None
   end);
@@ -581,11 +581,11 @@ let of_michelson typerep v =
     type ('k,'v) t = ('k,'v) map
     let typename_of_t = typename_of_map
     let typerep_of_t = typerep_of_map
-    let compute fk fv = function 
-      | C.Map kvs -> 
-          Spotlib.Spot.Option.mapM (fun (k,v) -> 
+    let compute fk fv = function
+      | C.Map kvs ->
+          Spotlib.Spot.Option.mapM (fun (k,v) ->
               fk k >>= fun k ->
-              fv v >>| fun v -> (k,v)) kvs 
+              fv v >>| fun v -> (k,v)) kvs
           >>| fun kvs -> SCaml.Map kvs
       | _ -> None
   end);
@@ -611,7 +611,7 @@ let of_michelson typerep v =
   let `generic f = M.of_typerep typerep in
   f v
 
-let michelson_of_micheline typerep v = 
+let michelson_of_micheline typerep v =
   let open SCaml in
   let open Spotlib.Spot.Option.Infix in
   let module X = Type_generic.Make(Revert') in
@@ -625,7 +625,7 @@ let michelson_of_micheline typerep v =
       | Int (_, z) -> Some (C.Int z)
       | _ -> None);
   X.register typerep_of_tz (function
-      | M.Int (_, z) -> 
+      | M.Int (_, z) ->
           let i = Z.to_int z in
           if Z.of_int i <> z then raise Overflow
           else Some (C.Int z) (* XXX overflow exists *)
@@ -634,7 +634,7 @@ let michelson_of_micheline typerep v =
     type 'a t = 'a set
     let typename_of_t = typename_of_set
     let typerep_of_t = typerep_of_set
-    let compute fa = function 
+    let compute fa = function
       | M.Seq (_, xs) -> Spotlib.Spot.Option.mapM fa xs >>| fun xs -> C.Set xs
       | _ -> None
   end);
@@ -642,18 +642,18 @@ let michelson_of_micheline typerep v =
     type ('k,'v) t = ('k,'v) map
     let typename_of_t = typename_of_map
     let typerep_of_t = typerep_of_map
-    let compute fk fv = function 
-      | M.Seq (_, kvs) -> 
+    let compute fk fv = function
+      | M.Seq (_, kvs) ->
           Spotlib.Spot.Option.mapM (function
               | M.Prim (_, "Elt", [k; v], []) ->
                   fk k >>= fun k ->
                   fv v >>| fun v -> (k,v)
-              | _ -> None) kvs 
+              | _ -> None) kvs
           >>| fun kvs -> C.Map kvs
       | _ -> None
   end);
   X.register typerep_of_bytes (function
-      | M.Bytes (_, bs (* in hex *)) -> 
+      | M.Bytes (_, bs (* in hex *)) ->
           let s = Stdlib.Bytes.to_string bs in
           let `Hex h = Hex.of_string s in
           Some (C.Bytes h)
@@ -676,7 +676,7 @@ let michelson_of_micheline typerep v =
   let `generic f = X.of_typerep typerep in
   f v
 
-let to_michelson_type typerep = 
+let to_michelson_type typerep =
   let open SCaml in
   let module M = Type_generic.Make(ConvertType) in
   let module Ty = Michelson.Type in
@@ -707,7 +707,7 @@ let to_michelson_type typerep =
 let to_micheline rep x =
   C.to_micheline ~block_comment:false @@ to_michelson rep x
 
-let of_micheline rep x = 
+let of_micheline rep x =
   let open Option.Infix in
   michelson_of_micheline rep x >>= fun m ->
   of_michelson rep m
@@ -719,9 +719,9 @@ module TypeSafePack : SCaml.Obj.Internal.TypeSafePack = struct
     Tezos_micheline.Micheline.canonical_encoding_v1
       ~variant:"michelson_v1"
       Data_encoding.Encoding.string
-  
+
   let pack' rep a =
-    match 
+    match
       Data_encoding.Binary.to_bytes expr_encoding
       @@ Tezos_micheline.Micheline.strip_locations
       @@ C.to_micheline ~block_comment:false
@@ -729,20 +729,19 @@ module TypeSafePack : SCaml.Obj.Internal.TypeSafePack = struct
     with
     | Error _ -> assert false
     | Ok bs -> "\005" ^ Stdlib.Bytes.to_string bs
-  
+
   let unpack' rep s =
     if s = "" then None
     else if Stdlib.String.unsafe_get s 0 <> '\005' then None
-    else 
+    else
       let open Stdlib in
       let (>>=) = Option.bind in
       let mres =
-        Data_encoding.Binary.of_bytes expr_encoding 
+        Data_encoding.Binary.of_bytes expr_encoding
         @@ Bytes.of_string @@ String.(sub s 1 (length s - 1))
       in
       Result.to_option mres >>= fun m ->
       of_micheline rep @@ Tezos_micheline.Micheline.root m
 end
-  
-let () = SCaml.Obj.Internal.type_safe_pack := Some (module TypeSafePack)
 
+let () = SCaml.Obj.Internal.type_safe_pack := Some (module TypeSafePack)
