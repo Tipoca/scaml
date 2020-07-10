@@ -551,8 +551,21 @@ end
 module Crypto = struct
   (* XXX These functions should have polymorphic versions *)
 
-  let check_signature : key -> signature -> bytes -> bool = fun _ -> assert false
-  (* XXX Signature.check key signature message of tezos-crypto *)
+  let check_signature (Key k) (Signature s) bs =
+    let open Tezos_crypto.Signature in
+    let k = match Public_key.of_b58check_opt k with Some k -> k | None -> assert false in
+    let s = match of_b58check_opt s with Some s -> s | None -> assert false in
+    let bs = Bytes.to_ocaml_string bs in
+    check k s (Stdlib.Bytes.of_string bs)
+
+  let test_check_signature () =
+    assert (
+      check_signature
+        (Key "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav")
+        (Signature "edsigu3QszDjUpeqYqbvhyRxMpVFamEnvm9FYnt7YiiNt9nmjYfh8ZTbsybZ5WnBkhA7zfHsRVyuTnRsGLR6fNHt1Up1FxgyRtF")
+        (Obj.pack' typerep_of_string "hello")
+        (* SCaml.Obj.Internal.type_safe_pack must be filled beforehand *)
+    )
 
   let blake2b bs =
     let Hash bs = Blake2.Blake2b.direct (Stdlib.Bytes.of_string @@ Bytes.to_ocaml_string bs) 32 in
@@ -587,15 +600,25 @@ module Crypto = struct
     assert (sha512 (Bytes "0123456789ABCDEF") =
             Bytes "650161856da7d9f818e6047cf6b2092bc7aa3767d3495cfbefe2b710ed684a43ba933ea8286ef67d975e64e0482e5ebe0701788989396545b6badb3b0a136f19")
 
-  let hash_key  : key -> key_hash = fun _ -> assert false
-  (* XXX we need Signagure.Public_key.hash
-         of tezos-crypto but it requires
-         the current OPAM package of hacl which required dune < 2.0 for now *)
+  let hash_key (Key k) =
+    let open Tezos_crypto.Signature in
+    match Public_key.of_b58check_opt k with
+    | None -> assert false (* must succeed *)
+    | Some k ->
+        Key_hash (Public_key_hash.to_b58check @@ Public_key.hash k)
+
+  let test_hash_key () =
+    assert (
+      hash_key (Key "p2pk66uq221795tFxT7jfNmXtBMdjMf6RAaxRTwv1dbuSHbH6yfqGwz")
+      = Key_hash "tz3eMVQA1K4yw47g9nHxM37BJNmDyWtpGB3T"
+    )
 
   module Internal = struct
     let test () =
       test_blake2b ();
       test_sha256 ();
-      test_sha512 ()
+      test_sha512 ();
+      test_hash_key ();
+      test_check_signature ()
   end
 end

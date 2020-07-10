@@ -5,7 +5,7 @@
  (flags -w -9)
  (preprocess (pps ppx_typerep_conv))
  (libraries zarith ptime typerep blake2 hex
-	    data-encoding tezos-micheline hacl bigstring
+	    data-encoding tezos-micheline tezos-crypto hacl bigstring
 	    spotlib compiler-libs.common
 	    )
 )
