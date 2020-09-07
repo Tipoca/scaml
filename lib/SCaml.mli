@@ -480,8 +480,10 @@ module Obj : sig
   val pack : 'a -> bytes
   val unpack : bytes -> 'a option
 
-  val pack' : 'a Typerep_lib.Std.Typerep.t -> 'a -> bytes
-  val unpack' : 'a Typerep_lib.Std.Typerep.t -> bytes -> 'a option
+  module TypeSafe : sig
+    val pack : 'a Typerep_lib.Std.Typerep.t -> 'a -> bytes
+    val unpack : 'a Typerep_lib.Std.Typerep.t -> bytes -> 'a option
+  end
 
   module Internal : sig
     module type TypeSafePack = sig

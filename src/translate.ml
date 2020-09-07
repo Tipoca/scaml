@@ -1515,7 +1515,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
             | _ -> mk & App (expression lenv f, get_args args)
           end
 
-        | Some "Obj.pack'" ->
+        | Some "Obj.TypeSafe.pack" ->
             let fty = Result.at_Error (fun e ->
                 errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type
@@ -1528,7 +1528,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
             (* fty = fty' *)
             mk & primitive ~loc:f.exp_loc fty "Obj.pack" & get_args (List.tl args)
 
-        | Some "Obj.unpack'" ->
+        | Some "Obj.TypeSafe.unpack" ->
             let fty = Result.at_Error (fun e ->
                 errorf_type_expr ~loc:f.exp_loc "This primitive has type %a.  %a"
                   Printtyp.type_expr f.exp_type

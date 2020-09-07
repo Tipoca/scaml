@@ -371,7 +371,12 @@ module Contract : sig
   val implicit_account : key_hash -> unit t
   val address : 'a t -> address
 
-  val create_from_tz_code : string const -> key_hash option -> tz -> 'storage -> operation * address
+  val create_from_tz_code
+    : string const (* michelson code *)
+    -> key_hash option (* delegat *)
+    -> tz (* initial tz *)
+    -> 'storage (* initial storage *)
+    -> operation * address
   (** Raw interface for CREATE_CONTRACT.
 
       Michelson code must be given as a string LITERAL.
@@ -539,13 +544,15 @@ module Obj = struct
     let type_safe_pack = ref (None : (module TypeSafePack) option)
   end
 
-  let pack' rep a =
-    let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
-    Bytes.of_ocaml_string (M.pack' rep a)
+  module TypeSafe = struct
+    let pack rep a =
+      let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
+      Bytes.of_ocaml_string (M.pack' rep a)
 
-  let unpack' rep b =
-    let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
-    M.unpack' rep (Bytes.to_ocaml_string b)
+    let unpack rep b =
+      let (module M : Internal.TypeSafePack) = Option.get !Internal.type_safe_pack in
+      M.unpack' rep (Bytes.to_ocaml_string b)
+  end
 end
 
 module Crypto = struct
@@ -563,7 +570,7 @@ module Crypto = struct
       check_signature
         (Key "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav")
         (Signature "edsigu3QszDjUpeqYqbvhyRxMpVFamEnvm9FYnt7YiiNt9nmjYfh8ZTbsybZ5WnBkhA7zfHsRVyuTnRsGLR6fNHt1Up1FxgyRtF")
-        (Obj.pack' typerep_of_string "hello")
+        (Obj.TypeSafe.pack typerep_of_string "hello")
         (* SCaml.Obj.Internal.type_safe_pack must be filled beforehand *)
     )
 

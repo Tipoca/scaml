@@ -61,6 +61,7 @@ module Type : sig
     | TyOperation
     | TyContract of t
     | TyLambda of t * t
+    | TyNever (* from 008 *)
 
   val mk : desc -> t
 
@@ -87,6 +88,7 @@ module Type : sig
   val tyOperation : t
   val tyContract : t -> t
   val tyLambda : (t * t) -> t
+  val tyNever : t (* from 008 *)
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
@@ -205,7 +207,7 @@ and Opcode : sig
     | ADDRESS
     | CHAIN_ID
 
-    (* 007 *)
+    (* from 008 *)
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR

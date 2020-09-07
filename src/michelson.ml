@@ -101,6 +101,8 @@ module Type = struct
     | TyContract of t
     | TyLambda of t * t
 
+    | TyNever (* from 008 *)
+
   let type_annotate f t = { t with tyannot= f t.tyannot }
 
   let mk desc = { desc ; tyannot= None  }
@@ -128,6 +130,7 @@ module Type = struct
   let tyOperation           = mk TyOperation
   let tyContract t          = mk & TyContract t
   let tyLambda (t1, t2)     = mk & TyLambda (t1, t2)
+  let tyNever               = mk & TyNever
 
   let rec args t = match t.desc with
     | TyLambda (t1, t2) ->
@@ -178,6 +181,7 @@ module Type = struct
     | TyOperation -> !"operation"
     | TyContract t -> prim "contract" [to_micheline t]
     | TyLambda (t1, t2) -> prim "lambda" [to_micheline t1; to_micheline t2]
+    | TyNever -> !"never"
 
   and pp fmt t = Mline.pp fmt & to_micheline t
 
@@ -221,6 +225,7 @@ module Type = struct
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit | TyMutez
       | TyKeyHash | TyTimestamp | TyAddress |TyChainID | TyKey | TySignature
       | TyOperation -> Ok ()
+      | TyNever -> Ok ()
     in
     f ty
 
@@ -228,11 +233,13 @@ module Type = struct
     (* See Script_ir_translator.parse_comparable_ty *)
     let rec f ty = match ty.desc with
 
-      | TyChainID | TySignature | TyKey | TyUnit
-        when Conf.get_protocol () >= (7,0) ->
-          true (* since 007 *)
+      | TyChainID | TySignature | TyKey | TyKeyHash | TyUnit
+        when Conf.get_protocol () >= (8,0) -> true (* since 008 *)
 
-      | TyOption (_,ty) when Conf.get_protocol () >= (7,0) -> is_comparable ty
+      | TyOption (_,ty) when Conf.get_protocol () >= (8,0) -> is_comparable ty
+
+      | TyOr (_,ty1, _,ty2) when Conf.get_protocol () >= (8,0) ->
+          is_comparable ty1 && is_comparable ty2
 
       | TyChainID | TySignature | TyKey -> false
 
@@ -244,6 +251,7 @@ module Type = struct
       | TyBigMap _ | TyContract _
       | TyOption _ | TyLambda _ | TyList _ | TyMap _ | TyOperation
       | TyOr _ | TySet _ | TyUnit -> false
+      | TyNever -> false
     in
     f ty
 
@@ -261,6 +269,7 @@ module Type = struct
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
+      | TyNever -> false
     in
     f ty
 
@@ -280,6 +289,7 @@ module Type = struct
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
+      | TyNever -> false
     in
     f ty
 
@@ -299,6 +309,7 @@ module Type = struct
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
+      | TyNever -> false
     in
     f ty
 end
@@ -434,8 +445,8 @@ and Opcode : sig
     | CONTRACT' of Type.t * string (* entry point name *)
     | TRANSFER_TOKENS
     | SET_DELEGATE
-    | CREATE_ACCOUNT
-    | CREATE_CONTRACT of module_
+    | CREATE_ACCOUNT (* Obsolete from 008 *)
+    | CREATE_CONTRACT of module_ (* Legacy version is obsolete from 008 *)
     | IMPLICIT_ACCOUNT
     | NOW
     | AMOUNT
@@ -445,13 +456,13 @@ and Opcode : sig
     | SHA256
     | SHA512
     | HASH_KEY
-    | STEPS_TO_QUOTA
+    | STEPS_TO_QUOTA (* Obsolete from 008 *)
     | SOURCE
     | SENDER
     | ADDRESS
     | CHAIN_ID
 
-    (* 007 *)
+    (* 008 *)
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR
@@ -536,7 +547,7 @@ end = struct
     | ADDRESS
     | CHAIN_ID
 
-    (* 007 *)
+    (* 008 *)
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR

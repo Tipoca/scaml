@@ -423,7 +423,7 @@ let primitives =
   ; "Global.get_steps_to_quota" , (true,  1, simple [ DROP 1; STEPS_TO_QUOTA ])
   ; "Global.get_chain_id"       , (true,  1, simple [ DROP 1; CHAIN_ID ])
 
-  ; "Global.get_level"          , (true,  1, protocol (fun x -> x >= (7,0))
+  ; "Global.get_level"          , (true,  1, protocol (fun x -> x >= (8,0))
                                              @@ simple [ DROP 1; LEVEL ])
 
   ; "Crypto.check_signature", (true,  3, simple [ CHECK_SIGNATURE ])
