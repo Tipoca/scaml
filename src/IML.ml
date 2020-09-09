@@ -115,6 +115,7 @@ module P = struct
     | TyOperation ->  [%type: operation]
     | TyContract t -> [%type: [%t type_ t] contract]
     | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
+    | TyNever ->      [%type: never]
 
   let _type = type_
   (* well we do not use it for now, the types are too lousy to read *)

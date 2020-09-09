@@ -16,12 +16,12 @@
 
 open Michelson.Type
 
-let infer def t = 
-  let rec infer t = 
+let infer def t =
+  let rec infer t =
     match t.tyannot with
-    | Some s -> 
+    | Some s ->
         (* type annotation may contain invalid chars for idents *)
-        Some (String.uncapitalize_ascii 
+        Some (String.uncapitalize_ascii
               @@ String.map (function
                   | ('a'..'z' | 'A'..'Z' | '0'..'9' as c) -> c
                   | _ -> '_') s)
@@ -39,7 +39,7 @@ let infer def t =
               | Some n -> Some (n ^ "s")
             end
         | TyPair _ -> None
-        | TyOption (_, t) -> 
+        | TyOption (_, t) ->
             begin match infer t with
               | None -> Some "opt"
               | Some n -> Some (n ^ "opt")
@@ -75,14 +75,10 @@ let infer def t =
               | None -> Some "cntr"
             end
         | TyLambda _ -> Some "f"
+        | TyNever -> Some "never"
   in
   match infer t with
   | Some s -> s
   | None -> def
 
 let create def ty = Ident.create_local @@ infer def ty
-
-  
-
-
-
