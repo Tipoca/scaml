@@ -106,9 +106,9 @@ for a while.
 
 > "Road-map" is another expression of "promises almost never fulfilled in time".
 
-### 1.2 Green Goods
+### 1.2 Fortune Telling
 
-1.2 "Green Goods" will support the next protocol upgrade of Tezos, mainly covering Michelson's ZK sapling opcodes.
+1.2 "Fortune Telling" will support the next protocol upgrade of Tezos.
 
 ## Further information
 
