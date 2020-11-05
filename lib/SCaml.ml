@@ -324,6 +324,7 @@ type bytes = Bytes of string const [@@deriving typerep]
 module Bytes = struct
   type t = bytes [@@deriving typerep]
   let concat (Bytes a) (Bytes b) = Bytes (a ^ b)
+  let cat (Bytes a) (Bytes b) = Bytes (a ^ b)
   let slice (Nat a) (Nat b) (Bytes s) =
     try Some (Bytes (Stdlib.String.sub s (Stdlib.( * ) a 2) (Stdlib.( * ) b 2))) with _ -> None
   let length (Bytes a) = Nat (Stdlib.(/) (Stdlib.String.length a) 2)

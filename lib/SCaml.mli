@@ -312,6 +312,7 @@ module Bytes : sig
   type t = bytes [@@deriving typerep]
   val length : t -> nat
   val concat : t -> t -> t
+  val cat : t -> t -> t
   val slice : nat -> nat -> t -> t option
   (** Subbytes. [slice n1 n2 s] returns a subbytes of length [n2]
       from the position [n1] (zero based).
