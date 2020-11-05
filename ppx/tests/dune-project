@@ -1,5 +1,5 @@
 (lang dune 2.5)
-(wrapped_executables false)
+(wrapped_executables false) ; We need this for SCaml compilation
 (name ppx_test)
 
 
