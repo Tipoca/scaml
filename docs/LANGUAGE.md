@@ -8,7 +8,7 @@ SCaml is a subset of OCaml.  If you do not write OCaml, you will not write SCaml
 
 API functions to access Michelson primitives are declared in module `SCaml`.  In SCaml, you should always `open SCaml` first.  (You can skip it but there is almost no point to do it.)
 
-In the normal installation, module `SCaml` should be found at directory `` `opam config var prefix`/lib/scaml ``  Check `SCaml.mli` in this directory or the source code of SCaml to learn what functions are available and their comments.
+In the normal installation, module `SCaml` should be found at directory `` `opam config var prefix`/lib/scaml/scamlib ``  Check `SCaml.mli` in this directory or the source code of SCaml to learn what functions are available and their comments.
 
 ## Entrypoint
 
