@@ -626,48 +626,53 @@ module Pmatch = struct
               | c, P.Constr (c', ps) ->
                   if c = c' then [{ case with pats= ps @ pats }] else []
 
-              (* For wild, we need to build another wild with arg type.
+              (* For wild and var, we need to build another wild with arg type.
                  XXX Currently we must code for each.  Ugh.
               *)
-              | Cnstr.Pair, P.Wild ->
-                  let ty1, ty2 = match pat.typ.desc with
-                    | TyPair (_,ty1, _,ty2) -> ty1, ty2
+              | _, (P.Wild | P.Var _) ->
+                  let bindings = match pat.desc with
+                    | P.Wild -> bindings
+                    | P.Var v -> (v,loc,o) :: bindings
                     | _ -> assert false
                   in
-                  [{ case with pats= mkp ~loc:gloc ty1 P.Wild :: mkp ~loc:gloc ty2 P.Wild :: pats }]
+                  begin match c with
+                    | Cnstr.Pair ->
+                        let ty1, ty2 = match pat.typ.desc with
+                          | TyPair (_,ty1, _,ty2) -> ty1, ty2
+                          | _ -> assert false
+                        in
+                        [{ case with pats= mkp ~loc:gloc ty1 P.Wild :: mkp ~loc:gloc ty2 P.Wild :: pats; bindings }]
+                    | Left ->
+                        let typl = match pat.typ.desc with
+                          | TyOr (_,typl, _,_typr) -> typl
+                          | _ -> assert false
+                        in
+                        [{ case with pats= mkp ~loc:gloc typl P.Wild :: pats; bindings }]
 
-              | Left, P.Wild ->
-                  let typl = match pat.typ.desc with
-                    | TyOr (_,typl, _,_typr) -> typl
-                    | _ -> assert false
-                  in
-                  [{ case with pats= mkp ~loc:gloc typl P.Wild :: pats }]
+                    | Right ->
+                        let typr = match pat.typ.desc with
+                          | TyOr (_,_typl, _,typr) -> typr
+                          | _ -> assert false
+                        in
+                        [{ case with pats= mkp ~loc:gloc typr P.Wild :: pats; bindings }]
 
-              | Right, P.Wild ->
-                  let typr = match pat.typ.desc with
-                    | TyOr (_,_typl, _,typr) -> typr
-                    | _ -> assert false
-                  in
-                  [{ case with pats= mkp ~loc:gloc typr P.Wild :: pats }]
+                    | Some ->
+                        let typ = match pat.typ.desc with
+                          | TyOption (_,typ) -> typ
+                          | _ -> assert false
+                        in
+                        [{ case with pats= mkp ~loc:gloc typ P.Wild :: pats; bindings }]
 
-              | Some, P.Wild ->
-                  let typ = match pat.typ.desc with
-                    | TyOption (_,typ) -> typ
-                    | _ -> assert false
-                  in
-                  [{ case with pats= mkp ~loc:gloc typ P.Wild :: pats }]
+                    | Cons ->
+                        let typ = match pat.typ.desc with
+                          | TyList typ -> typ
+                          | _ -> assert false
+                        in
+                        [{ case with pats= mkp ~loc:gloc typ P.Wild :: mkp ~loc:gloc pat.typ P.Wild :: pats; bindings }]
 
-              | Cons, P.Wild ->
-                  let typ = match pat.typ.desc with
-                    | TyList typ -> typ
-                    | _ -> assert false
-                  in
-                  [{ case with pats= mkp ~loc:gloc typ P.Wild :: mkp ~loc:gloc pat.typ P.Wild :: pats }]
-
-              | (None | Nil | Unit | Bool _ | Constant _), P.Wild ->
-                  [{ case with pats }]
-
-              | _ , P.Var v -> [{ case with pats; bindings= (v,loc,o) :: bindings }]
+                    | (None | Nil | Unit | Bool _ | Constant _) ->
+                        [{ case with pats; bindings }]
+                  end
             in
             let cases = f pat in
             cases @ st
@@ -752,6 +757,7 @@ module Pmatch = struct
             in
             f p ) ps
         then
+          (* The first case consists only of var or _ *)
           let bindings = List.fold_right2 (fun v p st ->
               match p.desc with
               | P.Wild -> st
@@ -801,7 +807,7 @@ module Pmatch = struct
                Since non-exhaustive matches are already rejected, they are always listed fully.
             *)
             let constructors =
-              (* Things must be sorted! *)
+              (* Things must be sorted for the correctness of [is_signature] *)
               match constructors with
               | [] -> assert false
               | [Cnstr.Left] | [Right] -> [Cnstr.Left; Right]
@@ -885,6 +891,7 @@ module Pmatch = struct
             in
             if i = 0 then algo os column
             else begin
+              (* put the non wild card column at the leftest *)
               let o', matrix' = swap i os matrix in
               cc o' matrix' (* xxx inefficient *)
             end
@@ -1066,45 +1073,45 @@ module Pmatch = struct
               else
                 (case, Some f, e)
             ) cases
-          in
+    in
 
-          let cases, guards =
-            let cases, guards, _ =
-              List.fold_left (fun (cases, guards, i) case ->
-                  match case with
-                  | p, None, e -> (p, None, e)::cases, guards, i
-                  | p, Some g, e -> (p, Some i, e)::cases, g::guards, i+1)
-                ([], [], 0) cases
-            in
-            List.rev cases, List.rev guards
-          in
+    let cases, guards =
+      let cases, guards, _ =
+        List.fold_left (fun (cases, guards, i) case ->
+            match case with
+            | p, None, e -> (p, None, e)::cases, guards, i
+            | p, Some g, e -> (p, Some i, e)::cases, g::guards, i+1)
+          ([], [], 0) cases
+      in
+      List.rev cases, List.rev guards
+    in
 
-          let typ = (match List.hd cases with (_,_,e) -> e).typ in
-          let v = Varname.create "v" e.typ in
+    let typ = (match List.hd cases with (_,_,e) -> e).typ in
+    let v = Varname.create "v" e.typ in
 
-          (* let casei = fun ... in let v = e in ... *)
-          let make x =
-            (* let v = <e> in <x> *)
-            let match_ = mklet ~loc:gloc (mkp ~loc:gloc e.typ v) e x in
-            (* let casei = <f> in .. *)
-            List.fold_right (fun (v, fopt, _e) st ->
-                match fopt with
-                | None -> st
-                | Some f ->
-                    mklet ~loc:f.loc (mkp ~loc:f.loc f.typ v) f st) acts match_
-          in
+    (* let casei = fun ... in let v = e in ... *)
+    let make x =
+      (* let v = <e> in <x> *)
+      let match_ = mklet ~loc:gloc (mkp ~loc:gloc e.typ v) e x in
+      (* let casei = <f> in .. *)
+      List.fold_right (fun (v, fopt, _e) st ->
+          match fopt with
+          | None -> st
+          | Some f ->
+              mklet ~loc:f.loc (mkp ~loc:f.loc f.typ v) f st) acts match_
+    in
 
-          let matrix : matrix =
-            List.mapi (fun i (pat, g, _) ->
-                { pats=[pat]; guard= g; action= i; bindings= [] }) cases
-          in
+    let matrix : matrix =
+      List.mapi (fun i (pat, g, _) ->
+          { pats=[pat]; guard= g; action= i; bindings= [] }) cases
+    in
 
-          (* XXX if match target is a tuple literal, no need to form a real tuple *)
-          let res = cc [(v,e.typ)] matrix in
-          if_debug (fun () -> Format.eprintf "pmatch debug: %a@." pp_tree res);
-          let e = build typ (List.map (fun (_,_,e) -> e) acts) guards res in
-          if_debug (fun () -> Format.eprintf "pmatch debug: %a@." pp e);
-          make e
+    (* XXX if match target is a tuple literal, no need to form a real tuple *)
+    let res = cc [(v,e.typ)] matrix in
+    if_debug (fun () -> Format.eprintf "pmatch debug: %a@." pp_tree res);
+    let e = build typ (List.map (fun (_,_,e) -> e) acts) guards res in
+    if_debug (fun () -> Format.eprintf "pmatch debug: %a@." pp e);
+    make e
 end
 
 let rec list_elems e = match e.desc with
