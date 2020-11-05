@@ -1,6 +1,5 @@
 (tests
- (names
-  test_typerep
-  )
- (preprocess (pps ppx_typerep_conv ppx_deriving ))
+ (names test_typerep)
+ (preprocess
+  (pps ppx_typerep_conv ppx_deriving))
  (libraries typerep scaml.compiler scaml.scamlib))
