@@ -25,7 +25,7 @@ let init () =
 
     If SCAMLIB is specified, SCAMLIB is chosen.
 
-    Otherwise, `opam config var prefix`/lib/scaml is used.
+    Otherwise, `opam config var prefix`/lib/scaml/scamlib is used.
     If `opam config var prefix` does not print a directory nor crashes,
     scamlc prints out a warning and continues with None
   *)
