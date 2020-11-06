@@ -1,5 +1,12 @@
 open SCaml
 
+(* Flattened Merkle Patricia tree representation,
+   as the list of the nodes visited in the depth first order.
+
+   Michelson has no recursive types other than list,
+   therefore neither does SCaml.  Tree type must be encoded
+   by list.
+*)
 type node =
   | Hash of bytes
   | Value of bytes
