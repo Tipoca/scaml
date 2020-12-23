@@ -80,6 +80,8 @@ val (+) : int -> int -> int
 val (+^) : nat -> nat -> nat
 val (+$) : tz -> tz -> tz
 
+(* XXX ADD can work for int and nat, and nat and int *)
+
 val (-) : int -> int -> int
 val (-^) : nat -> nat -> int
 val (-$) : tz -> tz -> tz
@@ -121,6 +123,7 @@ val lnot : int -> int (* not a binop *)
 
 val abs : int -> nat
 val isnat : int -> nat option
+val int_of_nat : nat -> int
 
 (** Comparisons
 
@@ -246,6 +249,8 @@ module Map : sig
       the map.
   *)
 
+  val get_and_update : 'k -> 'v option -> ('k, 'v) t -> 'v option * ('k, 'v) t
+
   val fold : ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc
 
   val fold' : (('k * 'v * 'acc) -> 'acc) -> ('k, 'v) t -> 'acc -> 'acc
@@ -282,6 +287,8 @@ module BigMap : sig
       Removing a binding non existent in the map does not change
       the big map.
   *)
+
+  val get_and_update : 'k -> 'v option -> ('k, 'v) t -> 'v option * ('k, 'v) t
 end
 
 (** Strings *)
@@ -420,6 +427,26 @@ module Chain_id : sig
   type t = chain_id [@@deriving typerep]
 end
 
+type bls12_381_g1 = G1 of string (* must be binary hex ? *)
+type bls12_381_g2 = G2 of string (* must be binary hex ? *)
+type bls12_381_fr = Fr of string (* must be natural number, modulo p *)
+
+module BLS12_381 : sig
+  val add_g1 : bls12_381_g1 -> bls12_381_g1 -> bls12_381_g1
+  val add_g2 : bls12_381_g2 -> bls12_381_g2 -> bls12_381_g2
+  val add_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr
+  val int_of_fr : bls12_381_fr -> int
+  val mul_g1 : bls12_381_g1 -> bls12_381_fr -> bls12_381_g1
+  val mul_g2 : bls12_381_g2 -> bls12_381_fr -> bls12_381_g2
+  val mul_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr
+  val mul_nat : nat -> bls12_381_fr -> bls12_381_fr
+  val mul_int : int -> bls12_381_fr -> bls12_381_fr
+  val neg_g1 : bls12_381_g1 -> bls12_381_g1
+  val neg_g2 : bls12_381_g2 -> bls12_381_g2
+  val neg_fr : bls12_381_fr -> bls12_381_fr
+  val pair_check : (bls12_381_g1 * bls12_381_g2) list -> bool
+end
+
 (** Global values
 
     They are consts but have functional types in order to provide
@@ -433,6 +460,8 @@ module Global : sig
   val get_sender   : unit -> address
   val get_chain_id : unit -> chain_id
   val get_level    : unit -> nat
+  val get_voting_power : unit -> nat
+  val get_total_voting_power : unit -> nat
 end
 
 module Env : sig
@@ -446,6 +475,9 @@ module Env : sig
   val source   : t -> address
   val sender   : t -> address
   val chain_id : t -> chain_id
+
+  val voting_power : t -> nat
+  val total_voting_power : t -> nat
 end
 
 (** Keys *)
@@ -468,6 +500,8 @@ module Crypto : sig
   val blake2b : bytes -> bytes
   val sha256 : bytes -> bytes
   val sha512 : bytes -> bytes
+  val keccak : bytes -> bytes
+  val sha3 : bytes -> bytes
   val hash_key  : key -> key_hash
 
   module Internal : sig
@@ -495,4 +529,24 @@ module Obj : sig
 
     val type_safe_pack : (module TypeSafePack) option ref
   end
+end
+
+type 'a ticket
+
+module Ticket : sig
+  type 'a t = 'a ticket
+  val create : 'a -> nat -> 'a t
+  val read : 'a t -> (address * 'a * nat) * 'a t
+  val split : 'a t -> (nat * nat) -> ('a t * 'a t) option
+  val join : 'a t -> 'a t -> 'a t option
+end
+
+type 'ms sapling_state
+type 'ms sapling_transaction
+
+module Sapling : sig
+  type 'ms state = 'ms sapling_state
+  type 'ms transaction = 'ms sapling_transaction
+  val empty_state : 'ms -> 'ms state
+  val verify_update : 'ms transaction -> 'ms state -> (int * 'ms state) option
 end

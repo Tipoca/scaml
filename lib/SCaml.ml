@@ -171,6 +171,7 @@ let lnot i1 = int_of_z Z.(~! (z_of_int i1))
 
 let abs a = nat_of_z (Z.abs (z_of_int a))
 let isnat (Int i as a) = if i < 0 then None else Some (abs a)
+let int_of_nat (Nat z) = Int z
 
 let fst = fst
 let snd = snd
@@ -266,6 +267,7 @@ module Map = struct
               | kv::kvs -> add (kv::st) kvs
             in
             add [] kvs)
+  let get_and_update _ = assert false
   let fold f (Map m) acc = List.fold_left (fun acc (k,v) -> f k v acc) acc m
   let fold' f (Map m) acc = List.fold_left (fun acc (k,v) -> f (k,v,acc)) acc m
 end
@@ -278,6 +280,7 @@ module BigMap : sig
   val get : 'k -> ('k, 'v) t -> 'v option
   val mem : 'k -> ('k, 'v) t -> bool
   val update : 'k -> 'v option -> ('k, 'v) t -> ('k, 'v) t
+  val get_and_update : 'k -> 'v option -> ('k, 'v) t -> 'v option * ('k, 'v) t
 end = struct
   type ('k, 'v) t = ('k, 'v) big_map = BigMap of ('k * 'v) list [@@deriving typerep]
   let empty : ('k, 'v) t = BigMap []
@@ -302,6 +305,7 @@ end = struct
               | kv::kvs -> add (kv::st) kvs
             in
             add [] kvs)
+  let get_and_update _ = assert false
 end
 
 module Loop = struct
@@ -463,6 +467,26 @@ module Chain_id = struct
   type t = chain_id [@@deriving typerep]
 end
 
+type bls12_381_g1 = G1 of string (* must be binary hex ? *)
+type bls12_381_g2 = G2 of string (* must be binary hex ? *)
+type bls12_381_fr = Fr of string (* must be natural number, modulo p *)
+
+module BLS12_381 = struct
+  let add_g1 : bls12_381_g1 -> bls12_381_g1 -> bls12_381_g1 = fun _ -> assert false
+  let add_g2 : bls12_381_g2 -> bls12_381_g2 -> bls12_381_g2 = fun _ -> assert false
+  let add_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
+  let int_of_fr : bls12_381_fr -> int = fun _ -> assert false
+  let mul_g1 : bls12_381_g1 -> bls12_381_fr -> bls12_381_g1 = fun _ -> assert false
+  let mul_g2 : bls12_381_g2 -> bls12_381_fr -> bls12_381_g2 = fun _ -> assert false
+  let mul_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
+  let mul_nat : nat -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
+  let mul_int : int -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
+  let neg_g1 : bls12_381_g1 -> bls12_381_g1 = fun _ -> assert false
+  let neg_g2 : bls12_381_g2 -> bls12_381_g2 = fun _ -> assert false
+  let neg_fr : bls12_381_fr -> bls12_381_fr = fun _ -> assert false
+  let pair_check : (bls12_381_g1 * bls12_381_g2) list -> bool = fun _ -> assert false
+end
+
 module Env = struct
   type t =
     { now : timestamp
@@ -484,6 +508,9 @@ module Env = struct
   let sender   env = env.sender
   let chain_id env = env.chain_id
   let level    env = env.level
+
+  let voting_power _ = assert false
+  let total_voting_power _ = assert false
 end
 
 (* maybe the place is not good *)
@@ -496,6 +523,9 @@ module Global : sig
   val get_chain_id : unit -> chain_id
 
   val get_level    : unit -> nat
+
+  val get_voting_power : unit -> nat
+  val get_total_voting_power : unit -> nat
 end = struct
   open Env
   let get_now      () = (get ()).now
@@ -506,6 +536,9 @@ end = struct
   let get_chain_id () = (get ()).chain_id
 
   let get_level    () = (get ()).level
+
+  let get_voting_power () = assert false
+  let get_total_voting_power () = assert false
 end
 
 type key = Key of string const [@@deriving typerep]
@@ -608,6 +641,9 @@ module Crypto = struct
     assert (sha512 (Bytes "0123456789ABCDEF") =
             Bytes "650161856da7d9f818e6047cf6b2092bc7aa3767d3495cfbefe2b710ed684a43ba933ea8286ef67d975e64e0482e5ebe0701788989396545b6badb3b0a136f19")
 
+  let keccak _ = assert false (* XXX *)
+  let sha3 _ = assert false
+
   let hash_key (Key k) =
     let open Tezos_crypto.Signature in
     match Public_key.of_b58check_opt k with
@@ -629,4 +665,24 @@ module Crypto = struct
       test_hash_key ();
       test_check_signature ()
   end
+end
+
+type 'a ticket
+
+module Ticket = struct
+  type 'a t = 'a ticket
+  let create _ = assert false
+  let read _ = assert false
+  let split _ = assert false
+  let join _ = assert false
+end
+
+type 'ms sapling_state
+type 'ms sapling_transaction
+
+module Sapling = struct
+  type 'ms state = 'ms sapling_state
+  type 'ms transaction = 'ms sapling_transaction
+  let empty_state _ = assert false
+  let verify_update _ = assert false
 end

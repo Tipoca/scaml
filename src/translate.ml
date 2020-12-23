@@ -121,6 +121,7 @@ type type_expr_error =
   | Invalid_michelson of M.Type.t * string
   | Exception_out_of_raise
   | GADT of Path.t
+  | Not_memo_size of Types.type_expr
 
 let pp_type_expr_error ppf = function
   | Type_variable ty ->
@@ -135,7 +136,8 @@ let pp_type_expr_error ppf = function
       Format.fprintf ppf "Values of type exn are only allowed to raise."
   | GADT p ->
       Format.fprintf ppf "Data type %s is GADT, not supported in SCaml." (Path.name p)
-
+  | Not_memo_size ty ->
+      Format.fprintf ppf "Type %a is not for memo size." Printtyp.type_expr ty
 
 let encode_by branch xs =
   Binplace.fold
@@ -147,6 +149,24 @@ let unify tyenv ty1 ty2 =
   let tr = Printexc.get_backtrace () in
   try Ctype.unify tyenv ty1 ty2 with e ->
     prerr_endline tr; raise e
+
+let memo_size ty =
+  match repr_desc ty with
+  | Tvariant { row_fields= [l,Rpresent None]; _ } ->
+      begin match l with
+      | "" -> Error (Not_memo_size ty)
+      | _ when String.unsafe_get l 0 <> 'n' -> Error (Not_memo_size ty)
+      | _ ->
+          let ns = String.sub l 1 (String.length l - 1) in
+          begin try
+              let n = int_of_string ns in
+              if string_of_int n <> ns then Error (Not_memo_size ty)
+              else Ok n
+            with
+            | _ -> Error (Not_memo_size ty)
+          end
+      end
+  | _ -> Error (Not_memo_size ty)
 
 let rec type_expr tyenv ty =
   let rec fn tyenv ty =
@@ -182,37 +202,54 @@ let rec type_expr tyenv ty =
               fn tyenv ty >>= fun ty ->
               f (ty::res) tys
         in
-        f [] tys >>= fun tys ->
-        begin match Path.is_scaml p, tys with
-          | Some "sum", [t1; t2] ->
-              Ok (type_annotate (fun _ -> Some "sum") & tyOr (None, t1, None, t2))
-          | Some "int", [] -> Ok (tyInt)
-          | Some "nat", [] -> Ok (tyNat)
-          | Some "tz",  [] -> Ok (tyMutez)
-          | Some "set"         , [ty]       -> Ok (tySet ty)
-          | Some "map"         , [ty1; ty2] -> Ok (tyMap (ty1, ty2))
-          | Some "big_map"     , [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
-          | Some "operation"   , []         -> Ok (tyOperation)
-          | Some "contract"    , [ty]       -> Ok (tyContract ty)
-          | Some "timestamp"   , []         -> Ok (tyTimestamp)
-          | Some "address"     , []         -> Ok (tyAddress)
-          | Some "key"         , []         -> Ok (tyKey)
-          | Some "signature"   , []         -> Ok (tySignature)
-          | Some "key_hash"    , []         -> Ok (tyKeyHash)
-          | Some "bytes"       , []         -> Ok (tyBytes)
-          | Some "chain_id"    , []         -> Ok (tyChainID)
-          | Some _, _ -> Error (Unsupported_data_type p)
-          | None, _ ->
-              match Env.find_type_descrs p tyenv with
-              | [], [] when p = Predef.path_exn -> Error Exception_out_of_raise
-              | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
-              | [], labels -> record_type tyenv ty p labels
-              | constrs, [] -> variant_type tyenv ty p constrs >>| fun (_, _, ty) -> ty
-              | _ -> assert false (* impossible *)
-              | exception e ->
-                  Printexc.print_backtrace Stdlib.stderr;
-                  prerr_endline (Printexc.to_string e);
-                  Error (Unsupported_data_type p) (* abstract XXX *)
+        let memo_size tys =
+          match tys with
+          | [ty] -> memo_size ty
+          | _ -> assert false
+        in
+        begin match Path.is_scaml p with
+          | Some "sapling_state" ->
+              memo_size tys >>= fun ms ->
+              Ok (tySapling_state ms)
+          | Some "sapling_transaction" ->
+              memo_size tys >>= fun ms ->
+              Ok (tySapling_transaction ms)
+          | res ->
+              f [] tys >>= fun tys ->
+              match res, tys with
+              | Some "sum", [t1; t2] ->
+                  Ok (type_annotate (fun _ -> Some "sum") & tyOr (None, t1, None, t2))
+              | Some "int", [] -> Ok (tyInt)
+              | Some "nat", [] -> Ok (tyNat)
+              | Some "tz",  [] -> Ok (tyMutez)
+              | Some "set"         , [ty]       -> Ok (tySet ty)
+              | Some "map"         , [ty1; ty2] -> Ok (tyMap (ty1, ty2))
+              | Some "big_map"     , [ty1; ty2] -> Ok (tyBigMap (ty1, ty2))
+              | Some "operation"   , []         -> Ok (tyOperation)
+              | Some "contract"    , [ty]       -> Ok (tyContract ty)
+              | Some "timestamp"   , []         -> Ok (tyTimestamp)
+              | Some "address"     , []         -> Ok (tyAddress)
+              | Some "key"         , []         -> Ok (tyKey)
+              | Some "signature"   , []         -> Ok (tySignature)
+              | Some "key_hash"    , []         -> Ok (tyKeyHash)
+              | Some "bytes"       , []         -> Ok (tyBytes)
+              | Some "chain_id"    , []         -> Ok (tyChainID)
+              | Some "bls12_381_g1", []         -> Ok (tyBLS12_381_G1)
+              | Some "bls12_381_g2", []         -> Ok (tyBLS12_381_G2)
+              | Some "bls12_381_fr", []         -> Ok (tyBLS12_381_Fr)
+              | Some "ticket"      , [ty]       -> Ok (tyTicket ty)
+              | Some _, _ -> Error (Unsupported_data_type p)
+              | None, _ ->
+                  match Env.find_type_descrs p tyenv with
+                  | [], [] when p = Predef.path_exn -> Error Exception_out_of_raise
+                  | [], [] -> Error (Unsupported_data_type p) (* abstract XXX *)
+                  | [], labels -> record_type tyenv ty p labels
+                  | constrs, [] -> variant_type tyenv ty p constrs >>| fun (_, _, ty) -> ty
+                  | _ -> assert false (* impossible *)
+                  | exception e ->
+                      Printexc.print_backtrace Stdlib.stderr;
+                      prerr_endline (Printexc.to_string e);
+                      Error (Unsupported_data_type p) (* abstract XXX *)
         end
     | Tpoly (ty, []) -> fn tyenv ty
     | _ -> Error (Unsupported_type ty)
@@ -282,6 +319,14 @@ let parse_bytes s =
   with
   | _ -> Error "Bytes must take hex representation of bytes"
 
+let parse_huge_nat s =
+  try
+    let z = Z.of_string s in
+    if Z.lt z Z.zero then raise Exit
+    else Ok z
+  with
+  | _ -> Error "Illegal string for a natural number"
+
 let constructions_by_string =
   [ ("signature" , ("signature", "Signature", tySignature,
                     fun x -> Ok (C.String x)));
@@ -296,7 +341,16 @@ let constructions_by_string =
     ("bytes"     , ("bytes", "Bytes", tyBytes,
                     parse_bytes));
     ("chain_id"  , ("chain_id", "Chain_id", tyChainID,
-                    fun x -> Ok (C.String x)))
+                    fun x -> Ok (C.String x)));
+    ("bls12_381_g1"  , ("bls12_381_g1", "G1", tyBLS12_381_G1,
+                        (* XXX printed in decimal *)
+                        fun x -> parse_huge_nat x >>| fun z -> C.Int z));
+    ("bls12_381_g2"  , ("bls12_381_g2", "G2", tyBLS12_381_G2,
+                        (* XXX printed in decimal *)
+                        fun x -> parse_huge_nat x >>| fun z -> C.Int z));
+    ("bls12_381_fr"  , ("bls12_381_fr", "Fr", tyBLS12_381_Fr,
+                        (* XXX printed in decimal *)
+                        fun x -> parse_huge_nat x >>| fun z -> C.Int z));
   ]
 
 let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
@@ -1547,6 +1601,21 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
             in
             (* fty = fty' *)
             mk & primitive ~loc:f.exp_loc fty "Obj.unpack" & get_args (List.tl args)
+
+        | Some "Sapling.empty_state" ->
+            begin match args with
+              | [] -> errorf_primitive ~loc "Sapling.empty_state needs an argument"
+              | [Nolabel, Some a] ->
+                  begin match memo_size a.exp_type with
+                  | Error e ->
+                      errorf_type_expr ~loc "This expression has type %a.  %a"
+                         Printtyp.type_expr a.exp_type pp_type_expr_error e
+                  | Ok ms ->
+                      let mty = tySapling_state ms in
+                      mk & primitive ~loc:f.exp_loc mty "Sapling.empty_state" []
+                  end
+              | _ -> assert false
+            end
 
         | Some "raise" -> translate_raise ~loc lenv typ args
         | Some n when  String.is_prefix "Contract.create" n ->

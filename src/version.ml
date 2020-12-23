@@ -12,6 +12,5 @@
 (*                                                                        *)
 (**************************************************************************)
 
-let scaml = "1.2.0"
-let protocol = "006" (* XXX Use Protocol.default *)
-
+let scaml = "1.3.0"
+let protocol = "008" (* XXX Use Protocol.default *)

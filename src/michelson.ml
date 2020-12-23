@@ -102,6 +102,12 @@ module Type = struct
     | TyLambda of t * t
 
     | TyNever (* from 008 *)
+    | TyBLS12_381_Fr (* from 008 *)
+    | TyBLS12_381_G1 (* from 008 *)
+    | TyBLS12_381_G2 (* from 008 *)
+    | TySapling_state of int (* from 008 *)
+    | TySapling_transaction of int (* from 008 *)
+    | TyTicket of t (* from 008 *)
 
   let type_annotate f t = { t with tyannot= f t.tyannot }
 
@@ -131,6 +137,12 @@ module Type = struct
   let tyContract t          = mk & TyContract t
   let tyLambda (t1, t2)     = mk & TyLambda (t1, t2)
   let tyNever               = mk & TyNever
+  let tyBLS12_381_Fr        = mk & TyBLS12_381_Fr
+  let tyBLS12_381_G1        = mk & TyBLS12_381_G1
+  let tyBLS12_381_G2        = mk & TyBLS12_381_G2
+  let tySapling_state n     = mk & TySapling_state n
+  let tySapling_transaction n = mk & TySapling_transaction n
+  let tyTicket t            =  mk & TyTicket t
 
   let rec args t = match t.desc with
     | TyLambda (t1, t2) ->
@@ -182,6 +194,12 @@ module Type = struct
     | TyContract t -> prim "contract" [to_micheline t]
     | TyLambda (t1, t2) -> prim "lambda" [to_micheline t1; to_micheline t2]
     | TyNever -> !"never"
+    | TyBLS12_381_Fr -> !"bls12_381_fr"
+    | TyBLS12_381_G1 -> !"bls12_381_g1"
+    | TyBLS12_381_G2 -> !"bls12_381_g2"
+    | TySapling_state n -> prim "sapling_state" [Int ({comment=None}, Z.of_int n)]
+    | TySapling_transaction n -> prim "sapling_transaction" [Int ({comment=None}, Z.of_int n)]
+    | TyTicket t -> prim "ticket" [to_micheline t]
 
   and pp fmt t = Mline.pp fmt & to_micheline t
 
@@ -226,8 +244,18 @@ module Type = struct
       | TyKeyHash | TyTimestamp | TyAddress |TyChainID | TyKey | TySignature
       | TyOperation -> Ok ()
       | TyNever -> Ok ()
-    in
-    f ty
+      | TyBLS12_381_Fr
+      | TyBLS12_381_G1
+      | TyBLS12_381_G2 -> Ok ()
+      | TySapling_state _
+      | TySapling_transaction _ -> Ok ()
+      | TyTicket t ->
+          if not (is_comparable t) then
+            Error (ty, "ticket information type must be comparable")
+          else
+            Ok ()
+      in
+      f ty
 
   and is_comparable ty =
     (* See Script_ir_translator.parse_comparable_ty *)
@@ -252,6 +280,12 @@ module Type = struct
       | TyOption _ | TyLambda _ | TyList _ | TyMap _ | TyOperation
       | TyOr _ | TySet _ | TyUnit -> false
       | TyNever -> false
+      | TyBLS12_381_Fr
+      | TyBLS12_381_G1
+      | TyBLS12_381_G2 -> false
+      | TySapling_state _
+      | TySapling_transaction _ -> false
+      | TyTicket _ -> false
     in
     f ty
 
@@ -270,6 +304,12 @@ module Type = struct
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
       | TyNever -> false
+      | TyBLS12_381_Fr
+      | TyBLS12_381_G1
+      | TyBLS12_381_G2 -> true
+      | TySapling_state _ -> false
+      | TySapling_transaction _ -> true
+      | TyTicket _ -> false
     in
     f ty
 
@@ -289,7 +329,13 @@ module Type = struct
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
-      | TyNever -> false
+      | TyNever -> true
+      | TyBLS12_381_Fr
+      | TyBLS12_381_G1
+      | TyBLS12_381_G2
+      | TySapling_state _
+      | TySapling_transaction _
+      | TyTicket _ -> true
     in
     f ty
 
@@ -309,7 +355,13 @@ module Type = struct
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
       | TyKey | TySignature -> true
-      | TyNever -> false
+      | TyNever -> true
+      | TyBLS12_381_Fr
+      | TyBLS12_381_G1
+      | TyBLS12_381_G2
+      | TySapling_state _
+      | TySapling_transaction _
+      | TyTicket _ -> true
     in
     f ty
 end
@@ -461,11 +513,25 @@ and Opcode : sig
     | SENDER
     | ADDRESS
     | CHAIN_ID
+    | INT
 
     (* 008 *)
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR
+    | PAIR_CHECK
+    | NEVER
+    | KECCAK
+    | SHA3
+    | TICKET
+    | READ_TICKET
+    | SPLIT_TICKET
+    | JOIN_TICKETS
+    | SAPLING_EMPTY_STATE of int
+    | SAPLING_VERIFY_UPDATE
+    | VOTING_POWER
+    | TOTAL_VOTING_POWER
+    | GET_AND_UPDATE
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t list
@@ -546,11 +612,29 @@ end = struct
     | SENDER
     | ADDRESS
     | CHAIN_ID
+    | INT
 
     (* 008 *)
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR
+    | PAIR_CHECK
+    | NEVER
+    | KECCAK
+    | SHA3
+    | TICKET
+    | READ_TICKET
+    | SPLIT_TICKET
+    | JOIN_TICKETS
+    | SAPLING_EMPTY_STATE of int
+    | SAPLING_VERIFY_UPDATE
+    | VOTING_POWER
+    | TOTAL_VOTING_POWER
+    | GET_AND_UPDATE
+    (* XXX | GET of int *)
+    (* PAIR of int *)
+    (*UNPAIR n *)
+    (* UPDATE n *)
 
   let to_micheline ?(block_comment=false) t =
     let open Mline in
@@ -664,6 +748,20 @@ end = struct
       | LEVEL           -> !"LEVEL"
       | SELF_ADDRESS    -> !"SELF_ADDRESS"
       | UNPAIR          -> !"UNPAIR"
+      | INT             -> !"INT"
+      | PAIR_CHECK      -> !"PAIR_CHECK"
+      | NEVER           -> !"NEVER"
+      | KECCAK          -> !"KECCAK"
+      | SHA3            -> !"SHA3"
+      | TICKET          -> !"TICKET"
+      | READ_TICKET     -> !"READ_TICKET"
+      | SPLIT_TICKET    -> !"SPLIT_TICKET"
+      | JOIN_TICKETS    -> !"JOIN_TICKETS"
+      | SAPLING_EMPTY_STATE n -> prim "SAPLING_EMPTY_STATE" [Int ({comment=None}, Z.of_int n)]
+      | SAPLING_VERIFY_UPDATE -> !"SAPLING_VERIFY_UPDATE"
+      | VOTING_POWER    -> !"VOTING_POWER"
+      | TOTAL_VOTING_POWER -> !"TOTAL_VOTING_POWER"
+      | GET_AND_UPDATE  -> !"GET_AND_UPDATE"
     in
     f' t
 
@@ -711,58 +809,23 @@ end = struct
     | LOOP_LEFT ts -> LOOP_LEFT (clean_failwith' ts), false
     | CREATE_CONTRACT m -> CREATE_CONTRACT m, false
     | PUSH (ty, c) -> PUSH (ty, constant c), false
-    | (DUP
-      | DIG _ | DUG _ | DROP _
-      | SWAP
-      | PAIR
-      | ASSERT
-      | CAR | CDR
-      | LEFT _ | RIGHT _
-      | NIL _
-      | CONS
-      | NONE _
-      | SOME
-      | COMPARE
-      | EQ | LT | LE | GT | GE | NEQ
+    | (DUP | DIG _ | DUG _ | DROP _ | SWAP | PAIR | ASSERT | CAR | CDR
+      | LEFT _ | RIGHT _ | NIL _ | CONS | NONE _ | SOME
+      | COMPARE | EQ | LT | LE | GT | GE | NEQ
       | ADD | SUB | MUL | EDIV | ABS | ISNAT | NEG | LSL | LSR
       | AND | OR | XOR | NOT
-      | EXEC
-      | UNIT
+      | EXEC | UNIT
       | EMPTY_SET _ | EMPTY_MAP _ | EMPTY_BIG_MAP _
-      | SIZE
-      | MEM
-      | UPDATE
-      | CONCAT
-      | SELF
-      | GET
-      | RENAME _
-      | PACK | UNPACK _
-      | SLICE
-      | CAST
-
-      | CONTRACT _
-      | CONTRACT' _
-      | TRANSFER_TOKENS
-      | SET_DELEGATE
-      | CREATE_ACCOUNT
-      | IMPLICIT_ACCOUNT
-      | NOW
-      | AMOUNT
-      | BALANCE
-      | CHECK_SIGNATURE
-      | BLAKE2B
-      | SHA256
-      | SHA512
-      | HASH_KEY
-      | STEPS_TO_QUOTA
-      | SOURCE
-      | SENDER
-      | ADDRESS
-      | APPLY
-      | CHAIN_ID
-      | UNPAIR
-      | SELF_ADDRESS
-      | LEVEL
+      | SIZE | MEM | UPDATE | CONCAT | SELF | GET | RENAME _
+      | PACK | UNPACK _ | SLICE | CAST | CONTRACT _ | CONTRACT' _ | TRANSFER_TOKENS
+      | SET_DELEGATE | CREATE_ACCOUNT | IMPLICIT_ACCOUNT | NOW | AMOUNT | BALANCE
+      | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
+      | SOURCE | SENDER | ADDRESS | APPLY | CHAIN_ID  | UNPAIR | SELF_ADDRESS
+      | LEVEL | INT
+      | PAIR_CHECK | NEVER | KECCAK | SHA3
+      | TICKET | READ_TICKET | SPLIT_TICKET | JOIN_TICKETS
+      | SAPLING_EMPTY_STATE _ | SAPLING_VERIFY_UPDATE
+      | VOTING_POWER | TOTAL_VOTING_POWER | GET_AND_UPDATE
       as t) -> t, false
 
   and constant =
@@ -816,7 +879,11 @@ end = struct
             | CREATE_CONTRACT _ | IMPLICIT_ACCOUNT | NOW | AMOUNT | BALANCE
             | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
             | SOURCE | SENDER | ADDRESS | CHAIN_ID
-            | UNPAIR | SELF_ADDRESS | LEVEL -> t
+            | UNPAIR | SELF_ADDRESS | LEVEL | INT | PAIR_CHECK | NEVER | KECCAK | SHA3
+            | TICKET | READ_TICKET | SPLIT_TICKET | JOIN_TICKETS
+            | SAPLING_EMPTY_STATE _ | SAPLING_VERIFY_UPDATE
+            | VOTING_POWER | TOTAL_VOTING_POWER | GET_AND_UPDATE
+              -> t
           in
           t' :: loop 0 [] ts
     and constant =

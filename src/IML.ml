@@ -88,6 +88,19 @@ module P = struct
 
   let loc = Location.none
 
+  let memo_size n =
+    assert (n > 0);
+    let rf =
+      { prf_desc= Rtag ({txt= Printf.sprintf "n%d" n; loc=Location.none}, true, []);
+        prf_loc= Location.none;
+        prf_attributes= [] }
+    in
+    { ptyp_desc= Ptyp_variant ([rf], Closed, None);
+      ptyp_loc= Location.none;
+      ptyp_loc_stack= [];
+      ptyp_attributes= []
+    }
+
   let rec type_ (ty : M.Type.t) =
     let open M.Type in
     match ty.desc with
@@ -116,6 +129,17 @@ module P = struct
     | TyContract t -> [%type: [%t type_ t] contract]
     | TyLambda (t1, t2) -> [%type: [%t type_ t1] -> [%t type_ t2]]
     | TyNever ->      [%type: never]
+    | TyBLS12_381_Fr -> [%type: bls12_381_fr]
+    | TyBLS12_381_G1 -> [%type: bls12_381_g1]
+    | TyBLS12_381_G2 -> [%type: bls12_381_g2]
+(*
+    | TySapling_state n -> [%type: sapling_state ]
+    | TySapling_transaction n -> [%type: sapling_transaction ]
+*)
+    | TySapling_state n -> [%type: [%t memo_size n] sapling_state]
+    | TySapling_transaction n -> [%type: [%t memo_size n] sapling_transction]
+    | TyTicket t -> [%type: [%t type_ t] ticket]
+
 
   let _type = type_
   (* well we do not use it for now, the types are too lousy to read *)

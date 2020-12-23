@@ -76,6 +76,16 @@ let infer def t =
             end
         | TyLambda _ -> Some "f"
         | TyNever -> Some "never"
+        | TyBLS12_381_G1 -> Some "g1_"
+        | TyBLS12_381_G2 -> Some "g2_"
+        | TyBLS12_381_Fr -> Some "fr"
+        | TyTicket t ->
+            begin match infer t with
+              | Some t -> Some (t ^ "_tick")
+              | _ -> Some "tick"
+            end
+        | TySapling_state _ -> Some "sapst"
+        | TySapling_transaction _ -> Some "saptx"
   in
   match infer t with
   | Some s -> s

@@ -62,6 +62,12 @@ module Type : sig
     | TyContract of t
     | TyLambda of t * t
     | TyNever (* from 008 *)
+    | TyBLS12_381_Fr (* from 008 *)
+    | TyBLS12_381_G1 (* from 008 *)
+    | TyBLS12_381_G2 (* from 008 *)
+    | TySapling_state of int (* from 008 *)
+    | TySapling_transaction of int (* from 008 *)
+    | TyTicket of t (* from 008 *)
 
   val mk : desc -> t
 
@@ -89,6 +95,12 @@ module Type : sig
   val tyContract : t -> t
   val tyLambda : (t * t) -> t
   val tyNever : t (* from 008 *)
+  val tyBLS12_381_Fr : t (* from 008 *)
+  val tyBLS12_381_G1 : t (* from 008 *)
+  val tyBLS12_381_G2 : t (* from 008 *)
+  val tySapling_state : int -> t (* from 008 *)
+  val tySapling_transaction : int -> t (* from 008 *)
+  val tyTicket : t -> t
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
@@ -206,11 +218,25 @@ and Opcode : sig
     | SENDER
     | ADDRESS
     | CHAIN_ID
+    | INT
 
     (* from 008 *)
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR
+    | PAIR_CHECK
+    | NEVER
+    | KECCAK
+    | SHA3
+    | TICKET
+    | READ_TICKET
+    | SPLIT_TICKET
+    | JOIN_TICKETS
+    | SAPLING_EMPTY_STATE of int
+    | SAPLING_VERIFY_UPDATE
+    | VOTING_POWER
+    | TOTAL_VOTING_POWER
+    | GET_AND_UPDATE
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t list

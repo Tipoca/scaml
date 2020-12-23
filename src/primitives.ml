@@ -45,6 +45,8 @@ let comparison ~loc os ty pre =
       pre @ os
   | _ -> assert false
 
+let since_008 = protocol (fun x -> x >= (8,0))
+
 let primitives =
   [ "fst"     , (true,  1, simple [CAR])
   ; "snd"     , (true,  1, simple [CDR])
@@ -74,6 +76,7 @@ let primitives =
   ; "not"     , (true,  1, simple [NOT])
   ; "abs"     , (true,  1, simple [ABS])
   ; "isnat"   , (true,  1, simple [ISNAT])
+  ; "int_of_nat" , (true, 1, simple [INT])
   ; "~-"      , (true,  1, simple [NEG])
   ; "~-^"     , (true,  1, simple [NEG])
 
@@ -252,6 +255,7 @@ let primitives =
   ; "Map.get", (true,  2, simple [ GET ] )
   ; "Map.mem", (true,  2, simple [MEM])
   ; "Map.update", (true,  3, simple [UPDATE])
+  ; "BigMap.get_and_update", (true, 3, since_008 @@ simple [GET_AND_UPDATE])
 
   ; "Map.map", (false, 2,
 (* lambda : map : S                 SWAP ;
@@ -368,6 +372,7 @@ let primitives =
   ; "BigMap.get", (true,  2, simple [ GET ] )
   ; "BigMap.mem", (true,  2, simple [MEM])
   ; "BigMap.update", (true,  3, simple [UPDATE])
+  ; "BigMap.get_and_update", (true, 3, since_008 @@ simple [GET_AND_UPDATE])
 
   ; "Obj.pack", (true,  1, fun ~loc ty pre ->
         match args ty 1 with
@@ -423,13 +428,16 @@ let primitives =
   ; "Global.get_steps_to_quota" , (true,  1, simple [ DROP 1; STEPS_TO_QUOTA ])
   ; "Global.get_chain_id"       , (true,  1, simple [ DROP 1; CHAIN_ID ])
 
-  ; "Global.get_level"          , (true,  1, protocol (fun x -> x >= (8,0))
-                                             @@ simple [ DROP 1; LEVEL ])
+  ; "Global.get_level"          , (true,  1, since_008 @@ simple [ DROP 1; LEVEL ])
+  ; "Global.get_voting_power"   , (true,  1, since_008 @@ simple [ DROP 1; VOTING_POWER ])
+  ; "Global.get_total_voting_power"   , (true,  1, since_008 @@ simple [ DROP 1; TOTAL_VOTING_POWER ])
 
   ; "Crypto.check_signature", (true,  3, simple [ CHECK_SIGNATURE ])
   ; "Crypto.blake2b", (true,  1, simple [ BLAKE2B ])
   ; "Crypto.sha256", (true,  1, simple [ SHA256 ])
   ; "Crypto.sha512", (true,  1, simple [ SHA512 ])
+  ; "Crypto.sha3", (true,  1, simple [ SHA3 ])
+  ; "Crypto.keccak", (true,  1, simple [ KECCAK ])
   ; "Crypto.hash_key", (true,  1, simple [ HASH_KEY ])
 
   ; "Error.failwith", (false, 1, simple [ FAILWITH ]) (* deprecated *)
@@ -462,10 +470,34 @@ let primitives =
 
   ; "Sum.get_left", (false, 1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
   ; "Sum.get_right", (false, 1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
+
+  ; "BLS12_381.add_g1", (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.add_g2", (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.add_fr", (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.int_of_fr", (true, 1, since_008 @@ simple [INT])
+  ; "BLS12_381.mul_g1", (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.mul_g2", (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.mul_fr", (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.mul_nat", (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.mul_int", (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.neg_g1", (true, 1, since_008 @@ simple [NEG])
+  ; "BLS12_381.neg_g2", (true, 1, since_008 @@ simple [NEG])
+  ; "BLS12_381.neg_fr", (true, 1, since_008 @@ simple [NEG])
+  ; "BLS12_381.pair_check", (true, 1, since_008 @@ simple [PAIR_CHECK])
+  ; "Ticket.create", (true, 2, since_008 @@ simple [TICKET])
+  ; "Ticket.read", (true, 1, since_008 @@ simple [READ_TICKET])
+  ; "Ticket.split", (true, 2, since_008 @@ simple [SPLIT_TICKET])
+  ; "Ticket.join", (true, 2, since_008 @@ simple [JOIN_TICKETS])
+  ; "Sapling.empty_state", (true, 0, since_008 @@ fun ~loc:_ ty xs ->
+        assert (xs = []);
+        match ty.desc with
+        | TySapling_state n -> [SAPLING_EMPTY_STATE n]
+        | _ -> assert false)
+  ; "Sapling.verify_update", (true, 2, since_008 @@ simple [SAPLING_VERIFY_UPDATE])
   ]
 
-let contract' entry ~loc:_ ty xs =
-  match ty.desc with
-  | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->
-      xs @ [ CONTRACT' (ty, entry) ]
-  | _ -> assert false
+  let contract' entry ~loc:_ ty xs =
+    match ty.desc with
+    | TyLambda (_, { desc= TyLambda (_, { desc= TyOption (None, { desc= TyContract ty })})})  ->
+        xs @ [ CONTRACT' (ty, entry) ]
+    | _ -> assert false
