@@ -302,7 +302,7 @@ and variant_type tyenv ty p constrs =
 
 (* Literals *)
 
-let parse_timestamp s = match Ptime.of_rfc3339 s with
+let parse_timestamp ~loc:_ (* XXX *) s = match Ptime.of_rfc3339 s with
   | Ok (t, _, _) ->
       let t' = Ptime.truncate ~frac_s:0 t in
       if not (Ptime.equal t t') then Error "Subsecond is not allowed in timestamps"
@@ -313,13 +313,21 @@ let parse_timestamp s = match Ptime.of_rfc3339 s with
   | Error (`RFC3339 (_, e)) ->
       Error (Format.sprintf "%a" Ptime.pp_rfc3339_error e)
 
-let parse_bytes s =
+let parse_bytes ~loc s =
+  let s, with0x =
+    match String.is_prefix' "0x" s with
+    | None -> s, false
+    | Some s -> s, true
+  in
   try
-    ignore & Hex.to_string (`Hex s); Ok (C.Bytes s)
+    ignore & Hex.to_string (`Hex s);
+    let res = Ok (C.Bytes s) in
+    if not with0x then warnf ~loc 200 "Binary sequence should be prefixed by '0x'";
+    res
   with
   | _ -> Error "Bytes must take hex representation of bytes"
 
-let parse_huge_nat s =
+let _parse_huge_nat s =
   try
     let z = Z.of_string s in
     if Z.lt z Z.zero then raise Exit
@@ -329,28 +337,27 @@ let parse_huge_nat s =
 
 let constructions_by_string =
   [ ("signature" , ("signature", "Signature", tySignature,
-                    fun x -> Ok (C.String x)));
+                    fun ~loc:_ x -> Ok (C.String x)));
     ("key_hash"  , ("key_hash", "Key_hash", tyKeyHash,
-                    fun x -> Ok (C.String x)));
+                    fun ~loc:_ x -> Ok (C.String x)));
     ("key"       , ("key", "Key", tyKey,
-                    fun x -> Ok (C.String x)));
+                    fun ~loc:_ x -> Ok (C.String x)));
     ("address"   , ("address", "Address", tyAddress,
-                    fun x -> Ok (C.String x)));
+                    fun ~loc:_ x -> Ok (C.String x)));
     ("timestamp" , ("timestamp", "Timestamp", tyTimestamp,
                     parse_timestamp));
     ("bytes"     , ("bytes", "Bytes", tyBytes,
                     parse_bytes));
     ("chain_id"  , ("chain_id", "Chain_id", tyChainID,
-                    fun x -> Ok (C.String x)));
+                    fun ~loc:_ x -> Ok (C.String x)));
     ("bls12_381_g1"  , ("bls12_381_g1", "G1", tyBLS12_381_G1,
-                        (* XXX printed in decimal *)
-                        fun x -> parse_huge_nat x >>| fun z -> C.Int z));
+                        parse_bytes));
     ("bls12_381_g2"  , ("bls12_381_g2", "G2", tyBLS12_381_G2,
                         (* XXX printed in decimal *)
-                        fun x -> parse_huge_nat x >>| fun z -> C.Int z));
+                        parse_bytes));
     ("bls12_381_fr"  , ("bls12_381_fr", "Fr", tyBLS12_381_Fr,
                         (* XXX printed in decimal *)
-                        fun x -> parse_huge_nat x >>| fun z -> C.Int z));
+                        parse_bytes))
   ]
 
 let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
@@ -465,14 +472,14 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
             errorf_constant ~loc "Address can only take a string constant"
 
         | "Timestamp", TyTimestamp, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
-            begin match parse_timestamp s with
+            begin match parse_timestamp ~loc s with
               | Error _e -> errorf_constant ~loc "strange arguments for Timestamp"
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
         | "Timestamp", TyTimestamp, [_] -> unsupported ~loc "Timestamp can only take a string constant"
 
-        | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
-            begin match parse_bytes s with
+        | "Bytes", TyBytes, [{pat_desc= Tpat_constant (Const_string (s, _)); pat_loc}] ->
+            begin match parse_bytes ~loc:pat_loc s with
               | Error _e -> errorf_constant ~loc "strange arguments for Bytes"
               | Ok t -> mk & P.Constr (Cnstr.Constant t, [])
             end
@@ -1382,9 +1389,9 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                     let e = expression lenv arg in
                     match e.desc with
                     | Const (String s) ->
-                        begin match parse s with
+                        begin match parse ~loc:e.loc s with
                           | Ok v -> { e with typ; desc= Const v }
-                          | Error s -> errorf_constant ~loc "Parse error of %s string: %s" tyname s
+                          | Error s -> errorf_constant ~loc:e.loc "Parse error of %s string: %s" tyname s
                         end
                     | _ -> errorf_constant ~loc "%s only takes a string literal" cname
       end
