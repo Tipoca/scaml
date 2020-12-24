@@ -1069,7 +1069,7 @@ module Pmatch = struct
                 (freevars action)
                 (if vars = [] then [] else List.tl (List.rev vars)) (* the last one cannot be free inside the body *)
             in
-            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ~legacy:false ty) fvs
+            IdTys.filter (fun (_id,ty) -> not & Michelson.Type.is_packable ty) fvs
           in
           let _must_expand = not & IdTys.is_empty unpackables in
           (* It's inefficient for the storage, but we do not want to get troubled
@@ -1469,7 +1469,7 @@ and expression (lenv:lenv) { exp_desc; exp_loc=loc; exp_type= mltyp; exp_env= ty
             (Ident.unique_name id)
             (String.concat ", " (List.map (fun id -> Ident.unique_name id) lenv.local_variables));
         if not (List.mem id lenv.local_variables)
-           && not (Michelson.Type.is_packable ~legacy:false typ)
+           && not (Michelson.Type.is_packable typ)
            && lenv.fun_level > 0 then
           errorf_freevar ~loc:lenv.fun_loc "Function body cannot have a free variable occurrence `%s` with unpackable type."
             (Ident.name id);

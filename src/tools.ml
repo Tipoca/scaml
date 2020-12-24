@@ -87,8 +87,11 @@ module Location = struct
   let ghost t = { t with loc_ghost= true }
 end
 
+let scaml_error_name n = Printf.sprintf "[ESCaml%03d]" n
+
 let errorf n ~loc fmt =
-  Location.raise_errorf ~loc ("[ESCaml%03d] " ^^ fmt) n
+  let ename = scaml_error_name n in
+  Location.raise_errorf ~loc ("%s " ^^ fmt) ename
 
 let errorf_var_not_found fmt = errorf 010 fmt
 let errorf_stdlib        fmt = errorf 020 fmt
@@ -145,20 +148,21 @@ let wrap_ocaml_exn exn n ~loc fmt =
   let buf = Buffer.create 64 in
   let ppf = formatter_of_buffer buf in
   Misc.Color.set_color_tag_handling ppf;
+  let ename = scaml_error_name n in
   kfprintf
     (fun _ ->
       pp_print_flush ppf ();
       let msg = Buffer.contents buf in
       raise (Wrapped_OCaml_error (loc, msg, exn))
     )
-    ppf ("[ESCaml%03d] " ^^ fmt) n
+    ppf ("%s " ^^ fmt) ename
 
 
 let warnf n ~loc fmt =
-  let cls = Printf.sprintf "[ESCaml%03d]" n in
+  let ename = scaml_error_name n in
   let f s =
     let open Location in
-    let report = { kind= Report_warning cls;
+    let report = { kind= Report_warning ename;
                    main= { loc; txt= (fun ppf -> Format.pp_print_string ppf s) };
                    sub= [] }
     in

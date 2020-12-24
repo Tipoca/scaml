@@ -13,4 +13,4 @@
 (**************************************************************************)
 
 let scaml = "1.3.0"
-let protocol = "008" (* XXX Use Protocol.default *)
+let protocol = Protocol.default

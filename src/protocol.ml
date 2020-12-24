@@ -17,7 +17,7 @@ open Ocaml_conv.Default
 type t = int * int
 [@@deriving conv{ocaml}]
 
-let to_string (maj,min) = Printf.sprintf "%d.%d" maj min
+let to_string (maj,min) = Printf.sprintf "%03d.%d" maj min
 
 let default = (8, 0)  (* Edo *)
 

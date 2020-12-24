@@ -12,6 +12,8 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** For the given type expression of a variant type,
+    returns the names and instantiated types of the constructors *)
 val variant_type
   : Env.t
   -> Types.type_expr

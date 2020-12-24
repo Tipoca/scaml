@@ -61,13 +61,15 @@ module Type : sig
     | TyOperation
     | TyContract of t
     | TyLambda of t * t
-    | TyNever (* from 008 *)
-    | TyBLS12_381_Fr (* from 008 *)
-    | TyBLS12_381_G1 (* from 008 *)
-    | TyBLS12_381_G2 (* from 008 *)
-    | TySapling_state of int (* from 008 *)
-    | TySapling_transaction of int (* from 008 *)
-    | TyTicket of t (* from 008 *)
+
+    (* from 008 *)
+    | TyNever
+    | TyBLS12_381_Fr
+    | TyBLS12_381_G1
+    | TyBLS12_381_G2
+    | TySapling_state of int
+    | TySapling_transaction of int
+    | TyTicket of t
 
   val mk : desc -> t
 
@@ -94,22 +96,28 @@ module Type : sig
   val tyOperation : t
   val tyContract : t -> t
   val tyLambda : (t * t) -> t
-  val tyNever : t (* from 008 *)
-  val tyBLS12_381_Fr : t (* from 008 *)
-  val tyBLS12_381_G1 : t (* from 008 *)
-  val tyBLS12_381_G2 : t (* from 008 *)
-  val tySapling_state : int -> t (* from 008 *)
-  val tySapling_transaction : int -> t (* from 008 *)
+
+  (* from 008 *)
+  val tyNever : t
+  val tyBLS12_381_Fr : t
+  val tyBLS12_381_G1 : t
+  val tyBLS12_381_G2 : t
+  val tySapling_state : int -> t
+  val tySapling_transaction : int -> t
   val tyTicket : t -> t
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : t -> Mline.t
 
   val validate : t -> (unit, (t * string)) Result.t
+
   val is_comparable : t -> bool
-  val is_packable : legacy: bool -> t -> bool
-  val is_parameterable : t -> bool
+  val is_parameterable : t -> bool (* passable *)
   val is_storable : t -> bool
+  val is_pushable : t -> bool
+  val is_packable : t -> bool
+  val is_big_mappable : t -> bool
+  val is_dupable : t -> bool
 
   val type_annotate : (string option -> string option) -> t -> t
 

@@ -28,7 +28,13 @@ let protocol pred f ~loc ty pre =
   let proto = Conf.get_protocol () in
   if pred proto then f ~loc ty pre
   else
-    errorf_primitive ~loc "This primitive is not supported in the current protocol version %s" (Protocol.to_string proto)
+    errorf_primitive ~loc
+      "This primitive is not supported in the current protocol version %s"
+      (Protocol.to_string proto)
+
+let since v = protocol (fun x -> x >= v)
+
+let since_008 = since (8,0)
 
 let rec args ty = function
   | 0 -> []
@@ -36,6 +42,7 @@ let rec args ty = function
       match ty.desc with
       | TyLambda (ty1, ty2) -> ty1 :: args ty2 (n-1)
       | _ -> assert false
+
 let comparison ~loc os ty pre =
   match args ty 2 with
   | [ty1; _ty2] -> (* ty1 == ty2 *)
@@ -44,8 +51,6 @@ let comparison ~loc os ty pre =
           M.Type.pp ty1;
       pre @ os
   | _ -> assert false
-
-let since_008 = protocol (fun x -> x >= (8,0))
 
 let primitives =
   [ "fst"     , (true,  1, simple [CAR])
@@ -377,7 +382,7 @@ let primitives =
   ; "Obj.pack", (true,  1, fun ~loc ty pre ->
         match args ty 1 with
         | [ aty ] ->
-            if not & M.Type.is_packable ~legacy:true aty then
+            if not & M.Type.is_packable aty then
               errorf_primitive ~loc "Obj.pack cannot take a non packable type %a"
                 M.Type.pp aty;
             pre @ [ PACK ]
@@ -386,7 +391,7 @@ let primitives =
   ; "Obj.unpack", (true,  1, fun ~loc ty xs ->
       match ty.desc with
       | TyLambda (_, { desc= TyOption (None, ty) }) ->
-          if not & M.Type.is_packable ~legacy:false ty then
+          if not & M.Type.is_packable ty then
             errorf_primitive ~loc "Obj.unpack cannot unpack to a non packable type %a"
               M.Type.pp ty;
           xs @ [ UNPACK ty ]
@@ -432,16 +437,16 @@ let primitives =
   ; "Global.get_voting_power"   , (true,  1, since_008 @@ simple [ DROP 1; VOTING_POWER ])
   ; "Global.get_total_voting_power"   , (true,  1, since_008 @@ simple [ DROP 1; TOTAL_VOTING_POWER ])
 
-  ; "Crypto.check_signature", (true,  3, simple [ CHECK_SIGNATURE ])
-  ; "Crypto.blake2b", (true,  1, simple [ BLAKE2B ])
-  ; "Crypto.sha256", (true,  1, simple [ SHA256 ])
-  ; "Crypto.sha512", (true,  1, simple [ SHA512 ])
-  ; "Crypto.sha3", (true,  1, simple [ SHA3 ])
-  ; "Crypto.keccak", (true,  1, simple [ KECCAK ])
-  ; "Crypto.hash_key", (true,  1, simple [ HASH_KEY ])
+  ; "Crypto.check_signature" , (true,  3, simple [ CHECK_SIGNATURE ])
+  ; "Crypto.blake2b"         , (true,  1, simple [ BLAKE2B ])
+  ; "Crypto.sha256"          , (true,  1, simple [ SHA256 ])
+  ; "Crypto.sha512"          , (true,  1, simple [ SHA512 ])
+  ; "Crypto.sha3"            , (true,  1, simple [ SHA3 ])
+  ; "Crypto.keccak"          , (true,  1, simple [ KECCAK ])
+  ; "Crypto.hash_key"        , (true,  1, simple [ HASH_KEY ])
 
-  ; "Error.failwith", (false, 1, simple [ FAILWITH ]) (* deprecated *)
-  ; "failwith", (false, 1, simple [ FAILWITH ])
+  ; "Error.failwith" , (false, 1, simple [ FAILWITH ]) (* deprecated *)
+  ; "failwith"       , (false, 1, simple [ FAILWITH ])
 
   ; "raise", (false, 1, simple [ FAILWITH ])
 
@@ -457,13 +462,13 @@ let primitives =
   ; "ediv_tz_nat", (true,  2, simple [EDIV])
 
   ; "/", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyInt, Int Z.zero); FAILWITH],
-                                    [CAR])])
+                                           [CAR])])
   ; "/^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH],
-                                     [CAR])])
+                                            [CAR])])
   ; "/$", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyMutez, Int Z.zero); FAILWITH],
-                                     [CAR])])
+                                            [CAR])])
   ; "/$^", (false, 2, simple [EDIV; IF_NONE( [PUSH (tyNat, Int Z.zero); FAILWITH],
-                                      [CAR])])
+                                             [CAR])])
 
   ; "Option.value", (true,  2, simple [IF_NONE ([], [DIP (1, [DROP 1])])])
   ; "Option.get", (false, 1, simple [IF_NONE ([PUSH (tyString, String "Option.get"); FAILWITH], [])])
@@ -471,29 +476,31 @@ let primitives =
   ; "Sum.get_left", (false, 1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
   ; "Sum.get_right", (false, 1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
 
-  ; "BLS12_381.G1.(+)", (true, 2, since_008 @@ simple [ADD])
-  ; "BLS12_381.G2.(+)", (true, 2, since_008 @@ simple [ADD])
-  ; "BLS12_381.Fr.(+)", (true, 2, since_008 @@ simple [ADD])
-  ; "BLS12_381.Fr.to_int", (true, 1, since_008 @@ simple [INT])
-  ; "BLS12_381.G1.*", (true, 2, since_008 @@ simple [MUL])
-  ; "BLS12_381.G2.*", (true, 2, since_008 @@ simple [MUL])
-  ; "BLS12_381.Fr.*", (true, 2, since_008 @@ simple [MUL])
-  ; "BLS12_381.mul_nat", (true, 2, since_008 @@ simple [MUL])
-  ; "BLS12_381.mul_int", (true, 2, since_008 @@ simple [MUL])
-  ; "BLS12_381.G1.~-", (true, 1, since_008 @@ simple [NEG])
-  ; "BLS12_381.G2.~-", (true, 1, since_008 @@ simple [NEG])
-  ; "BLS12_381.Fr.~-", (true, 1, since_008 @@ simple [NEG])
-  ; "BLS12_381.pairing_check", (true, 1, since_008 @@ simple [PAIRING_CHECK])
-  ; "Ticket.create", (true, 2, since_008 @@ simple [TICKET])
-  ; "Ticket.read", (true, 1, since_008 @@ simple [READ_TICKET])
-  ; "Ticket.split", (true, 2, since_008 @@ simple [SPLIT_TICKET])
-  ; "Ticket.join", (true, 2, since_008 @@ simple [JOIN_TICKETS])
-  ; "Sapling.empty_state", (true, 0, since_008 @@ fun ~loc:_ ty xs ->
-        assert (xs = []);
-        match ty.desc with
-        | TySapling_state n -> [SAPLING_EMPTY_STATE n]
-        | _ -> assert false)
-  ; "Sapling.verify_update", (true, 2, since_008 @@ simple [SAPLING_VERIFY_UPDATE])
+  ; "BLS12_381.G1.(+)"        , (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.G2.(+)"        , (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.Fr.(+)"        , (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.Fr.to_int"     , (true, 1, since_008 @@ simple [INT])
+  ; "BLS12_381.G1.*"          , (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.G2.*"          , (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.Fr.*"          , (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.mul_nat"       , (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.mul_int"       , (true, 2, since_008 @@ simple [MUL])
+  ; "BLS12_381.G1.~-"         , (true, 1, since_008 @@ simple [NEG])
+  ; "BLS12_381.G2.~-"         , (true, 1, since_008 @@ simple [NEG])
+  ; "BLS12_381.Fr.~-"         , (true, 1, since_008 @@ simple [NEG])
+  ; "BLS12_381.pairing_check" , (true, 1, since_008 @@ simple [PAIRING_CHECK])
+
+  ; "Ticket.create" , (true, 2, since_008 @@ simple [TICKET])
+  ; "Ticket.read"   , (true, 1, since_008 @@ simple [READ_TICKET])
+  ; "Ticket.split"  , (true, 2, since_008 @@ simple [SPLIT_TICKET])
+  ; "Ticket.join"   , (true, 2, since_008 @@ simple [JOIN_TICKETS])
+
+  ; "Sapling.empty_state"   , (true, 0, since_008 @@ fun ~loc:_ ty xs ->
+                               assert (xs = []);
+                               match ty.desc with
+                               | TySapling_state n -> [SAPLING_EMPTY_STATE n]
+                               | _ -> assert false)
+  ; "Sapling.verify_update" , (true, 2, since_008 @@ simple [SAPLING_VERIFY_UPDATE])
   ]
 
   let contract' entry ~loc:_ ty xs =

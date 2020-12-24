@@ -440,7 +440,7 @@ let check_unstorable t =
   | Fun _ ->
       begin try
         IdTys.iter (fun (id, ty) ->
-         if not & Michelson.Type.is_packable ~legacy:false ty then
+         if not & Michelson.Type.is_packable ty then
            raise (E.Found (id, ty)))
         & freevars t;
         Ok ()

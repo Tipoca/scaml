@@ -27,7 +27,7 @@ let infer def t =
                   | _ -> '_') s)
     | None ->
         match t.desc with
-        | TyString -> Some "s"
+        | TyString -> Some "str"
         | TyNat -> Some "n"
         | TyInt -> Some "i"
         | TyBytes -> Some "bytes"
@@ -64,7 +64,7 @@ let infer def t =
         | TyKeyHash -> Some "kh"
         | TyTimestamp -> Some "tm"
         | TyAddress -> Some "adrs"
-        | TyChainID -> Some "chainid"
+        | TyChainID -> Some "cid"
 
         | TyKey -> Some "key"
         | TySignature -> Some "sg"

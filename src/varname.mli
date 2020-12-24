@@ -12,4 +12,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** Make a variable name based on the given Michelson type.
+    If no good name is found, the given default name is used.
+*)
 val create : string -> Michelson.Type.t -> Ident.t

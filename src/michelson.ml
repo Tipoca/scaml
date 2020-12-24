@@ -210,8 +210,8 @@ module Type = struct
           f k >>= fun () -> f v >>= fun () ->
           if not (is_comparable k) then
             Error (ty, "big_map's key type must be comparable")
-          else if not (is_packable ~legacy:false v) then
-            Error (ty, "big_map's value type must be packable")
+          else if not (is_big_mappable v) then
+            Error (ty, "not allowed for big_map value")
           else
             Ok ()
 
@@ -232,7 +232,7 @@ module Type = struct
       | TyContract p ->
           f p >>= fun () ->
           if not (is_parameterable p) then
-            Error (ty, "contract's parameter type cannot contain operation")
+            Error (ty, "contract's parameter type must be passable")
           else
             Ok ()
 
@@ -272,98 +272,120 @@ module Type = struct
       | TyChainID | TySignature | TyKey -> false
 
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyMutez
-      | TyKeyHash | TyTimestamp | TyAddress -> true
+      | TyKeyHash | TyTimestamp | TyAddress | TyNever -> true
 
       | TyPair (_,ty1, _,ty2) -> f ty1 && f ty2 (* since 005_Babylon *)
 
       | TyBigMap _ | TyContract _
       | TyOption _ | TyLambda _ | TyList _ | TyMap _ | TyOperation
-      | TyOr _ | TySet _ | TyUnit -> false
-      | TyNever -> false
-      | TyBLS12_381_Fr
-      | TyBLS12_381_G1
-      | TyBLS12_381_G2 -> false
-      | TySapling_state _
-      | TySapling_transaction _ -> false
-      | TyTicket _ -> false
-    in
-    f ty
-
-  and is_packable ~legacy ty =
-    (* leagcy: allow to pack contracts for hash/signature checks
-       See Script_ir_translator.I_PACK case.
-    *)
-    let rec f ty = match ty.desc with
-      | TyBigMap _ -> false
-      | TyOperation -> false
-      | TyContract _ -> legacy
-      | TyLambda (_t1, _t2) -> true
-      | TyList t | TyOption (_,t) | TySet t -> f t
-      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) -> f t1 && f t2
-      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
-      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
-      | TyKey | TySignature -> true
-      | TyNever -> false
-      | TyBLS12_381_Fr
-      | TyBLS12_381_G1
-      | TyBLS12_381_G2 -> true
-      | TySapling_state _ -> false
-      | TySapling_transaction _ -> true
+      | TyOr _ | TySet _ | TyUnit
+      | TyBLS12_381_Fr | TyBLS12_381_G1 | TyBLS12_381_G2
+      | TySapling_state _ | TySapling_transaction _
       | TyTicket _ -> false
     in
     f ty
 
   and is_parameterable ty =
-      (* ~allow_big_map:true
-         ~allow_operation:false
-         ~allow_contract:true
-      *)
     let rec f ty = match ty.desc with
-      | TyBigMap _ -> true
       | TyOperation -> false
+      | TyBigMap _ -> true
       | TyContract _ -> true
 
       | TyList t | TyOption (_,t) | TySet t -> f t
       | TyLambda (_t1, _t2) -> true
-      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) ->
+          f t1 && f t2
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
-      | TyKey | TySignature -> true
-      | TyNever -> true
-      | TyBLS12_381_Fr
-      | TyBLS12_381_G1
-      | TyBLS12_381_G2
-      | TySapling_state _
-      | TySapling_transaction _
-      | TyTicket _ -> true
+      | TyKey | TySignature | TyNever
+      | TyBLS12_381_Fr | TyBLS12_381_G1 | TyBLS12_381_G2
+      | TySapling_state _ | TySapling_transaction _ | TyTicket _ -> true
     in
     f ty
 
   and is_storable ty =
-      (* ~allow_big_map:true
-         ~allow_operation:false
-         ~allow_contract:legacy -> false
-      *)
     let rec f ty = match ty.desc with
-      | TyBigMap _ -> true
       | TyOperation -> false
       | TyContract _ -> false
+      | TyList t | TyOption (_,t) | TySet t -> f t
+      | TyLambda (_t1, _t2) -> true
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2)
+      | TyBigMap (t1, t2) -> f t1 && f t2
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+      | TyKey | TySignature | TyNever
+      | TyBLS12_381_Fr | TyBLS12_381_G1 | TyBLS12_381_G2
+      | TySapling_state _ | TySapling_transaction _ | TyTicket _ -> true
+    in
+    f ty
+
+  and is_pushable ty =
+    let rec f ty = match ty.desc with
+      | TyBigMap _ | TyContract _ | TyOperation | TySapling_state _
+      | TyTicket _ -> false
 
       | TyList t | TyOption (_,t) | TySet t -> f t
       | TyLambda (_t1, _t2) -> true
-      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) -> f t1 && f t2
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2)
+        -> f t1 && f t2
       | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
       | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
-      | TyKey | TySignature -> true
-      | TyNever -> true
-      | TyBLS12_381_Fr
-      | TyBLS12_381_G1
-      | TyBLS12_381_G2
-      | TySapling_state _
-      | TySapling_transaction _
-      | TyTicket _ -> true
+      | TyKey | TySignature | TyNever
+      | TyBLS12_381_Fr | TyBLS12_381_G1 | TyBLS12_381_G2
+      | TySapling_transaction _ -> true
     in
     f ty
+
+  and is_packable ty =
+    let rec f ty = match ty.desc with
+      | TyBigMap _ | TyOperation | TySapling_state _ | TyTicket _ -> false
+      | TyContract _ ->
+          (* Long ago, contract was not packable except some special places *)
+          true
+      | TyLambda (_t1, _t2) -> true
+      | TyList t | TyOption (_,t) | TySet t -> f t
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) ->
+          f t1 && f t2
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+      | TyKey | TySignature | TyNever
+      | TyBLS12_381_Fr | TyBLS12_381_G1 | TyBLS12_381_G2
+      | TySapling_transaction _ -> true
+    in
+    f ty
+
+  and is_big_mappable ty =
+    let rec f ty = match ty.desc with
+      | TyBigMap _ | TyOperation | TySapling_state _ -> false
+      | TyContract _ -> true
+      | TyLambda (_t1, _t2) -> true
+      | TyList t | TyOption (_,t) | TySet t -> f t
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) ->
+          f t1 && f t2
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+      | TyKey | TySignature | TyNever
+      | TyBLS12_381_Fr | TyBLS12_381_G1 | TyBLS12_381_G2
+      | TySapling_transaction _ | TyTicket _ -> true
+    in
+    f ty
+
+  and is_dupable ty =
+    let rec f ty = match ty.desc with
+      | TyTicket _ -> false
+      | TyList t | TyOption (_,t) | TySet t -> f t
+      | TyPair (_,t1, _,t2) | TyOr (_,t1, _,t2) | TyMap (t1, t2) ->
+          f t1 && f t2
+      | TyContract _
+      | TyLambda _ | TyOperation | TyBigMap _
+      | TyString | TyNat | TyInt | TyBytes | TyBool | TyUnit
+      | TyMutez | TyKeyHash | TyTimestamp | TyAddress | TyChainID
+      | TyKey | TySignature | TyNever
+      | TyBLS12_381_Fr | TyBLS12_381_G1 | TyBLS12_381_G2
+      | TySapling_state _ | TySapling_transaction _ -> true
+    in
+    f ty
+
 end
 
 module rec Constant : sig

@@ -28,7 +28,7 @@ and t =
   ; mode      : mode
   ; noscamlib : bool (** do not add -I `opam config var prefix`/scaml/lib *)
   ; dump_iml  : bool
-  ; protocol  : int * int (* 007, 000 *)
+  ; protocol  : Protocol.t
   } [@@deriving conv{ocaml}]
 
 
