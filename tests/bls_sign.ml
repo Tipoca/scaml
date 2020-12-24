@@ -27,10 +27,10 @@ let [@entry] main _param _storage =
 *)
 
   let sk = Fr "0x012345" in
-  let pk = BLS12_381.mul_g2 g2_one sk in
-  let hash = BLS12_381.mul_g1 g1_one (Fr "0x789012") in
-  let sg = BLS12_381.mul_g1 hash sk in
+  let pk = BLS12_381.G2.( * ) g2_one sk in
+  let hash = BLS12_381.G1.( * ) g1_one (Fr "0x789012") in
+  let sg = BLS12_381.G1.( * ) hash sk in
   let a1 = (hash, pk) in
-  let a2 = (BLS12_381.neg_g1 sg, g2_one) in
+  let a2 = (BLS12_381.G1.(~-) sg, g2_one) in
   assert (BLS12_381.pairing_check [a1; a2]);
   [], ()

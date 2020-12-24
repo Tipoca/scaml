@@ -467,24 +467,41 @@ module Chain_id = struct
   type t = chain_id [@@deriving typerep]
 end
 
+(* XXX Should be moved into BLS12_381 *)
 type bls12_381_g1 = G1 of string const (* byte sequence *)
 type bls12_381_g2 = G2 of string const (* byte sequence *)
 type bls12_381_fr = Fr of string const (* byte sequence *)
 
 module BLS12_381 = struct
-  let add_g1 : bls12_381_g1 -> bls12_381_g1 -> bls12_381_g1 = fun _ -> assert false
-  let add_g2 : bls12_381_g2 -> bls12_381_g2 -> bls12_381_g2 = fun _ -> assert false
-  let add_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
-  let int_of_fr : bls12_381_fr -> int = fun _ -> assert false
-  let mul_g1 : bls12_381_g1 -> bls12_381_fr -> bls12_381_g1 = fun _ -> assert false
-  let mul_g2 : bls12_381_g2 -> bls12_381_fr -> bls12_381_g2 = fun _ -> assert false
-  let mul_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
-  let mul_nat : nat -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
-  let mul_int : int -> bls12_381_fr -> bls12_381_fr = fun _ -> assert false
-  let neg_g1 : bls12_381_g1 -> bls12_381_g1 = fun _ -> assert false
-  let neg_g2 : bls12_381_g2 -> bls12_381_g2 = fun _ -> assert false
-  let neg_fr : bls12_381_fr -> bls12_381_fr = fun _ -> assert false
-  let pairing_check : (bls12_381_g1 * bls12_381_g2) list -> bool = fun _ -> assert false
+  type g1 = bls12_381_g1
+  type g2 = bls12_381_g2
+  type fr = bls12_381_fr
+
+  module G1 = struct
+    type t = g1
+    let ( + ) : t -> t -> t = fun _ -> assert false
+    let ( * ) : t -> fr -> t = fun _ -> assert false
+    let ( ~- ) : t -> t = fun _ -> assert false
+  end
+
+  module G2 = struct
+    type t = g2
+    let ( + ) : t -> t -> t = fun _ -> assert false
+    let ( * ) : t -> fr -> t = fun _ -> assert false
+    let ( ~- ) : t -> t = fun _ -> assert false
+  end
+
+  module Fr = struct
+    type t = fr
+    let ( + ) : t -> t -> t = fun _ -> assert false
+    let ( * ) : t -> t -> t = fun _ -> assert false
+    let to_int : t -> int = fun _ -> assert false
+    let mul_int : int -> t -> t = fun _ -> assert false
+    let mul_nat : int -> t -> t = fun _ -> assert false
+    let ( ~- ) : t -> t = fun _ -> assert false
+  end
+
+  let pairing_check : (g1 * g2) list -> bool = fun _ -> assert false
 end
 
 module Env = struct

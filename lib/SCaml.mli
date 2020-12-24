@@ -432,19 +432,35 @@ type bls12_381_g2 = G2 of string const (* byte sequence *)
 type bls12_381_fr = Fr of string const (* nat *)
 
 module BLS12_381 : sig
-  val add_g1 : bls12_381_g1 -> bls12_381_g1 -> bls12_381_g1
-  val add_g2 : bls12_381_g2 -> bls12_381_g2 -> bls12_381_g2
-  val add_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr
-  val int_of_fr : bls12_381_fr -> int
-  val mul_g1 : bls12_381_g1 -> bls12_381_fr -> bls12_381_g1
-  val mul_g2 : bls12_381_g2 -> bls12_381_fr -> bls12_381_g2
-  val mul_fr : bls12_381_fr -> bls12_381_fr -> bls12_381_fr
-  val mul_nat : nat -> bls12_381_fr -> bls12_381_fr
-  val mul_int : int -> bls12_381_fr -> bls12_381_fr
-  val neg_g1 : bls12_381_g1 -> bls12_381_g1
-  val neg_g2 : bls12_381_g2 -> bls12_381_g2
-  val neg_fr : bls12_381_fr -> bls12_381_fr
-  val pairing_check : (bls12_381_g1 * bls12_381_g2) list -> bool
+  type g1 = bls12_381_g1
+  type g2 = bls12_381_g2
+  type fr = bls12_381_fr
+
+  module G1 : sig
+    type t = g1
+    val ( + ) : t -> t -> t
+    val ( * ) : t -> fr -> t
+    val ( ~- ) : t -> t
+  end
+
+  module G2 : sig
+    type t = g2
+    val ( + ) : t -> t -> t
+    val ( * ) : t -> fr -> t
+    val ( ~- ) : t -> t
+  end
+
+  module Fr : sig
+    type t = fr
+    val ( + ) : t -> t -> t
+    val ( * ) : t -> t -> t
+    val to_int : t -> int
+    val mul_int : int -> t -> t
+    val mul_nat : int -> t -> t
+    val ( ~- ) : t -> t
+  end
+
+  val pairing_check : (g1 * g2) list -> bool
 end
 
 (** Global values
