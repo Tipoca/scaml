@@ -427,9 +427,9 @@ module Chain_id : sig
   type t = chain_id [@@deriving typerep]
 end
 
-type bls12_381_g1 = G1 of string (* must be binary hex ? *)
-type bls12_381_g2 = G2 of string (* must be binary hex ? *)
-type bls12_381_fr = Fr of string (* must be natural number, modulo p *)
+type bls12_381_g1 = G1 of string const (* byte sequence *)
+type bls12_381_g2 = G2 of string const (* byte sequence *)
+type bls12_381_fr = Fr of string const (* nat *)
 
 module BLS12_381 : sig
   val add_g1 : bls12_381_g1 -> bls12_381_g1 -> bls12_381_g1
@@ -444,7 +444,7 @@ module BLS12_381 : sig
   val neg_g1 : bls12_381_g1 -> bls12_381_g1
   val neg_g2 : bls12_381_g2 -> bls12_381_g2
   val neg_fr : bls12_381_fr -> bls12_381_fr
-  val pair_check : (bls12_381_g1 * bls12_381_g2) list -> bool
+  val pairing_check : (bls12_381_g1 * bls12_381_g2) list -> bool
 end
 
 (** Global values

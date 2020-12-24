@@ -153,6 +153,19 @@ let wrap_ocaml_exn exn n ~loc fmt =
     )
     ppf ("[ESCaml%03d] " ^^ fmt) n
 
+
+let warnf n ~loc fmt =
+  let cls = Printf.sprintf "[ESCaml%03d]" n in
+  let f s =
+    let open Location in
+    let report = { kind= Report_warning cls;
+                   main= { loc; txt= (fun ppf -> Format.pp_print_string ppf s) };
+                   sub= [] }
+    in
+    print_report !formatter_for_warnings report
+  in
+  Format.kasprintf f fmt
+
 let with_time f =
   let t1 = Unix.gettimeofday () in
   let res = f () in

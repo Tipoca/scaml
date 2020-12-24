@@ -467,9 +467,9 @@ module Chain_id = struct
   type t = chain_id [@@deriving typerep]
 end
 
-type bls12_381_g1 = G1 of string (* must be binary hex ? *)
-type bls12_381_g2 = G2 of string (* must be binary hex ? *)
-type bls12_381_fr = Fr of string (* must be natural number, modulo p *)
+type bls12_381_g1 = G1 of string const (* byte sequence *)
+type bls12_381_g2 = G2 of string const (* byte sequence *)
+type bls12_381_fr = Fr of string const (* byte sequence *)
 
 module BLS12_381 = struct
   let add_g1 : bls12_381_g1 -> bls12_381_g1 -> bls12_381_g1 = fun _ -> assert false
@@ -484,7 +484,7 @@ module BLS12_381 = struct
   let neg_g1 : bls12_381_g1 -> bls12_381_g1 = fun _ -> assert false
   let neg_g2 : bls12_381_g2 -> bls12_381_g2 = fun _ -> assert false
   let neg_fr : bls12_381_fr -> bls12_381_fr = fun _ -> assert false
-  let pair_check : (bls12_381_g1 * bls12_381_g2) list -> bool = fun _ -> assert false
+  let pairing_check : (bls12_381_g1 * bls12_381_g2) list -> bool = fun _ -> assert false
 end
 
 module Env = struct

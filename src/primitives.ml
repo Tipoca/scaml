@@ -483,7 +483,7 @@ let primitives =
   ; "BLS12_381.neg_g1", (true, 1, since_008 @@ simple [NEG])
   ; "BLS12_381.neg_g2", (true, 1, since_008 @@ simple [NEG])
   ; "BLS12_381.neg_fr", (true, 1, since_008 @@ simple [NEG])
-  ; "BLS12_381.pair_check", (true, 1, since_008 @@ simple [PAIR_CHECK])
+  ; "BLS12_381.pairing_check", (true, 1, since_008 @@ simple [PAIRING_CHECK])
   ; "Ticket.create", (true, 2, since_008 @@ simple [TICKET])
   ; "Ticket.read", (true, 1, since_008 @@ simple [READ_TICKET])
   ; "Ticket.split", (true, 2, since_008 @@ simple [SPLIT_TICKET])

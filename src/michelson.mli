@@ -224,7 +224,7 @@ and Opcode : sig
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR
-    | PAIR_CHECK
+    | PAIRING_CHECK
     | NEVER
     | KECCAK
     | SHA3

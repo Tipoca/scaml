@@ -519,7 +519,7 @@ and Opcode : sig
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR
-    | PAIR_CHECK
+    | PAIRING_CHECK
     | NEVER
     | KECCAK
     | SHA3
@@ -618,7 +618,7 @@ end = struct
     | LEVEL
     | SELF_ADDRESS
     | UNPAIR
-    | PAIR_CHECK
+    | PAIRING_CHECK
     | NEVER
     | KECCAK
     | SHA3
@@ -749,7 +749,7 @@ end = struct
       | SELF_ADDRESS    -> !"SELF_ADDRESS"
       | UNPAIR          -> !"UNPAIR"
       | INT             -> !"INT"
-      | PAIR_CHECK      -> !"PAIR_CHECK"
+      | PAIRING_CHECK   -> !"PAIRING_CHECK"
       | NEVER           -> !"NEVER"
       | KECCAK          -> !"KECCAK"
       | SHA3            -> !"SHA3"
@@ -822,7 +822,7 @@ end = struct
       | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
       | SOURCE | SENDER | ADDRESS | APPLY | CHAIN_ID  | UNPAIR | SELF_ADDRESS
       | LEVEL | INT
-      | PAIR_CHECK | NEVER | KECCAK | SHA3
+      | PAIRING_CHECK | NEVER | KECCAK | SHA3
       | TICKET | READ_TICKET | SPLIT_TICKET | JOIN_TICKETS
       | SAPLING_EMPTY_STATE _ | SAPLING_VERIFY_UPDATE
       | VOTING_POWER | TOTAL_VOTING_POWER | GET_AND_UPDATE
@@ -879,7 +879,7 @@ end = struct
             | CREATE_CONTRACT _ | IMPLICIT_ACCOUNT | NOW | AMOUNT | BALANCE
             | CHECK_SIGNATURE | BLAKE2B | SHA256 | SHA512 | HASH_KEY | STEPS_TO_QUOTA
             | SOURCE | SENDER | ADDRESS | CHAIN_ID
-            | UNPAIR | SELF_ADDRESS | LEVEL | INT | PAIR_CHECK | NEVER | KECCAK | SHA3
+            | UNPAIR | SELF_ADDRESS | LEVEL | INT | PAIRING_CHECK | NEVER | KECCAK | SHA3
             | TICKET | READ_TICKET | SPLIT_TICKET | JOIN_TICKETS
             | SAPLING_EMPTY_STATE _ | SAPLING_VERIFY_UPDATE
             | VOTING_POWER | TOTAL_VOTING_POWER | GET_AND_UPDATE
