@@ -237,6 +237,10 @@ and Opcode : sig
     | VOTING_POWER
     | TOTAL_VOTING_POWER
     | GET_AND_UPDATE
+    | GETn of int
+    | UPDATEn of int
+    | PAIRn of int
+    | UNPAIRn of int
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t list

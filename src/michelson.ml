@@ -532,6 +532,10 @@ and Opcode : sig
     | VOTING_POWER
     | TOTAL_VOTING_POWER
     | GET_AND_UPDATE
+    | GETn of int
+    | UPDATEn of int
+    | PAIRn of int
+    | UNPAIRn of int
 
   val pp : Format.formatter -> t -> unit
   val to_micheline : ?block_comment:bool -> t -> Mline.t list
@@ -631,10 +635,10 @@ end = struct
     | VOTING_POWER
     | TOTAL_VOTING_POWER
     | GET_AND_UPDATE
-    (* XXX | GET of int *)
-    (* PAIR of int *)
-    (*UNPAIR n *)
-    (* UPDATE n *)
+    | GETn of int
+    | UPDATEn of int
+    | PAIRn of int
+    | UNPAIRn of int
 
   let to_micheline ?(block_comment=false) t =
     let open Mline in
@@ -757,13 +761,17 @@ end = struct
       | READ_TICKET     -> !"READ_TICKET"
       | SPLIT_TICKET    -> !"SPLIT_TICKET"
       | JOIN_TICKETS    -> !"JOIN_TICKETS"
-      | SAPLING_EMPTY_STATE n -> prim "SAPLING_EMPTY_STATE" [Int ({comment=None}, Z.of_int n)]
+      | SAPLING_EMPTY_STATE n -> prim "SAPLING_EMPTY_STATE" [int & Z.of_int n]
       | SAPLING_VERIFY_UPDATE -> !"SAPLING_VERIFY_UPDATE"
       | VOTING_POWER    -> !"VOTING_POWER"
       | TOTAL_VOTING_POWER -> !"TOTAL_VOTING_POWER"
       | GET_AND_UPDATE  -> !"GET_AND_UPDATE"
-    in
-    f' t
+      | GETn n          -> prim "GET" [int & Z.of_int n]
+      | UPDATEn n       -> prim "UPDATE" [int & Z.of_int n]
+      | PAIRn n         -> prim "PAIR" [int & Z.of_int n]
+      | UNPAIRn n       -> prim "UNPAIR" [int & Z.of_int n]
+      in
+      f' t
 
   let pp ppf ts = Format.fprintf ppf "%a" (Format.list "@ " Mline.pp) & to_micheline ts
 
@@ -826,6 +834,7 @@ end = struct
       | TICKET | READ_TICKET | SPLIT_TICKET | JOIN_TICKETS
       | SAPLING_EMPTY_STATE _ | SAPLING_VERIFY_UPDATE
       | VOTING_POWER | TOTAL_VOTING_POWER | GET_AND_UPDATE
+      | GETn _ | UPDATEn _ | PAIRn _ | UNPAIRn _
       as t) -> t, false
 
   and constant =
@@ -883,6 +892,7 @@ end = struct
             | TICKET | READ_TICKET | SPLIT_TICKET | JOIN_TICKETS
             | SAPLING_EMPTY_STATE _ | SAPLING_VERIFY_UPDATE
             | VOTING_POWER | TOTAL_VOTING_POWER | GET_AND_UPDATE
+            | GETn _ | UPDATEn _ | PAIRn _ | UNPAIRn _
               -> t
           in
           t' :: loop 0 [] ts
