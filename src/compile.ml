@@ -20,7 +20,7 @@ open M.Type
 open M.Opcode
 
 module type Config = sig
-  val allow_big_map : bool
+  (* val allow_big_map : bool *)
 end
 
 module Env : sig
@@ -190,6 +190,14 @@ module Make(Config : Config) = struct
 
            operation, contract, and big_map cannot be APPLY'ed
         *)
+        (* Lambda to PUSH code ?
+          | [] ->
+              begin match compile [] t with
+              | [LAMBDA (_, _, os)] ->
+                  [ PUSH (t.typ, Code (fst (clean_failwith os))) ]
+              | _ -> assert false (* impossible *)
+              end
+        *)
         begin match t.typ.desc with
           | TyLambda (ty1, ty2) ->
               begin match fvars with
@@ -307,71 +315,6 @@ module Make(Config : Config) = struct
             in
             args env [e1; e2; e3]
             @ [CREATE_CONTRACT (Raw nodes) ; PAIR]
-
-  and constant t =
-    (* try to compile an expressions to a constant, rather than opcodes *)
-    (* XXX This is incredibly inefficient, which tries to compile
-       expressions as constants so many times.
-    *)
-    let rec f t =
-      let module C = M.Constant in
-      let (>>=) = Option.bind in
-      match t.IML.desc with
-      | IML.Const c -> Some c
-      | IML_None -> Some (C.Option None)
-      | IML_Some t -> f t >>= fun c -> Some (C.Option (Some c))
-      | Left t -> f t >>= fun t -> Some (C.Left t)
-      | Right t -> f t >>= fun t -> Some (C.Right t)
-      | Pair (t1, t2) -> f t1 >>= fun t1 -> f t2 >>= fun t2 -> Some (C.Pair (t1, t2))
-      | Nil ->
-         (* We cannot PUSH (list operation) {}. If we do, we get:
-            "operation type forbidden in parameter, storage and constants" *)
-          begin match t.typ.desc with
-            | TyList { desc= TyOperation } -> None
-            | _ -> Some (C.List [])
-          end
-      | Cons (t1, t2) -> f t1 >>= fun t1 -> f t2 >>= fun t2 ->
-          begin match t2 with
-            | C.List t2 -> Some (C.List (t1::t2))
-            | _ -> assert false
-          end
-      | Fun _ when IML.IdTys.is_empty (IML.freevars t) ->
-          begin try
-              match compile [] t with
-              | [LAMBDA (_, _, os)] -> Some (C.Code (fst (clean_failwith os)))
-              | _ -> assert false (* impossible *)
-            with _ -> None
-          end
-      | Set _ts -> errorf_constant ~loc:t.loc "Set expects constant elements"
-      | Map _kvs ->
-          (* XXX uniq and order... *)
-          errorf_constant ~loc:t.loc "Map expects constant bindings"
-      | BigMap _ when not Config.allow_big_map ->
-          errorf_big_map ~loc:t.loc "BigMap constant is not allowed"
-      | BigMap kvs ->
-          let kvs =
-            List.map (fun (k,v) ->
-                match k.IML.desc with
-                | IML.Const k ->
-                    begin match v.IML.desc with
-                      | IML.Const v -> (k,v)
-                      | _ -> errorf_constant ~loc:v.loc "BigMap expects constant bindings"
-                    end
-                | _ -> errorf_constant ~loc:k.loc "BigMap expects constant bindings") kvs
-          in
-          (* XXX do not use OCaml's comparison *)
-          let kvs = List.sort (fun (k1,_) (k2,_) -> compare k1 k2) kvs in
-          let rec check_uniq = function
-            | [] | [_] -> ()
-            | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
-                errorf_constant ~loc:t.loc "BigMap literal contains duplicated key %a" C.pp c1
-            | _::xs -> check_uniq xs
-          in
-          check_uniq kvs;
-          Some (C.Map kvs)
-      | _ -> None
-      in
-      f t
 
   and args env ts =
     snd

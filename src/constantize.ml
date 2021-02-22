@@ -63,10 +63,7 @@ let rec f exp =
             const & Pair (l, r)
         | (_, l), (_, r) -> non_const & Pair (l,r)
       end
-  | Fun (pv, t) ->
-      (* XXX We may be able to compile it down to Code constant,
-         it must be done in compile.ml *)
-      non_const & Fun (pv, f' t)
+  | Fun (pv, t) -> non_const & Fun (pv, f' t)
   | IfThenElse (t1, t2, None) ->
       non_const & IfThenElse (f' t1, f' t2, None)
   | IfThenElse (t1, t2, Some t3) ->
