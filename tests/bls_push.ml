@@ -1,6 +1,9 @@
+(*
+   STORAGE=(None : bls12_381_g1 option)
+*)
 open SCaml
 let [@entry] main _param _storage =
   let g1_1 = G1 "0x063bd6e11e2fcaac1dd8cf68c6b1925a73c3c583e298ed37c41c3715115cf96358a42dbe85a0228cbfd8a6c8a8c54cd015b5ae2860d1cc47f84698d951f14d9448d03f04df2ca0ffe609a2067d6f1a892163a5e05e541279134cae52b1f23c6b" in
   let g1_2 = G1 "0x11f5b5db1da7f1f26217edcce2219d016003af6e5b4d1ca3ad0ff477e354717e658bf16beddc4f4fb76ce39d3327811e0601709dc7ed98c70463cfa1ba33f99851b52b51d1a042d7425bec6277287441c399973632445ce61e7fdd63a70f0f60" in
-  let g1 = BLS12_381.add_g1 g1_1 g1_2 in
+  let g1 = BLS12_381.G1.(+) g1_1 g1_2 in
   [], Some g1
