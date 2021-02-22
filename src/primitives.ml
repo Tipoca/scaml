@@ -476,9 +476,9 @@ let primitives =
   ; "Sum.get_left", (false, 1, simple [IF_LEFT ([], [PUSH (tyString, String "Sum.get-left"); FAILWITH])])
   ; "Sum.get_right", (false, 1, simple [IF_LEFT ([PUSH (tyString, String "Sum.get-left"); FAILWITH], [])])
 
-  ; "BLS12_381.G1.(+)"        , (true, 2, since_008 @@ simple [ADD])
-  ; "BLS12_381.G2.(+)"        , (true, 2, since_008 @@ simple [ADD])
-  ; "BLS12_381.Fr.(+)"        , (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.G1.+"        , (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.G2.+"        , (true, 2, since_008 @@ simple [ADD])
+  ; "BLS12_381.Fr.+"        , (true, 2, since_008 @@ simple [ADD])
   ; "BLS12_381.Fr.to_int"     , (true, 1, since_008 @@ simple [INT])
   ; "BLS12_381.G1.*"          , (true, 2, since_008 @@ simple [MUL])
   ; "BLS12_381.G2.*"          , (true, 2, since_008 @@ simple [MUL])
