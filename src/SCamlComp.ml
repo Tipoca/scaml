@@ -274,15 +274,18 @@ let convert_all _sourcefile _outputprefix _modulename (str, _coercion) =
       | `Type (id, t) ->
           Format.printf "type %s: @[%a@]@." (Ident.name id) M.Type.pp t
       | `Value (n, t) ->
-          begin match Compile.constant t with
-            | None -> errorf_constant ~loc:t.loc "Constant expression expected"
-            | Some c ->
-                match n with
-                | None ->
-                    Format.printf "noname: @[%a@]@." M.Constant.pp c
-                | Some id ->
-                    Format.printf "%s: @[%a@]@." (Ident.name id) M.Constant.pp c
-          end) ts
+          let t = Constantize.f t in
+          match t.desc with
+          | Const c ->
+              begin match n with
+              | None ->
+                  Format.printf "noname: @[%a@]@." M.Constant.pp c
+              | Some id ->
+                  Format.printf "%s: @[%a@]@." (Ident.name id) M.Constant.pp c
+              end
+          | _ ->
+              errorf_constant ~loc:t.loc "Constant expression expected"
+    ) ts
 
 let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
   Translate.reject_SCaml_attribute_in_complex_structure str;
@@ -301,10 +304,11 @@ let convert_value ident _sourcefile _outputprefix _modulename (str, _coercion) =
 (* XXX
      let t = if Conf.(!flags.iml_optimization) then Optimize.optimize t else t in
 *)
-     begin match Compile.constant t with
-     | None -> errorf_constant ~loc:t.loc "Constant expression expected"
-     | Some c -> Format.printf "@[%a@]@." M.Constant.pp c
-     end
+      let t = Constantize.f t in
+      begin match t.desc with
+      | Const c -> Format.printf "@[%a@]@." M.Constant.pp c
+      | _ ->  errorf_constant ~loc:t.loc "Constant expression expected"
+      end
   | _ -> assert false
 
 let convert_type ident _sourcefile _outputprefix _modulename (str, _coercion) =
