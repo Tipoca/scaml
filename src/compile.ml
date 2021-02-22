@@ -59,12 +59,7 @@ let var ~loc env id = match Env.find id env with
       [ COMMENT( "var " ^ Ident.unique_name id, [ DIG n; DUP; DUG (n+1) ]) ]
 
 module Make(Config : Config) = struct
-  let rec compile env t = match constant t with
-    | None -> compile' env t
-    | Some c ->
-        [ PUSH (t.IML.typ, c) ]
-
-  and compile' env t =
+  let rec compile env t =
     let os = desc env t in
     let comments =
       List.filter_map (function
@@ -83,8 +78,7 @@ module Make(Config : Config) = struct
     | Map _ -> errorf_constant ~loc "Map bindings must be constants"
     | BigMap _ -> errorf_constant ~loc "BigMap bindings must be constants"
     | Const Unit -> [ UNIT ]
-    | Const c -> [ PUSH (t.typ, c) ]
-    | Nil ->
+    | Nil | Const (List []) ->
         let ty = match t.typ.desc with
           | TyList ty -> ty
           | _ -> assert false
@@ -94,7 +88,7 @@ module Make(Config : Config) = struct
         let os2 = compile env t2 in
         let os1 = compile ((Ident.dummy, t2.typ)::env) t1 in
         os2 @ os1 @ [ CONS ]
-    | IML_None ->
+    | IML_None | Const (Option None) ->
         let ty = match t.IML.typ.desc with
           | TyOption (_,ty) -> ty
           | _ -> assert false
@@ -103,6 +97,7 @@ module Make(Config : Config) = struct
     | IML_Some t1 ->
         let os1 = compile env t1 in
         os1 @ [ SOME ]
+    | Const c -> [ PUSH (t.typ, c) ]
     | Left t' ->
         let ty = match t.typ.desc with
           | TyOr (_,_, _,ty) -> ty
@@ -342,48 +337,27 @@ module Make(Config : Config) = struct
           end
       | Fun _ when IML.IdTys.is_empty (IML.freevars t) ->
           begin try
-              match compile' [] t with
+              match compile [] t with
               | [LAMBDA (_, _, os)] -> Some (C.Code (fst (clean_failwith os)))
               | _ -> assert false (* impossible *)
             with _ -> None
           end
-      | Set ts ->
-          Some (C.Set
-                  (List.map (fun t ->
-                      match constant t with
-                      | Some c -> c
-                      | None -> errorf_constant ~loc:t.loc "Set expects constant elements") ts))
-      | Map kvs ->
-          let kvs =
-            List.map (fun (k,v) ->
-                match constant k with
-                | None -> errorf_constant ~loc:k.loc "Map expects constant bindings"
-                | Some k ->
-                    match constant v with
-                    | None -> errorf_constant ~loc:v.loc "Map expects constant bindings"
-                    | Some v -> (k,v)) kvs
-          in
-          (* XXX do not use OCaml's comparison *)
-          let kvs = List.sort (fun (k1,_) (k2,_) -> compare k1 k2) kvs in
-          let rec check_uniq = function
-            | [] | [_] -> ()
-            | (c1,_)::(c2,_)::_ when c1 = c2 -> (* XXX OCaml's compare *)
-                errorf_constant ~loc:t.loc "Map literal contains duplicated key %a" C.pp c1
-            | _::xs -> check_uniq xs
-          in
-          check_uniq kvs;
-          Some (C.Map kvs)
+      | Set _ts -> errorf_constant ~loc:t.loc "Set expects constant elements"
+      | Map _kvs ->
+          (* XXX uniq and order... *)
+          errorf_constant ~loc:t.loc "Map expects constant bindings"
       | BigMap _ when not Config.allow_big_map ->
           errorf_big_map ~loc:t.loc "BigMap constant is not allowed"
       | BigMap kvs ->
           let kvs =
             List.map (fun (k,v) ->
-                match constant k with
-                | None -> errorf_constant ~loc:k.loc "BigMap expects constant bindings"
-                | Some k ->
-                    match constant v with
-                    | None -> errorf_constant ~loc:v.loc "BigMap expects constant bindings"
-                    | Some v -> (k,v)) kvs
+                match k.IML.desc with
+                | IML.Const k ->
+                    begin match v.IML.desc with
+                      | IML.Const v -> (k,v)
+                      | _ -> errorf_constant ~loc:v.loc "BigMap expects constant bindings"
+                    end
+                | _ -> errorf_constant ~loc:k.loc "BigMap expects constant bindings") kvs
           in
           (* XXX do not use OCaml's comparison *)
           let kvs = List.sort (fun (k1,_) (k2,_) -> compare k1 k2) kvs in
@@ -406,7 +380,9 @@ module Make(Config : Config) = struct
         let env' = (Ident.dummy, tyUnit (* dummy *)) :: env in
         env', os @ os') ts (env, [])
 
-  let structure t = match t.IML.desc with
+  let structure t =
+    let t = Constantize.f t in
+    match t.IML.desc with
     | IML.Fun (pv, t) ->
         let os = compile [(pv.desc, pv.typ)] t in
         os @ [ COMMENT ("final clean up", [ DIP (1, [ DROP 1 ]) ])]
