@@ -427,9 +427,15 @@ module Chain_id : sig
   type t = chain_id [@@deriving typerep]
 end
 
-type bls12_381_g1 = G1 of string const (* byte sequence *)
-type bls12_381_g2 = G2 of string const (* byte sequence *)
-type bls12_381_fr = Fr of string const (* nat *)
+type bls12_381_g1 =
+  | G1Bytes of string const (* byte sequence *)
+  | G1Point of string const * string const (* in nats *)
+type bls12_381_g2 =
+  | G2Bytes of string const (* byte sequence *)
+  | G2Point of (string * string) const * (string * string) const (* in nats *)
+type bls12_381_fr =
+  | FrBytes of string const (* byte sequence, nat in little endian *)
+  | Fr of string const (* nat *)
 
 module BLS12_381 : sig
   type g1 = bls12_381_g1

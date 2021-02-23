@@ -31,4 +31,5 @@ depends: [
   "blake2" { = "0.3" }
   "hacl" { = "0.3" }
   "ocamlformat"
+  "bls12-381" { = "0.3.15" }
 ]

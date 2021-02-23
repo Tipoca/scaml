@@ -194,7 +194,6 @@ let rec type_expr tyenv ty =
         fn tyenv t >>= fun t -> Ok (tyOption (None, t))
     | Tconstr (p, [], _) when p = Predef.path_unit -> Ok (tyUnit)
     | Tconstr (p, [], _) when p = Predef.path_string -> Ok (tyString)
-    (* | Tconstr (p, [], _) when p = Predef.path_bytes -> Ok (tyBytes) *)
     | Tconstr (p, tys, _) ->
         let rec f res = function
           | [] -> Ok (List.rev res)
@@ -327,13 +326,44 @@ let parse_bytes ~loc s =
   with
   | _ -> Error "Bytes must take hex representation of bytes"
 
-let _parse_huge_nat s =
+let parse_huge_nat s =
   try
     let z = Z.of_string s in
     if Z.lt z Z.zero then raise Exit
     else Ok z
   with
   | _ -> Error "Illegal string for a natural number"
+
+let parse_fr ~loc:_ s =
+  let open Result in
+  let open Bls12_381 in
+  parse_huge_nat s >>| fun z ->
+  let `Hex h = Hex.of_bytes (Fr.to_bytes @@ Fr.of_z z) in
+  C.Bytes h
+
+let parse_g1 ~loc:_ x y =
+  let open Result in
+  let open Bls12_381 in
+  parse_huge_nat x >>= fun x ->
+  parse_huge_nat y >>= fun y ->
+  match G1.Uncompressed.of_z_opt ~x ~y with
+  | None -> Error "Not a valid G1 point"
+  | Some g1 ->
+      let `Hex h = Hex.of_bytes (G1.Uncompressed.to_bytes g1) in
+      Ok (C.Bytes h)
+
+let parse_g2 ~loc:_ (x1,x2) (y1,y2) =
+  let open Result in
+  let open Bls12_381 in
+  parse_huge_nat x1 >>= fun x1 ->
+  parse_huge_nat x2 >>= fun x2 ->
+  parse_huge_nat y1 >>= fun y1 ->
+  parse_huge_nat y2 >>= fun y2 ->
+  match G2.Uncompressed.of_z_opt ~x:(x1,x2) ~y:(y1,y2) with
+  | None -> Error "Not a valid G2 point"
+  | Some g2 ->
+      let `Hex h = Hex.of_bytes (G2.Uncompressed.to_bytes g2) in
+      Ok (C.Bytes h)
 
 let constructions_by_string =
   [ ("signature" , ("signature", "Signature", tySignature,
@@ -350,14 +380,12 @@ let constructions_by_string =
                     parse_bytes));
     ("chain_id"  , ("chain_id", "Chain_id", tyChainID,
                     fun ~loc:_ x -> Ok (C.String x)));
-    ("bls12_381_g1"  , ("bls12_381_g1", "G1", tyBLS12_381_G1,
+    ("bls12_381_g1"  , ("bls12_381_g1", "G1Bytes", tyBLS12_381_G1,
                         parse_bytes));
-    ("bls12_381_g2"  , ("bls12_381_g2", "G2", tyBLS12_381_G2,
-                        (* XXX printed in decimal *)
+    ("bls12_381_g2"  , ("bls12_381_g2", "G2Bytes", tyBLS12_381_G2,
                         parse_bytes));
-    ("bls12_381_fr"  , ("bls12_381_fr", "Fr", tyBLS12_381_Fr,
-                        (* XXX printed in decimal *)
-                        parse_bytes))
+    ("bls12_381_fr"  , ("bls12_381_fr", "FrBytes", tyBLS12_381_Fr,
+                        parse_bytes));
   ]
 
 let pattern_simple { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
@@ -462,6 +490,7 @@ let rec pattern { pat_desc; pat_loc=loc; pat_type= mltyp; pat_env= tyenv } =
         | "Nat", TyNat, [_] ->
             errorf_constant ~loc "Nat can only take an integer constant"
         | _, TyMutez, [_] -> errorf_constant ~loc "tz constant cannot be used as a pattern"
+
         | "Key_hash", TyKeyHash, [{pat_desc= Tpat_constant (Const_string (s, _))}] ->
             mk & P.Constr (Cnstr.Constant (C.String s), [])
         | "Key_hash", TyKeyHash, [_] -> unsupported ~loc "Key_hash can only take a string constant"
@@ -1372,16 +1401,67 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
         | _ -> internal_error ~loc "strange map arguments"
       end
 
-  (* C "string" style constants *)
   | Tconstr (p, [], _), _ when Path.is_scaml p <> None ->
       begin match Path.is_scaml p with
         | None -> assert false
+        | Some "bls12_381_g1" when cstr_name = "G1Point" ->
+            begin match args with
+              | [] | [_] | _::_::_::_ ->
+                  internal_error ~loc "strange arguments for G1Point"
+              | [arg1; arg2] ->
+                  let e1 = expression lenv arg1 in
+                  let e2 = expression lenv arg2 in
+                  match e1.desc, e2.desc with
+                  | Const (String arg1), Const (String arg2) ->
+                      begin match parse_g1 ~loc arg1 arg2 with
+                        | Ok v -> { loc; typ; desc= Const v; attrs= [] }
+                        | Error e ->
+                            errorf_constant ~loc "strange arguments for G1Point: %s" e
+                      end
+                  | _ ->
+                      errorf_constant ~loc "G1Point must take 2 string constants"
+            end
+        | Some "bls12_381_g2" when cstr_name = "G2Point" ->
+            begin match args with
+              | [] | [_] | _::_::_::_ ->
+                  internal_error ~loc "strange arguments for G1Point"
+              | [arg1; arg2] ->
+                  let e1 = expression lenv arg1 in
+                  let e2 = expression lenv arg2 in
+                  match e1.desc, e2.desc with
+                  | Pair ( {desc= Const (String x1)}, {desc= Const (String x2)} ),
+                    Pair ( {desc= Const (String y1)}, {desc= Const (String y2)} ) ->
+                      begin match parse_g2 ~loc (x1,x2) (y1,y2) with
+                        | Ok v -> { loc; typ; desc= Const v; attrs= [] }
+                        | Error e ->
+                            errorf_constant ~loc "strange arguments for G2Point: %s" e
+                      end
+                  | _ ->
+                      errorf_constant ~loc "G2Point must take a constant of (string * string) * (string * string)"
+            end
+        | Some "bls12_381_fr" when cstr_name = "Fr" ->
+            begin match args with
+              | [] | _::_::_ ->
+                  internal_error ~loc "strange arguments for Fr"
+              | [arg] ->
+                  let e = expression lenv arg in
+                  match e.desc with
+                  | Const (String arg) ->
+                      begin match parse_fr ~loc arg with
+                        | Ok v -> { loc; typ; desc= Const v; attrs= [] }
+                        | Error e ->
+                            errorf_constant ~loc "strange arguments for Fr: %s" e
+                      end
+                  | _ ->
+                      errorf_constant ~loc "Fr must take a string constant"
+            end
         | Some n ->
+            (* C "string" style constants *)
             match List.assoc_opt n constructions_by_string with
             | None ->
                 unsupported ~loc "constants of data type %s" (Path.name p)
             | Some (tyname, cname, typ, parse) ->
-                if cstr_name <> cname then internal_error ~loc "strange constructor for %s" tyname;
+                if cstr_name <> cname then internal_error ~loc "strange constructor for %s: %s" tyname cstr_name;
                 match args with
                 | [] | _::_::_ ->
                     internal_error ~loc "strange arguments for %s" cname
@@ -1394,7 +1474,7 @@ let rec construct lenv ~loc tyenv exp_type ({Types.cstr_name} as cdesc) args =
                           | Error s -> errorf_constant ~loc:e.loc "Parse error of %s string: %s" tyname s
                         end
                     | _ -> errorf_constant ~loc "%s only takes a string literal" cname
-      end
+        end
 
   (* others *)
   | Tconstr (p, [], _), _ when Path.is_scaml p = None ->
